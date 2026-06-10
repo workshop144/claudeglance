@@ -137,6 +137,25 @@ final class CalculateUtilizationTests: XCTestCase {
     }
 }
 
+// MARK: - Metrics formatting
+
+final class MetricsFormattingTests: XCTestCase {
+
+    func testFormatTokenCount() {
+        XCTAssertEqual(formatTokenCount(950), "950")
+        XCTAssertEqual(formatTokenCount(1_200), "1.2K")
+        XCTAssertEqual(formatTokenCount(44_100_000), "44.1M")
+        XCTAssertEqual(formatTokenCount(0), "0")
+    }
+
+    func testFormatDuration() {
+        XCTAssertEqual(formatDuration(0), "0m")
+        XCTAssertEqual(formatDuration(45), "45s")
+        XCTAssertEqual(formatDuration(2_048), "34m 8s")
+        XCTAssertEqual(formatDuration(3_900), "1h 5m")
+    }
+}
+
 // MARK: - formatTimeRemaining
 
 final class FormatTimeRemainingTests: XCTestCase {

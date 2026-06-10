@@ -15,6 +15,7 @@ struct SettingsView: View {
     @State private var showFiveHourReset: Bool = true
     @State private var showSevenDayReset: Bool = false
     @State private var showHealth: Bool = true
+    @State private var showActivity: Bool = true
 
     @State private var launchAtLogin: Bool = false
     @State private var launchAtLoginError: String? = nil
@@ -62,6 +63,9 @@ struct SettingsView: View {
                     toggleRow(icon: "waveform.path.ecg", title: "Show service health",
                               description: "Show a colored Claude service-status dot in the menu bar.",
                               isOn: $showHealth) { settingsManager.setShowHealth($0) }
+                    toggleRow(icon: "chart.line.uptrend.xyaxis", title: "Show today's activity",
+                              description: "Show today's tokens, active time, and messages from local Claude Code logs.",
+                              isOn: $showActivity) { settingsManager.setShowActivity($0) }
                     rowDivider
 
                     toggleRow(icon: "bell", title: "Enable usage alerts",
@@ -212,6 +216,7 @@ struct SettingsView: View {
         showFiveHourReset = settingsManager.settings.showFiveHourReset
         showSevenDayReset = settingsManager.settings.showSevenDayReset
         showHealth = settingsManager.settings.showHealth
+        showActivity = settingsManager.settings.showActivity
         launchAtLogin = settingsManager.isLaunchAtLoginEnabled
     }
 

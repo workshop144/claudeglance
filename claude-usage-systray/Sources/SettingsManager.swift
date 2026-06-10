@@ -35,6 +35,7 @@ final class SettingsManager: ObservableObject {
     func setShowFiveHourReset(_ enabled: Bool) { settings.showFiveHourReset = enabled }
     func setShowSevenDayReset(_ enabled: Bool) { settings.showSevenDayReset = enabled }
     func setShowHealth(_ enabled: Bool) { settings.showHealth = enabled }
+    func setShowActivity(_ enabled: Bool) { settings.showActivity = enabled }
     func resetToDefaults() { settings = AppSettings() }
 
     // MARK: - Launch at login

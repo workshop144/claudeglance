@@ -8,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var settingsWindow: NSWindow?
     private let usageService = UsageService.shared
     private let statusService = StatusService.shared
+    private let metricsService = MetricsService.shared
     private let settingsManager = SettingsManager.shared
 
     private var lastWarningNotified: Int = 0
@@ -36,6 +37,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             .sink { [weak self] _ in self?.updateStatusItemAppearance() }
             .store(in: &cancellables)
 
+        // The activity section is rebuilt on each menu open from the latest
+        // metrics; no menu-bar refresh needed when they change.
+
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(settingsDidChange),
@@ -47,6 +51,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         usageService.stopPolling()
         statusService.stopPolling()
+        metricsService.stopPolling()
     }
 
     private func setupStatusItem() {
@@ -95,6 +100,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         if let sonnet = snapshot.sevenDaySonnetUtilization {
             menu.addItem(infoItem(title: "Sonnet: \(sonnet)%", symbol: "cpu"))
+        }
+
+        // "Today" activity from local Claude Code logs (no Keychain / network).
+        if settingsManager.settings.showActivity {
+            let m = metricsService.metrics
+            if m.hasData {
+                menu.addItem(.separator())
+                menu.addItem(infoItem(title: "Today: \(formatTokenCount(m.todayTokens)) tokens", symbol: "number"))
+                var detail = "\(formatDuration(m.todayActiveSeconds)) active · \(m.todayMessages) msgs"
+                if m.todayCachePercent > 0 { detail += " · \(m.todayCachePercent)% cached" }
+                menu.addItem(secondaryItem(detail))
+                if m.yesterdayTokens > 0 {
+                    let delta = m.todayTokens - m.yesterdayTokens
+                    let sign = delta >= 0 ? "+" : "\u{2212}"
+                    menu.addItem(secondaryItem("vs yesterday: \(sign)\(formatTokenCount(abs(delta)))"))
+                }
+            }
         }
 
         if let error = usageService.error {
@@ -211,6 +233,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             usageService.startPolling()
         }
         statusService.startPolling()
+        metricsService.startPolling()
         
         Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             self?.checkForNotifications()

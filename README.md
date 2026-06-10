@@ -92,6 +92,7 @@ show just a countdown, just percentages, or any mix.
 | Show 5h reset countdown | On | Time until the session resets |
 | Show 7d reset countdown | Off | Time until the weekly limit resets |
 | Show service health | On | Colored Claude service-status dot in the menu bar |
+| Show today's activity | On | Today's tokens, active time & messages (from local logs) |
 | Warning threshold | 80% | Usage % that triggers a warning notification |
 | Critical threshold | 90% | Usage % that triggers a critical notification |
 | Usage alerts | On | macOS notification when a threshold is crossed |
@@ -129,6 +130,9 @@ xcodebuild test -scheme ClaudeUsageSystray -destination 'platform=macOS'
 
 This fork diverges from [adntgv/claude-usage-systray](https://github.com/adntgv/claude-usage-systray):
 
+- **Today's activity** — a menu section with today's token usage, active time,
+  message count, cache %, and a vs-yesterday delta, parsed from the local Claude
+  Code session logs (`~/.claude/projects`). No auth, no Keychain, no network.
 - **Service-health badge** — a colored dot from the public Claude status page
   (`status.claude.com`), in the menu bar and menu. No auth, no Keychain.
 - **Launch at login** toggle in Settings, using the modern `SMAppService` API

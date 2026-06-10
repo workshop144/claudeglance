@@ -1,0 +1,172 @@
+import Foundation
+
+// MARK: - Local activity metrics (from Claude Code session logs)
+
+/// Today's usage derived purely from `~/.claude/projects/**/*.jsonl` — the local
+/// session transcripts Claude Code writes. No Keychain, no network, no token.
+struct UsageMetrics {
+    let todayTokens: Int
+    let todayCachePercent: Int
+    let todayActiveSeconds: Int
+    let todayMessages: Int
+    let yesterdayTokens: Int
+
+    static let empty = UsageMetrics(todayTokens: 0, todayCachePercent: 0,
+                                    todayActiveSeconds: 0, todayMessages: 0, yesterdayTokens: 0)
+
+    var hasData: Bool { todayMessages > 0 }
+}
+
+// MARK: - Formatting helpers (pure, testable)
+
+/// Compact token count: 950 → "950", 1_200 → "1.2K", 44_100_000 → "44.1M".
+func formatTokenCount(_ n: Int) -> String {
+    let d = Double(n)
+    if d >= 1_000_000 { return String(format: "%.1fM", d / 1_000_000) }
+    if d >= 1_000 { return String(format: "%.1fK", d / 1_000) }
+    return "\(n)"
+}
+
+/// Elapsed duration: 2_048 → "34m 8s", 3_900 → "1h 5m", 45 → "45s".
+func formatDuration(_ seconds: Int) -> String {
+    if seconds <= 0 { return "0m" }
+    let h = seconds / 3600, m = (seconds % 3600) / 60, s = seconds % 60
+    if h > 0 { return "\(h)h \(m)m" }
+    if m > 0 { return "\(m)m \(s)s" }
+    return "\(s)s"
+}
+
+// MARK: - MetricsService
+
+final class MetricsService: ObservableObject {
+    static let shared = MetricsService()
+
+    @Published private(set) var metrics: UsageMetrics = .empty
+
+    private var timer: Timer?
+    private let interval: TimeInterval = 60
+    private let queue = DispatchQueue(label: "com.claude.usage-systray.metrics", qos: .utility)
+
+    private init() {}
+
+    func startPolling() {
+        refresh()
+        timer?.invalidate()
+        timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+            self?.refresh()
+        }
+    }
+
+    func stopPolling() {
+        timer?.invalidate()
+        timer = nil
+    }
+
+    func refresh() {
+        queue.async { [weak self] in
+            guard let self else { return }
+            let result = self.computeMetrics()
+            DispatchQueue.main.async { self.metrics = result }
+        }
+    }
+
+    // Minimal shape — Decodable ignores the dozens of other keys per line.
+    private struct LogLine: Decodable {
+        let timestamp: String?
+        let requestId: String?
+        let message: Message?
+
+        struct Message: Decodable {
+            let id: String?
+            let usage: Usage?
+        }
+        struct Usage: Decodable {
+            let input_tokens: Int?
+            let output_tokens: Int?
+            let cache_read_input_tokens: Int?
+            let cache_creation_input_tokens: Int?
+        }
+    }
+
+    private func computeMetrics() -> UsageMetrics {
+        let fm = FileManager.default
+        let projects = fm.homeDirectoryForCurrentUser.appendingPathComponent(".claude/projects")
+        guard let enumerator = fm.enumerator(
+            at: projects,
+            includingPropertiesForKeys: [.contentModificationDateKey],
+            options: [.skipsHiddenFiles]
+        ) else { return .empty }
+
+        let cal = Calendar.current
+        let startToday = cal.startOfDay(for: Date())
+        guard let startYesterday = cal.date(byAdding: .day, value: -1, to: startToday) else { return .empty }
+
+        let isoFrac = ISO8601DateFormatter(); isoFrac.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let iso = ISO8601DateFormatter(); iso.formatOptions = [.withInternetDateTime]
+
+        var seen = Set<String>()
+        var tIn = 0, tOut = 0, tCacheR = 0, tCacheC = 0, tMsgs = 0
+        var todayTimes: [Date] = []
+        var yesterdayTokens = 0
+        let decoder = JSONDecoder()
+
+        for case let url as URL in enumerator where url.pathExtension == "jsonl" {
+            let mod = (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+            if mod < startYesterday { continue }            // only files touched today/yesterday
+            guard let content = try? String(contentsOf: url, encoding: .utf8) else { continue }
+
+            for line in content.split(separator: "\n") {
+                guard let data = line.data(using: .utf8),
+                      let entry = try? decoder.decode(LogLine.self, from: data),
+                      let usage = entry.message?.usage,
+                      let ts = entry.timestamp,
+                      let date = isoFrac.date(from: ts) ?? iso.date(from: ts) else { continue }
+
+                // Dedupe resumed/duplicated entries the way ccusage does.
+                let key = "\(entry.message?.id ?? ""):\(entry.requestId ?? "")"
+                if key != ":" {
+                    if seen.contains(key) { continue }
+                    seen.insert(key)
+                }
+
+                let total = (usage.input_tokens ?? 0) + (usage.output_tokens ?? 0)
+                    + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0)
+
+                if date >= startToday {
+                    tIn += usage.input_tokens ?? 0
+                    tOut += usage.output_tokens ?? 0
+                    tCacheR += usage.cache_read_input_tokens ?? 0
+                    tCacheC += usage.cache_creation_input_tokens ?? 0
+                    tMsgs += 1
+                    todayTimes.append(date)
+                } else if date >= startYesterday {
+                    yesterdayTokens += total
+                }
+            }
+        }
+
+        let inputSide = tIn + tCacheR + tCacheC
+        let cachePct = inputSide > 0 ? Int((Double(tCacheR) / Double(inputSide)) * 100.0) : 0
+
+        return UsageMetrics(
+            todayTokens: tIn + tOut + tCacheR + tCacheC,
+            todayCachePercent: cachePct,
+            todayActiveSeconds: activeSeconds(todayTimes),
+            todayMessages: tMsgs,
+            yesterdayTokens: yesterdayTokens
+        )
+    }
+
+    /// "Active" time = sum of gaps between consecutive messages, ignoring idle
+    /// gaps longer than 5 minutes (so breaks don't count as working time).
+    private func activeSeconds(_ times: [Date]) -> Int {
+        guard times.count > 1 else { return 0 }
+        let sorted = times.sorted()
+        var total: TimeInterval = 0
+        for i in 1..<sorted.count {
+            let gap = sorted[i].timeIntervalSince(sorted[i - 1])
+            if gap > 0 && gap <= 300 { total += gap }
+        }
+        return Int(total)
+    }
+}
