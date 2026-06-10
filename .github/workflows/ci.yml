@@ -1,19 +1,48 @@
 name: CI
+
 on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+
+# A new push to a branch/PR cancels any in-flight run for the same ref, so PR
+# checks always reflect the latest commit and we don't waste runner minutes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
+    name: Unit tests
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: xcodebuild -version
+
       - name: Run tests
+        # `set -o pipefail` (and no output-swallowing pipe) is load-bearing: the
+        # previous `xcodebuild | grep` form returned grep's exit code, so a failing
+        # test suite — whose output still contains "failed" lines that grep matched
+        # — would exit 0 and pass CI. -quiet keeps the log readable while letting
+        # xcodebuild's real exit status fail the step.
         run: |
+          set -euo pipefail
           xcodebuild test \
             -project ClaudeGlance.xcodeproj \
             -scheme ClaudeGlanceTests \
             -destination 'platform=macOS' \
+            -resultBundlePath TestResults.xcresult \
             CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
-            | grep -E "(Test Case|passed|failed|SUCCEEDED|FAILED)"
+            -quiet
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: TestResults.xcresult
+          if-no-files-found: ignore
+          retention-days: 7

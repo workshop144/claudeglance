@@ -36,6 +36,104 @@ func formatDuration(_ seconds: Int) -> String {
     return "\(s)s"
 }
 
+// MARK: - Log line shape
+
+/// Minimal shape of a Claude Code transcript line — `Decodable` ignores the
+/// dozens of other keys per line. Internal (not private) so the pure aggregation
+/// below can be unit-tested.
+struct MetricsLogLine: Decodable {
+    let timestamp: String?
+    let requestId: String?
+    let message: Message?
+
+    struct Message: Decodable {
+        let id: String?
+        let usage: Usage?
+    }
+    struct Usage: Decodable {
+        let input_tokens: Int?
+        let output_tokens: Int?
+        let cache_read_input_tokens: Int?
+        let cache_creation_input_tokens: Int?
+    }
+}
+
+// MARK: - Pure aggregation (testable, no I/O)
+
+/// "Active" time = sum of gaps between consecutive messages, ignoring idle gaps
+/// longer than 5 minutes (so breaks don't count as working time).
+func activeSeconds(_ times: [Date]) -> Int {
+    guard times.count > 1 else { return 0 }
+    let sorted = times.sorted()
+    var total: TimeInterval = 0
+    for i in 1..<sorted.count {
+        let gap = sorted[i].timeIntervalSince(sorted[i - 1])
+        if gap > 0 && gap <= 300 { total += gap }
+    }
+    return Int(total)
+}
+
+/// Aggregates today/yesterday usage from raw `.jsonl` file contents, relative to
+/// `now`. Pure — feed it strings and a clock and it returns a `UsageMetrics`,
+/// with no filesystem access. This is the heart of the "Today" section and the
+/// part most worth testing (dedup, token sums, cache %, the day boundary).
+func aggregateMetrics(jsonlContents: [String], now: Date) -> UsageMetrics {
+    let cal = Calendar.current
+    let startToday = cal.startOfDay(for: now)
+    guard let startYesterday = cal.date(byAdding: .day, value: -1, to: startToday) else { return .empty }
+
+    let isoFrac = ISO8601DateFormatter(); isoFrac.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    let iso = ISO8601DateFormatter(); iso.formatOptions = [.withInternetDateTime]
+
+    var seen = Set<String>()
+    var tIn = 0, tOut = 0, tCacheR = 0, tCacheC = 0, tMsgs = 0
+    var todayTimes: [Date] = []
+    var yesterdayTokens = 0
+    let decoder = JSONDecoder()
+
+    for content in jsonlContents {
+        for line in content.split(separator: "\n") {
+            guard let data = line.data(using: .utf8),
+                  let entry = try? decoder.decode(MetricsLogLine.self, from: data),
+                  let usage = entry.message?.usage,
+                  let ts = entry.timestamp,
+                  let date = isoFrac.date(from: ts) ?? iso.date(from: ts) else { continue }
+
+            // Dedupe resumed/duplicated entries the way ccusage does.
+            let key = "\(entry.message?.id ?? ""):\(entry.requestId ?? "")"
+            if key != ":" {
+                if seen.contains(key) { continue }
+                seen.insert(key)
+            }
+
+            let total = (usage.input_tokens ?? 0) + (usage.output_tokens ?? 0)
+                + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0)
+
+            if date >= startToday {
+                tIn += usage.input_tokens ?? 0
+                tOut += usage.output_tokens ?? 0
+                tCacheR += usage.cache_read_input_tokens ?? 0
+                tCacheC += usage.cache_creation_input_tokens ?? 0
+                tMsgs += 1
+                todayTimes.append(date)
+            } else if date >= startYesterday {
+                yesterdayTokens += total
+            }
+        }
+    }
+
+    let inputSide = tIn + tCacheR + tCacheC
+    let cachePct = inputSide > 0 ? Int((Double(tCacheR) / Double(inputSide)) * 100.0) : 0
+
+    return UsageMetrics(
+        todayTokens: tIn + tOut + tCacheR + tCacheC,
+        todayCachePercent: cachePct,
+        todayActiveSeconds: activeSeconds(todayTimes),
+        todayMessages: tMsgs,
+        yesterdayTokens: yesterdayTokens
+    )
+}
+
 // MARK: - MetricsService
 
 final class MetricsService: ObservableObject {
@@ -70,25 +168,10 @@ final class MetricsService: ObservableObject {
         }
     }
 
-    // Minimal shape — Decodable ignores the dozens of other keys per line.
-    private struct LogLine: Decodable {
-        let timestamp: String?
-        let requestId: String?
-        let message: Message?
-
-        struct Message: Decodable {
-            let id: String?
-            let usage: Usage?
-        }
-        struct Usage: Decodable {
-            let input_tokens: Int?
-            let output_tokens: Int?
-            let cache_read_input_tokens: Int?
-            let cache_creation_input_tokens: Int?
-        }
-    }
-
+    /// Gathers the relevant transcript file contents (the only I/O), then defers
+    /// all parsing/aggregation to the pure `aggregateMetrics`.
     private func computeMetrics() -> UsageMetrics {
+        let now = Date()
         let fm = FileManager.default
         let projects = fm.homeDirectoryForCurrentUser.appendingPathComponent(".claude/projects")
         guard let enumerator = fm.enumerator(
@@ -98,75 +181,17 @@ final class MetricsService: ObservableObject {
         ) else { return .empty }
 
         let cal = Calendar.current
-        let startToday = cal.startOfDay(for: Date())
+        let startToday = cal.startOfDay(for: now)
         guard let startYesterday = cal.date(byAdding: .day, value: -1, to: startToday) else { return .empty }
 
-        let isoFrac = ISO8601DateFormatter(); isoFrac.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let iso = ISO8601DateFormatter(); iso.formatOptions = [.withInternetDateTime]
-
-        var seen = Set<String>()
-        var tIn = 0, tOut = 0, tCacheR = 0, tCacheC = 0, tMsgs = 0
-        var todayTimes: [Date] = []
-        var yesterdayTokens = 0
-        let decoder = JSONDecoder()
-
+        var contents: [String] = []
         for case let url as URL in enumerator where url.pathExtension == "jsonl" {
             let mod = (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
             if mod < startYesterday { continue }            // only files touched today/yesterday
             guard let content = try? String(contentsOf: url, encoding: .utf8) else { continue }
-
-            for line in content.split(separator: "\n") {
-                guard let data = line.data(using: .utf8),
-                      let entry = try? decoder.decode(LogLine.self, from: data),
-                      let usage = entry.message?.usage,
-                      let ts = entry.timestamp,
-                      let date = isoFrac.date(from: ts) ?? iso.date(from: ts) else { continue }
-
-                // Dedupe resumed/duplicated entries the way ccusage does.
-                let key = "\(entry.message?.id ?? ""):\(entry.requestId ?? "")"
-                if key != ":" {
-                    if seen.contains(key) { continue }
-                    seen.insert(key)
-                }
-
-                let total = (usage.input_tokens ?? 0) + (usage.output_tokens ?? 0)
-                    + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0)
-
-                if date >= startToday {
-                    tIn += usage.input_tokens ?? 0
-                    tOut += usage.output_tokens ?? 0
-                    tCacheR += usage.cache_read_input_tokens ?? 0
-                    tCacheC += usage.cache_creation_input_tokens ?? 0
-                    tMsgs += 1
-                    todayTimes.append(date)
-                } else if date >= startYesterday {
-                    yesterdayTokens += total
-                }
-            }
+            contents.append(content)
         }
 
-        let inputSide = tIn + tCacheR + tCacheC
-        let cachePct = inputSide > 0 ? Int((Double(tCacheR) / Double(inputSide)) * 100.0) : 0
-
-        return UsageMetrics(
-            todayTokens: tIn + tOut + tCacheR + tCacheC,
-            todayCachePercent: cachePct,
-            todayActiveSeconds: activeSeconds(todayTimes),
-            todayMessages: tMsgs,
-            yesterdayTokens: yesterdayTokens
-        )
-    }
-
-    /// "Active" time = sum of gaps between consecutive messages, ignoring idle
-    /// gaps longer than 5 minutes (so breaks don't count as working time).
-    private func activeSeconds(_ times: [Date]) -> Int {
-        guard times.count > 1 else { return 0 }
-        let sorted = times.sorted()
-        var total: TimeInterval = 0
-        for i in 1..<sorted.count {
-            let gap = sorted[i].timeIntervalSince(sorted[i - 1])
-            if gap > 0 && gap <= 300 { total += gap }
-        }
-        return Int(total)
+        return aggregateMetrics(jsonlContents: contents, now: now)
     }
 }
