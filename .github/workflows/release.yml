@@ -40,18 +40,18 @@ jobs:
 
       - name: Archive
         run: |
-          cd claude-usage-systray
+          cd claudeglance
           xcodebuild \
-            -scheme ClaudeUsageSystray \
+            -scheme ClaudeGlance \
             -configuration Release \
-            -archivePath build/ClaudeUsageSystray.xcarchive \
+            -archivePath build/ClaudeGlance.xcarchive \
             archive
 
       - name: Export (Developer ID signed)
         run: |
-          cd claude-usage-systray
+          cd claudeglance
           xcodebuild -exportArchive \
-            -archivePath build/ClaudeUsageSystray.xcarchive \
+            -archivePath build/ClaudeGlance.xcarchive \
             -exportPath build/export \
             -exportOptionsPlist ExportOptions.plist
 
@@ -61,9 +61,9 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
         run: |
-          cd claude-usage-systray
-          ditto -c -k --keepParent build/export/ClaudeUsageSystray.app ClaudeUsageSystray.zip
-          xcrun notarytool submit ClaudeUsageSystray.zip \
+          cd claudeglance
+          ditto -c -k --keepParent build/export/ClaudeGlance.app ClaudeGlance.zip
+          xcrun notarytool submit ClaudeGlance.zip \
             --apple-id "$APPLE_ID" \
             --team-id "$APPLE_TEAM_ID" \
             --password "$APPLE_APP_PASSWORD" \
@@ -71,22 +71,22 @@ jobs:
 
       - name: Staple
         run: |
-          cd claude-usage-systray
-          xcrun stapler staple build/export/ClaudeUsageSystray.app
-          ditto -c -k --keepParent build/export/ClaudeUsageSystray.app ClaudeUsageSystray.zip
+          cd claudeglance
+          xcrun stapler staple build/export/ClaudeGlance.app
+          ditto -c -k --keepParent build/export/ClaudeGlance.app ClaudeGlance.zip
 
       - name: Build DMG
         run: |
-          VOL_NAME="Claude Usage" scripts/make-dmg.sh \
-            claude-usage-systray/build/export/ClaudeUsageSystray.app \
-            claude-usage-systray/ClaudeUsageSystray.dmg
+          VOL_NAME="ClaudeGlance" scripts/make-dmg.sh \
+            claudeglance/build/export/ClaudeGlance.app \
+            claudeglance/ClaudeGlance.dmg
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            claude-usage-systray/ClaudeUsageSystray.dmg
-            claude-usage-systray/ClaudeUsageSystray.zip
+            claudeglance/ClaudeGlance.dmg
+            claudeglance/ClaudeGlance.zip
           generate_release_notes: true
 
       - name: Update Homebrew tap
@@ -95,22 +95,22 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           VERSION=${TAG#v}
-          SHA=$(shasum -a 256 claude-usage-systray/ClaudeUsageSystray.dmg | awk '{print $1}')
+          SHA=$(shasum -a 256 claudeglance/ClaudeGlance.dmg | awk '{print $1}')
 
-          FORMULA="cask \"claude-usage-systray\" do
+          FORMULA="cask \"claudeglance\" do
             version \"$VERSION\"
             sha256 \"$SHA\"
 
-            url \"https://github.com/broots144/claude-usage-systray/releases/download/v#{version}/ClaudeUsageSystray.dmg\"
-            name \"Claude Usage Systray\"
+            url \"https://github.com/broots144/claudeglance/releases/download/v#{version}/ClaudeGlance.dmg\"
+            name \"ClaudeGlance\"
             desc \"macOS menu bar app showing Claude.ai plan usage in real time\"
-            homepage \"https://github.com/broots144/claude-usage-systray\"
+            homepage \"https://github.com/broots144/claudeglance\"
 
-            app \"ClaudeUsageSystray.app\"
+            app \"ClaudeGlance.app\"
 
             zap trash: [
-              \"~/Library/Preferences/com.adntgv.claude-usage-systray.plist\",
-              \"~/Library/Application Support/ClaudeUsageSystray\",
+              \"~/Library/Preferences/io.github.broots144.ClaudeGlance.plist\",
+              \"~/Library/Application Support/ClaudeGlance\",
             ]
           end"
 
@@ -119,11 +119,11 @@ jobs:
           # Get current file SHA (needed to update an existing cask file)
           CURRENT=$(curl -s \
             -H "Authorization: token $HOMEBREW_TAP_TOKEN" \
-            https://api.github.com/repos/broots144/homebrew-tap/contents/Casks/claude-usage-systray.rb)
+            https://api.github.com/repos/broots144/homebrew-tap/contents/Casks/claudeglance.rb)
           FILE_SHA=$(echo "$CURRENT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('sha',''))")
 
           curl -s -X PUT \
             -H "Authorization: token $HOMEBREW_TAP_TOKEN" \
             -H "Accept: application/vnd.github+json" \
-            https://api.github.com/repos/broots144/homebrew-tap/contents/Casks/claude-usage-systray.rb \
-            -d "{\"message\":\"Update claude-usage-systray to $VERSION\",\"content\":\"$ENCODED\",\"sha\":\"$FILE_SHA\"}"
+            https://api.github.com/repos/broots144/homebrew-tap/contents/Casks/claudeglance.rb \
+            -d "{\"message\":\"Update claudeglance to $VERSION\",\"content\":\"$ENCODED\",\"sha\":\"$FILE_SHA\"}"

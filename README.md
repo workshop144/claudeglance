@@ -1,4 +1,4 @@
-# Claude Usage Systray
+# ClaudeGlance
 
 A lightweight macOS menu bar app that shows your [Claude.ai](https://claude.ai)
 plan usage in real time — session %, weekly %, Sonnet %, and time-until-reset —
@@ -40,41 +40,41 @@ Mirrors the data on `claude.ai/settings/usage`.
 **Homebrew:**
 
 ```bash
-brew install --cask broots144/tap/claude-usage-systray
+brew install --cask broots144/tap/claudeglance
 ```
 
 Because the build is ad-hoc signed (not notarized), macOS quarantines it. Clear
 that once after installing — either way:
 
 - Right-click the app in `/Applications` › **Open** › **Open**, or
-- `xattr -dr com.apple.quarantine /Applications/ClaudeUsageSystray.app`
+- `xattr -dr com.apple.quarantine /Applications/ClaudeGlance.app`
 
 (Homebrew removed its `--no-quarantine` flag, so this is a one-time manual step
 until the app is notarized.)
 
-**Or download the DMG** from the [Releases page](https://github.com/broots144/claude-usage-systray/releases),
-open it, and drag **Claude Usage** onto the **Applications** folder in the same
+**Or download the DMG** from the [Releases page](https://github.com/broots144/claudeglance/releases),
+open it, and drag **ClaudeGlance** onto the **Applications** folder in the same
 window.
 
 > The release build is ad-hoc signed, not notarized — on first launch macOS may
 > say it "cannot verify the developer." Right-click the app › **Open** (once), or
-> remove the quarantine flag: `xattr -dr com.apple.quarantine /Applications/ClaudeUsageSystray.app`.
+> remove the quarantine flag: `xattr -dr com.apple.quarantine /Applications/ClaudeGlance.app`.
 
 ## Build from source
 
 ```bash
-git clone https://github.com/broots144/claude-usage-systray
-cd claude-usage-systray/claude-usage-systray
-xcodebuild -scheme ClaudeUsageSystray -configuration Release build
-open ~/Library/Developer/Xcode/DerivedData/ClaudeUsageSystray-*/Build/Products/Release/ClaudeUsageSystray.app
+git clone https://github.com/broots144/claudeglance
+cd claudeglance/claudeglance
+xcodebuild -scheme ClaudeGlance -configuration Release build
+open ~/Library/Developer/Xcode/DerivedData/ClaudeGlance-*/Build/Products/Release/ClaudeGlance.app
 ```
 
-Or open `ClaudeUsageSystray.xcodeproj` in Xcode and run with ⌘R.
+Or open `ClaudeGlance.xcodeproj` in Xcode and run with ⌘R.
 
 To produce a drag-to-Applications disk image from a built app:
 
 ```bash
-scripts/make-dmg.sh path/to/ClaudeUsageSystray.app ClaudeUsageSystray.dmg
+scripts/make-dmg.sh path/to/ClaudeGlance.app ClaudeGlance.dmg
 ```
 
 ## Settings
@@ -122,8 +122,8 @@ Keychain).
 ## Running tests
 
 ```bash
-cd claude-usage-systray
-xcodebuild test -scheme ClaudeUsageSystray -destination 'platform=macOS'
+cd claudeglance
+xcodebuild test -scheme ClaudeGlance -destination 'platform=macOS'
 ```
 
 ## Differences from upstream
@@ -152,3 +152,10 @@ This fork diverges from [adntgv/claude-usage-systray](https://github.com/adntgv/
 ## License
 
 [MIT](LICENSE) — © 2026 adntgv (original author) and contributors to this fork.
+
+## Disclaimer
+
+ClaudeGlance is an independent, community-built project. It is not affiliated
+with, endorsed by, or sponsored by Anthropic. "Claude" is a trademark of
+Anthropic; it is used here only to describe what the app reads. The app relies
+on an undocumented endpoint that may change or break at any time.

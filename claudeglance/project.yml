@@ -1,6 +1,6 @@
-name: ClaudeUsageSystray
+name: ClaudeGlance
 options:
-  bundleIdPrefix: com.claude
+  bundleIdPrefix: io.github.broots144
   deploymentTarget:
     macOS: "13.0"
   xcodeVersion: "15.0"
@@ -24,7 +24,7 @@ settings:
       ONLY_ACTIVE_ARCH: NO
 
 targets:
-  ClaudeUsageSystray:
+  ClaudeGlance:
     type: application
     platform: macOS
     sources:
@@ -34,7 +34,7 @@ targets:
         type: group
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.claude.usage-systray
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.broots144.ClaudeGlance
         INFOPLIST_FILE: Resources/Info.plist
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../Frameworks"
@@ -43,20 +43,20 @@ targets:
     dependencies:
       - sdk: Security.framework
     entitlements:
-      path: Resources/ClaudeUsageSystray.entitlements
+      path: Resources/ClaudeGlance.entitlements
       properties:
         com.apple.security.app-sandbox: false
         com.apple.security.network.client: true
 
-  ClaudeUsageSystrayTests:
+  ClaudeGlanceTests:
     type: bundle.unit-test
     platform: macOS
     sources:
       - path: Tests
         type: group
     dependencies:
-      - target: ClaudeUsageSystray
+      - target: ClaudeGlance
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.claude.usage-systray-tests
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.broots144.ClaudeGlanceTests
         GENERATE_INFOPLIST_FILE: YES

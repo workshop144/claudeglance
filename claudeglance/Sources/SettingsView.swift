@@ -34,7 +34,7 @@ struct SettingsView: View {
                     // there's no onChange observer to recurse when we re-sync the
                     // toggle to the real system status below.
                     toggleRow(icon: "power", title: "Launch at login",
-                              description: "Start ClaudeUsageSystray automatically when you log in.",
+                              description: "Start ClaudeGlance automatically when you log in.",
                               isOn: Binding(get: { launchAtLogin },
                                             set: { applyLaunchAtLogin($0) })) { _ in }
                     if let launchAtLoginError {

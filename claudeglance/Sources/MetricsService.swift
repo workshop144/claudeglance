@@ -45,7 +45,7 @@ final class MetricsService: ObservableObject {
 
     private var timer: Timer?
     private let interval: TimeInterval = 60
-    private let queue = DispatchQueue(label: "com.claude.usage-systray.metrics", qos: .utility)
+    private let queue = DispatchQueue(label: "io.github.broots144.ClaudeGlance.metrics", qos: .utility)
 
     private init() {}
 

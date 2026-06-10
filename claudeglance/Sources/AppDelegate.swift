@@ -58,7 +58,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
         if let button = statusItem.button {
-            button.image = NSImage(systemSymbolName: "chart.pie.fill", accessibilityDescription: "Claude Usage")
+            button.image = NSImage(systemSymbolName: "chart.pie.fill", accessibilityDescription: "ClaudeGlance")
         }
 
         // A native NSMenu (like other menu-bar apps) drops down flush under the
@@ -423,7 +423,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard title.length > 0 else {
             let config = NSImage.SymbolConfiguration(pointSize: 12, weight: .medium)
             button.attributedTitle = NSAttributedString(string: "")
-            button.image = NSImage(systemSymbolName: "chart.pie.fill", accessibilityDescription: "Claude Usage")?
+            button.image = NSImage(systemSymbolName: "chart.pie.fill", accessibilityDescription: "ClaudeGlance")?
                 .withSymbolConfiguration(config)
             return
         }

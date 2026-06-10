@@ -1,5 +1,5 @@
 import XCTest
-@testable import ClaudeUsageSystray
+@testable import ClaudeGlance
 
 // MARK: - OAuthUsageResponse decoding
 

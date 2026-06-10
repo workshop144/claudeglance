@@ -8,7 +8,7 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
-RES="$ROOT/claude-usage-systray/Resources"
+RES="$ROOT/claudeglance/Resources"
 APPICON="$RES/Assets.xcassets/AppIcon.appiconset"
 
 TMP="$(mktemp -d)"
