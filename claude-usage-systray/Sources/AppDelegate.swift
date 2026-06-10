@@ -104,33 +104,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(quit)
     }
 
-    /// A read-only header row (e.g. "5hr: 12%"). It carries a no-op action so the
-    /// row highlights blue on hover like the actionable items; clicking does nothing.
+    /// A read-only header row (e.g. "5hr: 12%"). Disabled so it never highlights
+    /// on hover; the explicit attributedTitle keeps the text full-color, since
+    /// AppKit honors an attributedTitle's colors instead of dimming a disabled item.
     private func infoItem(title: String, symbol: String) -> NSMenuItem {
-        let item = NSMenuItem(title: title, action: #selector(infoRowNoop), keyEquivalent: "")
-        item.target = self
+        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        item.attributedTitle = NSAttributedString(string: title, attributes: [
+            .font: NSFont.menuFont(ofSize: 0),
+            .foregroundColor: NSColor.labelColor
+        ])
         item.image = menuSymbol(symbol)
-        item.isEnabled = true
+        item.isEnabled = false
         return item
     }
 
     /// A smaller, secondary-colored, indented detail row (e.g. "Resets in: 2h 19m").
-    /// Also carries the no-op action so it highlights on hover.
+    /// Also disabled so it doesn't highlight on hover.
     private func secondaryItem(_ text: String) -> NSMenuItem {
-        let item = NSMenuItem(title: text, action: #selector(infoRowNoop), keyEquivalent: "")
-        item.target = self
+        let item = NSMenuItem(title: text, action: nil, keyEquivalent: "")
         item.attributedTitle = NSAttributedString(string: text, attributes: [
             .font: NSFont.systemFont(ofSize: 11),
             .foregroundColor: NSColor.secondaryLabelColor
         ])
         item.indentationLevel = 1
-        item.isEnabled = true
+        item.isEnabled = false
         return item
     }
-
-    /// No-op action for the read-only info rows — present only so AppKit treats
-    /// them as active and highlights them on hover.
-    @objc private func infoRowNoop() {}
 
     private func actionItem(title: String, symbol: String, action: Selector) -> NSMenuItem {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
