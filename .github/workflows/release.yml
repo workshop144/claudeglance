@@ -95,16 +95,16 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           VERSION=${TAG#v}
-          SHA=$(shasum -a 256 claude-usage-systray/ClaudeUsageSystray.zip | awk '{print $1}')
+          SHA=$(shasum -a 256 claude-usage-systray/ClaudeUsageSystray.dmg | awk '{print $1}')
 
           FORMULA="cask \"claude-usage-systray\" do
             version \"$VERSION\"
             sha256 \"$SHA\"
 
-            url \"https://github.com/adntgv/claude-usage-systray/releases/download/v#{version}/ClaudeUsageSystray.zip\"
+            url \"https://github.com/broots144/claude-usage-systray/releases/download/v#{version}/ClaudeUsageSystray.dmg\"
             name \"Claude Usage Systray\"
             desc \"macOS menu bar app showing Claude.ai plan usage in real time\"
-            homepage \"https://github.com/adntgv/claude-usage-systray\"
+            homepage \"https://github.com/broots144/claude-usage-systray\"
 
             app \"ClaudeUsageSystray.app\"
 
@@ -116,14 +116,14 @@ jobs:
 
           ENCODED=$(echo "$FORMULA" | base64)
 
-          # Get current file SHA (needed for update)
+          # Get current file SHA (needed to update an existing cask file)
           CURRENT=$(curl -s \
             -H "Authorization: token $HOMEBREW_TAP_TOKEN" \
-            https://api.github.com/repos/adntgv/homebrew-tap/contents/Casks/claude-usage-systray.rb)
+            https://api.github.com/repos/broots144/homebrew-tap/contents/Casks/claude-usage-systray.rb)
           FILE_SHA=$(echo "$CURRENT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('sha',''))")
 
           curl -s -X PUT \
             -H "Authorization: token $HOMEBREW_TAP_TOKEN" \
             -H "Accept: application/vnd.github+json" \
-            https://api.github.com/repos/adntgv/homebrew-tap/contents/Casks/claude-usage-systray.rb \
+            https://api.github.com/repos/broots144/homebrew-tap/contents/Casks/claude-usage-systray.rb \
             -d "{\"message\":\"Update claude-usage-systray to $VERSION\",\"content\":\"$ENCODED\",\"sha\":\"$FILE_SHA\"}"
