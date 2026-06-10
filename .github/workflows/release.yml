@@ -40,7 +40,6 @@ jobs:
 
       - name: Archive
         run: |
-          cd claudeglance
           xcodebuild \
             -scheme ClaudeGlance \
             -configuration Release \
@@ -49,7 +48,6 @@ jobs:
 
       - name: Export (Developer ID signed)
         run: |
-          cd claudeglance
           xcodebuild -exportArchive \
             -archivePath build/ClaudeGlance.xcarchive \
             -exportPath build/export \
@@ -61,7 +59,6 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
         run: |
-          cd claudeglance
           ditto -c -k --keepParent build/export/ClaudeGlance.app ClaudeGlance.zip
           xcrun notarytool submit ClaudeGlance.zip \
             --apple-id "$APPLE_ID" \
@@ -71,22 +68,21 @@ jobs:
 
       - name: Staple
         run: |
-          cd claudeglance
           xcrun stapler staple build/export/ClaudeGlance.app
           ditto -c -k --keepParent build/export/ClaudeGlance.app ClaudeGlance.zip
 
       - name: Build DMG
         run: |
           VOL_NAME="ClaudeGlance" scripts/make-dmg.sh \
-            claudeglance/build/export/ClaudeGlance.app \
-            claudeglance/ClaudeGlance.dmg
+            build/export/ClaudeGlance.app \
+            ClaudeGlance.dmg
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            claudeglance/ClaudeGlance.dmg
-            claudeglance/ClaudeGlance.zip
+            ClaudeGlance.dmg
+            ClaudeGlance.zip
           generate_release_notes: true
 
       - name: Update Homebrew tap
@@ -95,7 +91,7 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           VERSION=${TAG#v}
-          SHA=$(shasum -a 256 claudeglance/ClaudeGlance.dmg | awk '{print $1}')
+          SHA=$(shasum -a 256 ClaudeGlance.dmg | awk '{print $1}')
 
           FORMULA="cask \"claudeglance\" do
             version \"$VERSION\"

@@ -64,7 +64,7 @@ window.
 
 ```bash
 git clone https://github.com/broots144/claudeglance
-cd claudeglance/claudeglance
+cd claudeglance
 xcodebuild -scheme ClaudeGlance -configuration Release build
 open ~/Library/Developer/Xcode/DerivedData/ClaudeGlance-*/Build/Products/Release/ClaudeGlance.app
 ```
