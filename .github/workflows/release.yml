@@ -75,10 +75,18 @@ jobs:
           xcrun stapler staple build/export/ClaudeUsageSystray.app
           ditto -c -k --keepParent build/export/ClaudeUsageSystray.app ClaudeUsageSystray.zip
 
+      - name: Build DMG
+        run: |
+          VOL_NAME="Claude Usage" scripts/make-dmg.sh \
+            claude-usage-systray/build/export/ClaudeUsageSystray.app \
+            claude-usage-systray/ClaudeUsageSystray.dmg
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: claude-usage-systray/ClaudeUsageSystray.zip
+          files: |
+            claude-usage-systray/ClaudeUsageSystray.dmg
+            claude-usage-systray/ClaudeUsageSystray.zip
           generate_release_notes: true
 
       - name: Update Homebrew tap

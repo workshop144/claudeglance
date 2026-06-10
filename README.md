@@ -33,6 +33,16 @@ Mirrors the data on `claude.ai/settings/usage`.
 - [Claude Code](https://claude.ai/code) installed and logged in (the app reads
   its OAuth token from your Keychain — no separate credentials needed)
 
+## Install
+
+**Download the DMG** from the [Releases page](https://github.com/broots144/claude-usage-systray/releases),
+open it, and drag **Claude Usage** onto the **Applications** folder in the same
+window.
+
+> The release build is ad-hoc signed, not notarized — on first launch macOS may
+> say it "cannot verify the developer." Right-click the app › **Open** (once), or
+> remove the quarantine flag: `xattr -dr com.apple.quarantine /Applications/ClaudeUsageSystray.app`.
+
 ## Build from source
 
 ```bash
@@ -44,8 +54,11 @@ open ~/Library/Developer/Xcode/DerivedData/ClaudeUsageSystray-*/Build/Products/R
 
 Or open `ClaudeUsageSystray.xcodeproj` in Xcode and run with ⌘R.
 
-> Prebuilt releases and a Homebrew cask aren't published for this fork yet —
-> build from source for now.
+To produce a drag-to-Applications disk image from a built app:
+
+```bash
+scripts/make-dmg.sh path/to/ClaudeUsageSystray.app ClaudeUsageSystray.dmg
+```
 
 ## Settings
 
