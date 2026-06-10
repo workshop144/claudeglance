@@ -194,7 +194,9 @@ final class UsageService: ObservableObject {
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
 
+        #if DEBUG
         print("[UsageService] GET /api/oauth/usage")
+        #endif
 
         let (data, response) = try await urlSession.data(for: request)
         let body = String(data: data, encoding: .utf8) ?? "<binary>"
@@ -203,7 +205,12 @@ final class UsageService: ObservableObject {
             throw URLError(.badServerResponse)
         }
 
+        // Response/error bodies are only logged in DEBUG builds — they contain
+        // usage data (and, on errors, backend detail) that should not be written
+        // to the unified log in a shipped build.
+        #if DEBUG
         print("[UsageService] HTTP \(http.statusCode) — \(body.prefix(300))")
+        #endif
 
         guard http.statusCode == 200 else {
             throw NSError(domain: "OAuthUsage", code: http.statusCode,

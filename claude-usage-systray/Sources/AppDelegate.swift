@@ -183,9 +183,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func setupNotifications() {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, error in
+            #if DEBUG
             if let error = error {
                 print("Notification authorization error: \(error)")
             }
+            #endif
         }
     }
 
@@ -358,9 +360,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         )
 
         UNUserNotificationCenter.current().add(request) { error in
+            #if DEBUG
             if let error = error {
                 print("Notification error: \(error)")
             }
+            #endif
         }
     }
 }
