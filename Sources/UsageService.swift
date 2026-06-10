@@ -50,10 +50,15 @@ struct OAuthUsageResponse: Decodable {
     struct ExtraUsage: Decodable {
         let isEnabled: Bool
         let utilization: Double?
+        // Dollar amounts in cents; null until credits are enabled and used.
+        let usedCredits: Int?
+        let monthlyLimit: Int?
 
         enum CodingKeys: String, CodingKey {
             case isEnabled = "is_enabled"
             case utilization
+            case usedCredits = "used_credits"
+            case monthlyLimit = "monthly_limit"
         }
     }
 
@@ -84,6 +89,13 @@ struct OAuthUsageResponse: Decodable {
 func calculateUtilization(tokens: Int, limit: Int) -> Int {
     guard limit > 0 else { return 0 }
     return min(100, tokens * 100 / limit)
+}
+
+/// Formats a cents amount as dollars, dropping the decimals when it's a whole
+/// dollar: 120 → "$1.20", 5000 → "$50", 12050 → "$120.50".
+func formatDollars(cents: Int) -> String {
+    let dollars = Double(cents) / 100.0
+    return cents % 100 == 0 ? String(format: "$%.0f", dollars) : String(format: "$%.2f", dollars)
 }
 
 /// Formats a future date as a human-readable countdown string.
@@ -179,7 +191,9 @@ final class UsageService: ObservableObject {
                     weeklyMessages: 0,
                     weeklyTokens: 0,
                     extraUsageEnabled: response.extraUsage?.isEnabled,
-                    extraUsageUtilization: response.extraUsage?.utilization.map { Int($0) }
+                    extraUsageUtilization: response.extraUsage?.utilization.map { Int($0) },
+                    extraUsageUsedCents: response.extraUsage?.usedCredits,
+                    extraUsageLimitCents: response.extraUsage?.monthlyLimit
                 )
 
                 await MainActor.run {

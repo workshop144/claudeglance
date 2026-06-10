@@ -106,8 +106,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(linkItem(title: "Usage credits: \(enabled ? "On" : "Off")",
                                   dotColor: enabled ? .systemGreen : .systemRed,
                                   action: #selector(openUsageCredits)))
-            if enabled, let util = snapshot.extraUsageUtilization {
-                menu.addItem(secondaryItem("\(util)% of credit limit used"))
+            if enabled {
+                // Prefer the dollar figure ("$1.20 / $50 (2%)") when the endpoint
+                // reports it; fall back to the percentage-only line otherwise.
+                if let used = snapshot.extraUsageUsedCents, let limit = snapshot.extraUsageLimitCents {
+                    var line = "\(formatDollars(cents: used)) / \(formatDollars(cents: limit))"
+                    if let util = snapshot.extraUsageUtilization { line += " (\(util)%)" }
+                    menu.addItem(secondaryItem(line))
+                } else if let util = snapshot.extraUsageUtilization {
+                    menu.addItem(secondaryItem("\(util)% of credit limit used"))
+                }
             }
             addedStatusRow = true
         }

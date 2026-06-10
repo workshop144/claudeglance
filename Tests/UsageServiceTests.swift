@@ -269,6 +269,22 @@ final class FormatTimeRemainingTests: XCTestCase {
     }
 }
 
+// MARK: - formatDollars (usage-credits overage line)
+
+final class FormatDollarsTests: XCTestCase {
+
+    func testWholeDollarsDropDecimals() {
+        XCTAssertEqual(formatDollars(cents: 5000), "$50")
+        XCTAssertEqual(formatDollars(cents: 0), "$0")
+    }
+
+    func testFractionalDollarsShowTwoDecimals() {
+        XCTAssertEqual(formatDollars(cents: 120), "$1.20")
+        XCTAssertEqual(formatDollars(cents: 12050), "$120.50")
+        XCTAssertEqual(formatDollars(cents: 7), "$0.07")
+    }
+}
+
 // MARK: - Build info (Settings footer provenance)
 
 final class BuildInfoTests: XCTestCase {
@@ -382,6 +398,19 @@ final class ExtraUsageDecodingTests: XCTestCase {
         let response = try JSONDecoder().decode(OAuthUsageResponse.self, from: json)
         XCTAssertEqual(response.extraUsage?.isEnabled, true)
         XCTAssertEqual(response.extraUsage?.utilization, 42.0)
+    }
+
+    func testEnabledExtraUsageDecodesDollarFields() throws {
+        let json = """
+        {
+          "five_hour": null, "seven_day": null, "seven_day_sonnet": null,
+          "extra_usage": { "is_enabled": true, "utilization": 2.0, "used_credits": 120, "monthly_limit": 5000 }
+        }
+        """.data(using: .utf8)!
+
+        let response = try JSONDecoder().decode(OAuthUsageResponse.self, from: json)
+        XCTAssertEqual(response.extraUsage?.usedCredits, 120)
+        XCTAssertEqual(response.extraUsage?.monthlyLimit, 5000)
     }
 
     func testMissingExtraUsageIsNil() throws {

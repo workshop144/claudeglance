@@ -68,6 +68,9 @@ struct UsageSnapshot {
     let extraUsageEnabled: Bool?
     // Percent of the monthly credit limit used, when enabled and reported.
     let extraUsageUtilization: Int?
+    // Overage spend so far, and the monthly cap, in cents (when enabled/reported).
+    let extraUsageUsedCents: Int?
+    let extraUsageLimitCents: Int?
 
     var displayText: String { "\(sevenDayUtilization)%" }
     var menuBarPrimaryText: String { "5hr: \(fiveHourUtilization)%" }
@@ -87,7 +90,9 @@ struct UsageSnapshot {
             weeklyMessages: 0,
             weeklyTokens: 0,
             extraUsageEnabled: nil,
-            extraUsageUtilization: nil
+            extraUsageUtilization: nil,
+            extraUsageUsedCents: nil,
+            extraUsageLimitCents: nil
         )
     }
 }
