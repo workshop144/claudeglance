@@ -104,31 +104,61 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(quit)
     }
 
-    /// A read-only header row (e.g. "5hr: 12%"). Disabled so it never highlights
-    /// on hover; the explicit attributedTitle keeps the text full-color, since
-    /// AppKit honors an attributedTitle's colors instead of dimming a disabled item.
+    /// A read-only header row (e.g. "5hr: 12%"). Uses a custom view so the text is
+    /// solid black and the row never gets the blue hover highlight (a standard
+    /// disabled item dims to gray; a standard enabled item highlights).
     private func infoItem(title: String, symbol: String) -> NSMenuItem {
-        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
-        item.attributedTitle = NSAttributedString(string: title, attributes: [
-            .font: NSFont.menuFont(ofSize: 0),
-            .foregroundColor: NSColor.labelColor
-        ])
-        item.image = menuSymbol(symbol)
+        let item = NSMenuItem()
         item.isEnabled = false
+        item.view = readonlyRowView(symbol: symbol, text: title, font: .menuFont(ofSize: 0))
         return item
     }
 
-    /// A smaller, secondary-colored, indented detail row (e.g. "Resets in: 2h 19m").
-    /// Also disabled so it doesn't highlight on hover.
+    /// A smaller, indented detail row (e.g. "Resets in: 2h 19m") — same black text,
+    /// no highlight, aligned under the header title.
     private func secondaryItem(_ text: String) -> NSMenuItem {
-        let item = NSMenuItem(title: text, action: nil, keyEquivalent: "")
-        item.attributedTitle = NSAttributedString(string: text, attributes: [
-            .font: NSFont.systemFont(ofSize: 11),
-            .foregroundColor: NSColor.secondaryLabelColor
-        ])
-        item.indentationLevel = 1
+        let item = NSMenuItem()
         item.isEnabled = false
+        item.view = readonlyRowView(symbol: nil, text: text, font: .systemFont(ofSize: 11))
         return item
+    }
+
+    /// Black, non-highlighting row (optional icon + label), sized to its content.
+    private func readonlyRowView(symbol: String?, text: String, font: NSFont) -> NSView {
+        let container = NSView()
+        container.translatesAutoresizingMaskIntoConstraints = false
+
+        let label = NSTextField(labelWithString: text)
+        label.font = font
+        label.textColor = .labelColor
+        label.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(label)
+
+        var constraints = [
+            container.heightAnchor.constraint(equalToConstant: 22),
+            label.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+            // Container hugs the label so the menu can size the row to its content.
+            container.trailingAnchor.constraint(equalTo: label.trailingAnchor, constant: 14)
+        ]
+
+        if let symbol = symbol, let image = menuSymbol(symbol) {
+            let icon = NSImageView(image: image)
+            icon.contentTintColor = .secondaryLabelColor
+            icon.translatesAutoresizingMaskIntoConstraints = false
+            container.addSubview(icon)
+            constraints += [
+                icon.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 14),
+                icon.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+                icon.widthAnchor.constraint(equalToConstant: 16),
+                label.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 8)
+            ]
+        } else {
+            // Align the label under where a header row's title starts (14 + 16 + 8).
+            constraints.append(label.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 38))
+        }
+
+        NSLayoutConstraint.activate(constraints)
+        return container
     }
 
     private func actionItem(title: String, symbol: String, action: Selector) -> NSMenuItem {
