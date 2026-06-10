@@ -269,6 +269,76 @@ final class FormatTimeRemainingTests: XCTestCase {
     }
 }
 
+// MARK: - Burn rate & run-out ETA
+
+final class BurnRateTests: XCTestCase {
+
+    private let base = Date(timeIntervalSince1970: 1_700_000_000)
+
+    private func samples(_ pairs: [(min: Double, util: Int)]) -> [UsageSample] {
+        pairs.map { UsageSample(time: base.addingTimeInterval($0.min * 60), utilization: $0.util) }
+    }
+
+    func testTooFewOrTooShortReturnsNil() {
+        XCTAssertNil(estimateBurn(from: []))
+        XCTAssertNil(estimateBurn(from: samples([(0, 10)])))
+        // Two samples only 1 minute apart — below the 4-minute minimum span.
+        XCTAssertNil(estimateBurn(from: samples([(0, 10), (1, 20)])))
+    }
+
+    func testRisingUsageEstimatesRateAndEta() {
+        // 10% -> 40% over 30 minutes = 60%/hour; 60% remaining at 1%/min = 60 min.
+        let estimate = estimateBurn(from: samples([(0, 10), (30, 40)]))
+        XCTAssertNotNil(estimate)
+        XCTAssertEqual(estimate!.percentPerHour, 60, accuracy: 0.001)
+        XCTAssertEqual(estimate!.secondsToLimit!, 3600, accuracy: 0.5)
+    }
+
+    func testFlatUsageHasNoRunOut() {
+        let estimate = estimateBurn(from: samples([(0, 50), (30, 50)]))
+        XCTAssertEqual(estimate?.percentPerHour, 0)
+        XCTAssertNil(estimate?.secondsToLimit)
+    }
+
+    func testHitsLimitBeforeReset() {
+        let estimate = BurnEstimate(percentPerHour: 60, secondsToLimit: 3600)
+        // Reset is 2h away, run-out is 1h away -> hits the cap first.
+        XCTAssertTrue(estimate.hitsLimitBeforeReset(resetAt: base.addingTimeInterval(7200), now: base))
+        // Reset is 30m away, run-out is 1h away -> resets before running out.
+        XCTAssertFalse(estimate.hitsLimitBeforeReset(resetAt: base.addingTimeInterval(1800), now: base))
+        // No estimate / no reset date -> never "before reset".
+        XCTAssertFalse(BurnEstimate(percentPerHour: 0, secondsToLimit: nil)
+            .hitsLimitBeforeReset(resetAt: base.addingTimeInterval(7200), now: base))
+    }
+}
+
+final class AppendingSampleTests: XCTestCase {
+
+    private let base = Date(timeIntervalSince1970: 1_700_000_000)
+
+    func testAppendsToBuffer() {
+        let a = UsageSample(time: base, utilization: 10)
+        let b = UsageSample(time: base.addingTimeInterval(300), utilization: 20)
+        let result = appendingSample(b, to: [a])
+        XCTAssertEqual(result, [a, b])
+    }
+
+    func testResetsWhenUtilizationDrops() {
+        let a = UsageSample(time: base, utilization: 90)
+        // Window reset: utilization fell, so the old high sample is discarded.
+        let b = UsageSample(time: base.addingTimeInterval(300), utilization: 5)
+        XCTAssertEqual(appendingSample(b, to: [a]), [b])
+    }
+
+    func testPrunesSamplesOlderThanWindow() {
+        let old = UsageSample(time: base, utilization: 10)
+        let recent = UsageSample(time: base.addingTimeInterval(3000), utilization: 20)
+        // New sample is >1h after `old`, so `old` is pruned out of the window.
+        let new = UsageSample(time: base.addingTimeInterval(3700), utilization: 30)
+        XCTAssertEqual(appendingSample(new, to: [old, recent], window: 3600), [recent, new])
+    }
+}
+
 // MARK: - formatDollars (usage-credits overage line)
 
 final class FormatDollarsTests: XCTestCase {

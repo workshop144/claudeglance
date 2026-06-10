@@ -129,6 +129,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let resetIn = snapshot.fiveHourResetIn {
             menu.addItem(secondaryItem("Resets in: \(resetIn)"))
         }
+        // Burn rate / run-out ETA, once a few polls have established a trend.
+        if let burn = usageService.fiveHourBurn, let secs = burn.secondsToLimit {
+            let now = Date()
+            if burn.hitsLimitBeforeReset(resetAt: snapshot.fiveHourResetAt, now: now) {
+                menu.addItem(secondaryItem("On pace for 100% by \(formatClockTime(now.addingTimeInterval(secs)))"))
+            } else if burn.percentPerHour >= 1 {
+                menu.addItem(secondaryItem("Using ~\(Int(burn.percentPerHour.rounded()))%/hr"))
+            }
+        }
 
         menu.addItem(infoItem(title: "Week: \(snapshot.sevenDayUtilization)%", symbol: "calendar"))
         if let resetIn = snapshot.sevenDayResetIn {

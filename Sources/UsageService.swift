@@ -128,6 +128,11 @@ final class UsageService: ObservableObject {
     @Published private(set) var weeklyMessages: Int = 0
     @Published private(set) var weeklyTokens: Int = 0
 
+    // Rolling 5-hour utilization samples (one per poll), used to estimate the
+    // burn rate and run-out ETA. In-memory only — rebuilds after a restart.
+    private var fiveHourSamples: [UsageSample] = []
+    var fiveHourBurn: BurnEstimate? { estimateBurn(from: fiveHourSamples) }
+
     private var refreshTimer: Timer?
     private let normalInterval: TimeInterval = 5 * 60   // 5 minutes
     private let backoffInterval: TimeInterval = 15 * 60 // 15 minutes after 429
@@ -197,6 +202,9 @@ final class UsageService: ObservableObject {
                 )
 
                 await MainActor.run {
+                    self.fiveHourSamples = appendingSample(
+                        UsageSample(time: Date(), utilization: fiveHourUtil),
+                        to: self.fiveHourSamples)
                     self.currentUsage = snapshot
                     self.error = nil
                     self.isLoading = false
