@@ -80,10 +80,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         let snapshot = usageService.currentUsage
 
+        // Top "status" cluster: clickable rows with a colored dot that deep-link
+        // out to the relevant page (status page / usage-credits settings).
+        var addedStatusRow = false
+
         if settingsManager.settings.showHealth {
             let st = statusService.status
-            menu.addItem(infoItem(title: st.description, symbol: "circle.fill",
-                                  symbolColor: healthColor(for: st.indicator)))
+            menu.addItem(linkItem(title: st.description,
+                                  dotColor: healthColor(for: st.indicator),
+                                  action: #selector(openStatusPage)))
+            addedStatusRow = true
+        }
+
+        if addedStatusRow {
             menu.addItem(.separator())
         }
 
@@ -198,6 +207,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return container
     }
 
+    /// A clickable status row with a colored dot (service health, usage credits).
+    /// Unlike `infoItem`, this is a standard enabled item so it gets the native
+    /// blue hover highlight; the dot is a non-template image so it keeps its color.
+    private func linkItem(title: String, dotColor: NSColor, action: Selector) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+        item.target = self
+        item.image = coloredDot(dotColor)
+        item.isEnabled = true
+        return item
+    }
+
+    /// A filled circle baked into a non-template image so the menu renders it in
+    /// the given color rather than tinting it like a template symbol.
+    private func coloredDot(_ color: NSColor, diameter: CGFloat = 10) -> NSImage {
+        let image = NSImage(size: NSSize(width: diameter + 2, height: diameter + 2))
+        image.lockFocus()
+        color.setFill()
+        NSBezierPath(ovalIn: NSRect(x: 1, y: 1, width: diameter, height: diameter)).fill()
+        image.unlockFocus()
+        image.isTemplate = false
+        return image
+    }
+
     private func actionItem(title: String, symbol: String, action: Selector) -> NSMenuItem {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
         item.target = self
@@ -250,6 +282,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func refreshUsage() {
         usageService.fetchUsage()
+    }
+
+    @objc private func openStatusPage() {
+        if let url = URL(string: "https://status.claude.com") {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     @objc private func quitApp() {
