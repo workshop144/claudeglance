@@ -16,6 +16,7 @@ fixed order, separated by `·`:
 
 | Element | Default | Description |
 |--------------|---------|-------------|
+| **Ring gauge** | off | Dual-ring icon — outer ring = 5h session, inner ring = 7d weekly |
 | **5h %** | on | Current session usage (resets ~every 5 hours) |
 | **7d %** | on | Weekly all-models usage |
 | **Sonnet %** | off | Weekly Sonnet-only usage |
@@ -24,8 +25,17 @@ fixed order, separated by `·`:
 
 With the defaults you'll see something like `35% · 71% · 4h12m`, followed by a
 colored **service-health dot** (🟢 operational → 🔴 outage) sourced from the
-public Claude status page. Open the menu for the full breakdown, including each
-period's exact reset time and the current service status.
+public Claude status page. The whole status item **dims when the data goes
+stale** (no refresh in 12+ minutes), so old numbers never read as current.
+
+Open the menu for the full breakdown:
+
+- Each period's exact reset time and the current service status.
+- **Burn rate & run-out ETA** — when your 5h usage is climbing, a line like
+  `On pace for 100% by 3:47 PM` (or `Using ~12%/hr`) projected from the trend.
+- **Usage credits in dollars** — when pay-as-you-go credits are on, your overage
+  spend against the monthly cap (e.g. `$1.20 / $50 (2%)`).
+- **Today's activity** from local Claude Code logs (tokens, active time, messages).
 
 Mirrors the data on `claude.ai/settings/usage`.
 
@@ -86,6 +96,7 @@ show just a countdown, just percentages, or any mix.
 | Setting | Default | Description |
 |---------|---------|-------------|
 | Launch at login | Off | Start the app automatically when you log in |
+| Show ring gauge | Off | Dual-ring usage gauge (outer 5h, inner 7d) in the menu bar |
 | Show 5h % | On | Session usage in the menu bar |
 | Show 7d % | On | Weekly usage in the menu bar |
 | Show Sonnet % | Off | Weekly Sonnet usage in the menu bar |
