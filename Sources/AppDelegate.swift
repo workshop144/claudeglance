@@ -168,6 +168,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let quit = actionItem(title: "Quit", symbol: "power", action: #selector(quitApp))
         quit.keyEquivalent = "q"
         menu.addItem(quit)
+
+        menu.addItem(.separator())
+        menu.addItem(versionItem())
     }
 
     /// A read-only header row (e.g. "5hr: 12%"). Uses a custom view so the text is
@@ -186,6 +189,53 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let item = NSMenuItem()
         item.isEnabled = false
         item.view = readonlyRowView(symbol: nil, text: text, font: .systemFont(ofSize: 11))
+        return item
+    }
+
+    /// A clickable menu-row view that opens a URL without the standard blue menu
+    /// highlight — just a pointer cursor on hover, so the version signature reads
+    /// like the link in the Settings footer rather than a normal menu command.
+    private final class ClickableMenuRowView: NSView {
+        var onClick: (() -> Void)?
+        // Route every click in the row to this view (not the inner label).
+        override func hitTest(_ point: NSPoint) -> NSView? {
+            bounds.contains(convert(point, from: superview)) ? self : nil
+        }
+        override func mouseUp(with event: NSEvent) { onClick?() }
+        override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+    }
+
+    /// A tiny, washed-out version signature for the foot of the menu —
+    /// right-aligned, just `v1.1.1`, clickable to the running build on GitHub
+    /// (the full branch@commit provenance lives in the Settings window footer).
+    private func versionItem() -> NSMenuItem {
+        let item = NSMenuItem()
+        item.isEnabled = true
+
+        let container = ClickableMenuRowView()
+        container.translatesAutoresizingMaskIntoConstraints = false
+        container.onClick = { [weak container] in
+            NSWorkspace.shared.open(BuildInfo.current.url)
+            container?.enclosingMenuItem?.menu?.cancelTracking()
+        }
+
+        let label = NSTextField(labelWithString: "v\(BuildInfo.current.version)")
+        label.font = .systemFont(ofSize: 9)
+        label.textColor = .tertiaryLabelColor
+        label.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(label)
+
+        NSLayoutConstraint.activate([
+            container.heightAnchor.constraint(equalToConstant: 20),
+            // The menu stretches this view to its full width; pinning the label to
+            // the trailing edge right-aligns it. The min-width keeps it sane if it
+            // were ever the widest row (it won't be).
+            container.widthAnchor.constraint(greaterThanOrEqualToConstant: 120),
+            label.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+            label.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -14)
+        ])
+
+        item.view = container
         return item
     }
 

@@ -209,6 +209,15 @@ struct SettingsView: View {
                 .font(.system(size: 11))
                 .foregroundColor(.secondary)
             Spacer()
+            // Small, unobtrusive build provenance so it's clear which build is
+            // running while testing; links to the exact commit/branch on GitHub.
+            Link(destination: BuildInfo.current.url) {
+                Text(BuildInfo.current.label)
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help(BuildInfo.current.helpText)
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 10)

@@ -269,6 +269,37 @@ final class FormatTimeRemainingTests: XCTestCase {
     }
 }
 
+// MARK: - Build info (Settings footer provenance)
+
+final class BuildInfoTests: XCTestCase {
+
+    private let repo = "https://github.com/broots144/claudeglance"
+
+    func testLabelVersionOnlyWhenNoCommit() {
+        XCTAssertEqual(buildInfoLabel(version: "1.1.1", branch: nil, commit: nil), "v1.1.1")
+        XCTAssertEqual(buildInfoLabel(version: "1.1.1", branch: "feature/x", commit: nil), "v1.1.1")
+    }
+
+    func testLabelCommitOnlyOnMainOrNoBranch() {
+        XCTAssertEqual(buildInfoLabel(version: "1.1.1", branch: "main", commit: "abc1234"), "v1.1.1 · abc1234")
+        XCTAssertEqual(buildInfoLabel(version: "1.1.1", branch: "HEAD", commit: "abc1234"), "v1.1.1 · abc1234")
+        XCTAssertEqual(buildInfoLabel(version: "1.1.1", branch: nil, commit: "abc1234"), "v1.1.1 · abc1234")
+    }
+
+    func testLabelShowsBranchOnFeatureBranch() {
+        XCTAssertEqual(buildInfoLabel(version: "1.1.1", branch: "feature/v1.1-build-info", commit: "abc1234"),
+                       "v1.1.1 · feature/v1.1-build-info@abc1234")
+    }
+
+    func testURLPrefersCommitThenBranchThenRepo() {
+        XCTAssertEqual(buildInfoURL(repo: repo, branch: "feature/x", commit: "abc1234").absoluteString,
+                       "\(repo)/commit/abc1234")
+        XCTAssertEqual(buildInfoURL(repo: repo, branch: "feature/x", commit: nil).absoluteString,
+                       "\(repo)/tree/feature/x")
+        XCTAssertEqual(buildInfoURL(repo: repo, branch: nil, commit: nil).absoluteString, repo)
+    }
+}
+
 // MARK: - Ring gauge fill fraction
 
 final class RingFillFractionTests: XCTestCase {

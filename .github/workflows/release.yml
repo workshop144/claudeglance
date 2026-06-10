@@ -71,6 +71,7 @@ jobs:
             CODE_SIGN_IDENTITY="Developer ID Application" \
             CODE_SIGN_STYLE=Automatic \
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            GIT_COMMIT="$(git rev-parse --short HEAD)" \
             archive
 
       - name: Export (Developer ID signed)
@@ -116,6 +117,7 @@ jobs:
             CODE_SIGN_IDENTITY="-" \
             CODE_SIGN_STYLE=Manual \
             DEVELOPMENT_TEAM="" \
+            GIT_COMMIT="$(git rev-parse --short HEAD)" \
             archive
           mkdir -p build/export
           cp -R build/ClaudeGlance.xcarchive/Products/Applications/ClaudeGlance.app build/export/

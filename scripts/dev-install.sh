@@ -25,12 +25,15 @@ xcodebuild test \
   -quiet
 
 echo "▸ Building Release (ad-hoc)…"
+GIT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "")
 xcodebuild \
   -project ClaudeGlance.xcodeproj \
   -scheme ClaudeGlance \
   -configuration Release \
   -derivedDataPath build/dd \
   CODE_SIGN_IDENTITY="-" CODE_SIGNING_ALLOWED=YES \
+  GIT_BRANCH="$GIT_BRANCH" GIT_COMMIT="$GIT_COMMIT" \
   build -quiet
 
 APP="build/dd/Build/Products/Release/ClaudeGlance.app"
