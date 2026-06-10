@@ -22,8 +22,10 @@ fixed order, separated by `·`:
 | **5h reset** | on | Countdown to the session reset (e.g. `4h12m`) |
 | **7d reset** | off | Countdown to the weekly reset |
 
-With the defaults you'll see something like `35% · 71% · 4h12m`. Open the menu
-for the full breakdown, including each period's exact reset time.
+With the defaults you'll see something like `35% · 71% · 4h12m`, followed by a
+colored **service-health dot** (🟢 operational → 🔴 outage) sourced from the
+public Claude status page. Open the menu for the full breakdown, including each
+period's exact reset time and the current service status.
 
 Mirrors the data on `claude.ai/settings/usage`.
 
@@ -89,6 +91,7 @@ show just a countdown, just percentages, or any mix.
 | Show Sonnet % | Off | Weekly Sonnet usage in the menu bar |
 | Show 5h reset countdown | On | Time until the session resets |
 | Show 7d reset countdown | Off | Time until the weekly limit resets |
+| Show service health | On | Colored Claude service-status dot in the menu bar |
 | Warning threshold | 80% | Usage % that triggers a warning notification |
 | Critical threshold | 90% | Usage % that triggers a critical notification |
 | Usage alerts | On | macOS notification when a threshold is crossed |
@@ -126,6 +129,8 @@ xcodebuild test -scheme ClaudeUsageSystray -destination 'platform=macOS'
 
 This fork diverges from [adntgv/claude-usage-systray](https://github.com/adntgv/claude-usage-systray):
 
+- **Service-health badge** — a colored dot from the public Claude status page
+  (`status.claude.com`), in the menu bar and menu. No auth, no Keychain.
 - **Launch at login** toggle in Settings, using the modern `SMAppService` API
   (no helper bundle, reflects the real system login-item state).
 - **Reset countdowns** in the menu bar (5h and 7d) in compact `4h12m` form.

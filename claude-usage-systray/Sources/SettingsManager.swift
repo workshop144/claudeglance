@@ -34,6 +34,7 @@ final class SettingsManager: ObservableObject {
     func setShowSonnet(_ enabled: Bool) { settings.showSonnet = enabled }
     func setShowFiveHourReset(_ enabled: Bool) { settings.showFiveHourReset = enabled }
     func setShowSevenDayReset(_ enabled: Bool) { settings.showSevenDayReset = enabled }
+    func setShowHealth(_ enabled: Bool) { settings.showHealth = enabled }
     func resetToDefaults() { settings = AppSettings() }
 
     // MARK: - Launch at login

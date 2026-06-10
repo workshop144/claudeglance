@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
     private var settingsWindow: NSWindow?
     private let usageService = UsageService.shared
+    private let statusService = StatusService.shared
     private let settingsManager = SettingsManager.shared
 
     private var lastWarningNotified: Int = 0
@@ -29,6 +30,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             .store(in: &cancellables)
 
+        // Refresh the menu-bar health dot whenever the service status changes.
+        statusService.$status
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.updateStatusItemAppearance() }
+            .store(in: &cancellables)
+
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(settingsDidChange),
@@ -39,6 +46,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         usageService.stopPolling()
+        statusService.stopPolling()
     }
 
     private func setupStatusItem() {
@@ -66,6 +74,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.removeAllItems()
 
         let snapshot = usageService.currentUsage
+
+        if settingsManager.settings.showHealth {
+            let st = statusService.status
+            menu.addItem(infoItem(title: st.description, symbol: "circle.fill",
+                                  symbolColor: healthColor(for: st.indicator)))
+            menu.addItem(.separator())
+        }
 
         menu.addItem(infoItem(title: "5hr: \(snapshot.fiveHourUtilization)%",
                               symbol: usageSymbolName(for: snapshot.fiveHourUtilization)))
@@ -107,10 +122,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// A read-only header row (e.g. "5hr: 12%"). Uses a custom view so the text is
     /// solid black and the row never gets the blue hover highlight (a standard
     /// disabled item dims to gray; a standard enabled item highlights).
-    private func infoItem(title: String, symbol: String) -> NSMenuItem {
+    private func infoItem(title: String, symbol: String, symbolColor: NSColor = .secondaryLabelColor) -> NSMenuItem {
         let item = NSMenuItem()
         item.isEnabled = false
-        item.view = readonlyRowView(symbol: symbol, text: title, font: .menuFont(ofSize: 0))
+        item.view = readonlyRowView(symbol: symbol, text: title, font: .menuFont(ofSize: 0), symbolColor: symbolColor)
         return item
     }
 
@@ -124,7 +139,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     /// Black, non-highlighting row (optional icon + label), sized to its content.
-    private func readonlyRowView(symbol: String?, text: String, font: NSFont) -> NSView {
+    private func readonlyRowView(symbol: String?, text: String, font: NSFont, symbolColor: NSColor = .secondaryLabelColor) -> NSView {
         let container = NSView()
         container.translatesAutoresizingMaskIntoConstraints = false
 
@@ -143,7 +158,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         if let symbol = symbol, let image = menuSymbol(symbol) {
             let icon = NSImageView(image: image)
-            icon.contentTintColor = .secondaryLabelColor
+            icon.contentTintColor = symbolColor
             icon.translatesAutoresizingMaskIntoConstraints = false
             container.addSubview(icon)
             constraints += [
@@ -195,6 +210,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if settingsManager.settings.isConfigured {
             usageService.startPolling()
         }
+        statusService.startPolling()
         
         Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             self?.checkForNotifications()
@@ -305,8 +321,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             segments.append(formatTimeRemainingCompact(until: resetAt))
         }
 
+        let font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium)
+
+        // Usage segments render in the neutral label color; the optional health
+        // dot is the one colored element (its color carries the information).
+        let title = NSMutableAttributedString()
+        if !segments.isEmpty {
+            title.append(NSAttributedString(
+                string: segments.joined(separator: " · "),
+                attributes: [.font: font, .foregroundColor: NSColor.labelColor]))
+        }
+        if settings.showHealth {
+            let prefix = title.length > 0 ? " " : ""
+            title.append(NSAttributedString(
+                string: "\(prefix)\u{25CF}",
+                attributes: [.font: font, .foregroundColor: healthColor(for: statusService.status.indicator)]))
+        }
+
         // Nothing to show — fall back to a plain icon so the status item stays visible.
-        guard !segments.isEmpty else {
+        guard title.length > 0 else {
             let config = NSImage.SymbolConfiguration(pointSize: 12, weight: .medium)
             button.attributedTitle = NSAttributedString(string: "")
             button.image = NSImage(systemSymbolName: "chart.pie.fill", accessibilityDescription: "Claude Usage")?
@@ -314,13 +347,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
 
-        let font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium)
-        // All segments render white (.labelColor) in the menu bar, regardless of appearance.
         button.image = nil
-        button.attributedTitle = NSAttributedString(
-            string: segments.joined(separator: " · "),
-            attributes: [.font: font, .foregroundColor: NSColor.labelColor]
-        )
+        button.attributedTitle = title
+    }
+
+    /// Maps a Statuspage indicator to the menu-bar / menu dot color.
+    private func healthColor(for indicator: ServiceStatusIndicator) -> NSColor {
+        switch indicator {
+        case .none:        return .systemGreen
+        case .minor:       return .systemYellow
+        case .major:       return .systemOrange
+        case .critical:    return .systemRed
+        case .maintenance: return .systemBlue
+        case .unknown:     return .systemGray
+        }
     }
 
     private func checkForNotifications() {

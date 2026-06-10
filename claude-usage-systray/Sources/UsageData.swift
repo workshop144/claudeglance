@@ -13,6 +13,9 @@ struct AppSettings: Codable {
     var showFiveHourReset: Bool = true
     var showSevenDayReset: Bool = false
 
+    // Colored Claude service-health dot in the menu bar (status.claude.com).
+    var showHealth: Bool = true
+
     var isConfigured: Bool { true }
 
     init() {}
@@ -30,6 +33,7 @@ struct AppSettings: Codable {
         showSonnet = try c.decodeIfPresent(Bool.self, forKey: .showSonnet) ?? false
         showFiveHourReset = try c.decodeIfPresent(Bool.self, forKey: .showFiveHourReset) ?? true
         showSevenDayReset = try c.decodeIfPresent(Bool.self, forKey: .showSevenDayReset) ?? false
+        showHealth = try c.decodeIfPresent(Bool.self, forKey: .showHealth) ?? true
     }
 }
 

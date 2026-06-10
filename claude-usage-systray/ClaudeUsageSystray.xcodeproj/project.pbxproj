@@ -13,6 +13,7 @@
 		59259AC8C5B89477A67D5A8D /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1107FB82A3A3C9FC04B4F35 /* SettingsView.swift */; };
 		80E1131433C5BE35E6CF65E4 /* UsageData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32234A82B1C94CCB6F3763AE /* UsageData.swift */; };
 		C33689B322FFA7525A92894A /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE78D81A249AA2CBF9D9C9CB /* AppDelegate.swift */; };
+		8BE40D94D0B928393E0FEA7A /* StatusService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0CF3AA910783A4B18F9C62A /* StatusService.swift */; };
 		CA4C19637A5CD709F1C57EDA /* UsageServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CF92A3018305AA026317454 /* UsageServiceTests.swift */; };
 		F25EDEE38ABF1A0E15C849DC /* SettingsManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C024067E6D3F865AF198511C /* SettingsManager.swift */; };
 		F6263675C12E1B942E3CD6AF /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DA6F91F4720B31FB4CA872B9 /* Security.framework */; };
@@ -40,6 +41,7 @@
 		D08767FD02695AFBE000669F /* ClaudeUsageSystray.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ClaudeUsageSystray.entitlements; sourceTree = "<group>"; };
 		DA6F91F4720B31FB4CA872B9 /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
 		DE78D81A249AA2CBF9D9C9CB /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		B0CF3AA910783A4B18F9C62A /* StatusService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusService.swift; sourceTree = "<group>"; };
 		DEE554A7DA6DDC77A08A3EEE /* UsageService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageService.swift; sourceTree = "<group>"; };
 		F35CDB3DFFFBEE4CE3F0D52E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -106,6 +108,7 @@
 			isa = PBXGroup;
 			children = (
 				DE78D81A249AA2CBF9D9C9CB /* AppDelegate.swift */,
+				B0CF3AA910783A4B18F9C62A /* StatusService.swift */,
 				2AFD01138604C8622102594F /* main.swift */,
 				C024067E6D3F865AF198511C /* SettingsManager.swift */,
 				B1107FB82A3A3C9FC04B4F35 /* SettingsView.swift */,
@@ -214,6 +217,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				C33689B322FFA7525A92894A /* AppDelegate.swift in Sources */,
+				8BE40D94D0B928393E0FEA7A /* StatusService.swift in Sources */,
 				F25EDEE38ABF1A0E15C849DC /* SettingsManager.swift in Sources */,
 				59259AC8C5B89477A67D5A8D /* SettingsView.swift in Sources */,
 				80E1131433C5BE35E6CF65E4 /* UsageData.swift in Sources */,
