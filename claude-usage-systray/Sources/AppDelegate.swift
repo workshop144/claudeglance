@@ -104,18 +104,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(quit)
     }
 
-    /// A read-only header row (e.g. "5hr: 12%") — enabled so it shows in normal
-    /// text, but with no action so clicking it does nothing.
+    /// A read-only header row (e.g. "5hr: 12%"). It carries a no-op action so the
+    /// row highlights blue on hover like the actionable items; clicking does nothing.
     private func infoItem(title: String, symbol: String) -> NSMenuItem {
-        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        let item = NSMenuItem(title: title, action: #selector(infoRowNoop), keyEquivalent: "")
+        item.target = self
         item.image = menuSymbol(symbol)
         item.isEnabled = true
         return item
     }
 
     /// A smaller, secondary-colored, indented detail row (e.g. "Resets in: 2h 19m").
+    /// Also carries the no-op action so it highlights on hover.
     private func secondaryItem(_ text: String) -> NSMenuItem {
-        let item = NSMenuItem(title: text, action: nil, keyEquivalent: "")
+        let item = NSMenuItem(title: text, action: #selector(infoRowNoop), keyEquivalent: "")
+        item.target = self
         item.attributedTitle = NSAttributedString(string: text, attributes: [
             .font: NSFont.systemFont(ofSize: 11),
             .foregroundColor: NSColor.secondaryLabelColor
@@ -124,6 +127,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         item.isEnabled = true
         return item
     }
+
+    /// No-op action for the read-only info rows — present only so AppKit treats
+    /// them as active and highlights them on hover.
+    @objc private func infoRowNoop() {}
 
     private func actionItem(title: String, symbol: String, action: Selector) -> NSMenuItem {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: "")

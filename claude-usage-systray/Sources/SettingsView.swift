@@ -58,11 +58,10 @@ struct SettingsView: View {
             .padding(.horizontal)
             .padding(.top, 8)
 
-            Spacer(minLength: 0)
-
             footer
         }
-        .frame(width: 360, height: 420)
+        .frame(width: 360)
+        .fixedSize(horizontal: false, vertical: true)
         .onAppear { loadSettings() }
     }
 
