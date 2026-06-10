@@ -28,6 +28,11 @@ final class SettingsManager: ObservableObject {
     func setWarningThreshold(_ value: Double) { settings.warningThreshold = value }
     func setCriticalThreshold(_ value: Double) { settings.criticalThreshold = value }
     func setNotificationsEnabled(_ enabled: Bool) { settings.notificationsEnabled = enabled }
-    func setCompactDisplay(_ enabled: Bool) { settings.compactDisplay = enabled }
+    func setShowFiveHour(_ enabled: Bool) { settings.showFiveHour = enabled }
+    func setShowSevenDay(_ enabled: Bool) { settings.showSevenDay = enabled }
+    func setShowSonnet(_ enabled: Bool) { settings.showSonnet = enabled }
+    func setShowFiveHourReset(_ enabled: Bool) { settings.showFiveHourReset = enabled }
+    func setShowSevenDayReset(_ enabled: Bool) { settings.showSevenDayReset = enabled }
+    func setShowCreditBalance(_ enabled: Bool) { settings.showCreditBalance = enabled }
     func resetToDefaults() { settings = AppSettings() }
 }
