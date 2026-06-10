@@ -57,6 +57,27 @@ final class OAuthUsageResponseTests: XCTestCase {
         XCTAssertNil(response.sevenDaySonnet)
     }
 
+    func testDecodesNullResetsAt() throws {
+        // The real /api/oauth/usage response returns `resets_at: null` for a
+        // period that has nothing to reset (e.g. seven_day_sonnet at 0% usage).
+        // The whole response must still decode, with resetsAtDate resolving nil.
+        let json = """
+        {
+          "five_hour":   { "utilization": 35.0, "resets_at": "2026-03-19T19:00:00.367134+00:00" },
+          "seven_day":   { "utilization": 71.0, "resets_at": "2026-03-20T11:00:00.367161+00:00" },
+          "seven_day_sonnet": { "utilization": 0.0, "resets_at": null }
+        }
+        """.data(using: .utf8)!
+
+        let response = try JSONDecoder().decode(OAuthUsageResponse.self, from: json)
+
+        XCTAssertEqual(response.sevenDaySonnet?.utilization, 0.0)
+        XCTAssertNil(response.sevenDaySonnet?.resetsAt)
+        XCTAssertNil(response.sevenDaySonnet?.resetsAtDate)
+        // Periods that do have a reset time are unaffected.
+        XCTAssertNotNil(response.fiveHour?.resetsAtDate)
+    }
+
     func testResetsAtDateParsesWithFractionalSeconds() throws {
         let json = """
         {
