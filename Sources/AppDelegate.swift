@@ -18,6 +18,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var cancellables = Set<AnyCancellable>()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Under XCTest the app is launched only as a test host. Skip all UI /
+        // notification / polling bootstrap: the suite tests pure logic and the
+        // network seam directly, and this setup aborts in a headless CI runner
+        // (no window server / notification center) — "Early unexpected exit".
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil { return }
+
         setupStatusItem()
         setupNotifications()
         startUsagePolling()
