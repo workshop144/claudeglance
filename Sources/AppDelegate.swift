@@ -169,6 +169,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(secondaryItem(error))
         }
 
+        // When the numbers are stale, say how old they are (the menu bar is also
+        // dimmed). Only shown while stale, so it stays out of the way normally.
+        if isStale(lastUpdated: snapshot.lastUpdated) {
+            menu.addItem(secondaryItem("Updated \(minutesAgo(snapshot.lastUpdated))m ago"))
+        }
+
         menu.addItem(.separator())
 
         menu.addItem(actionItem(title: "Open Dashboard", symbol: "chart.bar",
@@ -356,6 +362,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         
         Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             self?.checkForNotifications()
+            // Re-evaluate staleness even when no new data has arrived, so the
+            // menu bar dims once refreshes stop landing.
+            self?.updateStatusItemAppearance()
         }
     }
 
@@ -454,6 +463,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         let snapshot = usageService.currentUsage
         let settings = settingsManager.settings
+
+        // Dim the entire status item (ring, text, and health dot) when the data
+        // is stale, so old numbers never read as current. Applies to every render
+        // path below; re-evaluated by the 60s tick even when no new data arrives.
+        button.appearsDisabled = isStale(lastUpdated: snapshot.lastUpdated)
 
         // Build the title from each enabled element in a fixed order:
         // 5h%, 7d%, sonnet%, 5h reset, 7d reset.

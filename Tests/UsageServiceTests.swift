@@ -269,6 +269,35 @@ final class FormatTimeRemainingTests: XCTestCase {
     }
 }
 
+// MARK: - Staleness
+
+final class StalenessTests: XCTestCase {
+
+    private let now = Date(timeIntervalSince1970: 1_700_000_000)
+
+    func testFreshDataIsNotStale() {
+        XCTAssertFalse(isStale(lastUpdated: now, now: now))
+        XCTAssertFalse(isStale(lastUpdated: now.addingTimeInterval(-5 * 60), now: now))
+    }
+
+    func testOldDataIsStale() {
+        XCTAssertTrue(isStale(lastUpdated: now.addingTimeInterval(-13 * 60), now: now))
+    }
+
+    func testThresholdBoundaryIsNotStale() {
+        // Exactly at the threshold is not yet stale (strictly greater than).
+        XCTAssertFalse(isStale(lastUpdated: now.addingTimeInterval(-12 * 60), now: now))
+    }
+
+    func testMinutesAgo() {
+        XCTAssertEqual(minutesAgo(now, from: now), 0)
+        XCTAssertEqual(minutesAgo(now.addingTimeInterval(-90), from: now), 1)
+        XCTAssertEqual(minutesAgo(now.addingTimeInterval(-14 * 60), from: now), 14)
+        // A future timestamp (clock skew) clamps to 0 rather than going negative.
+        XCTAssertEqual(minutesAgo(now.addingTimeInterval(120), from: now), 0)
+    }
+}
+
 // MARK: - Burn rate & run-out ETA
 
 final class BurnRateTests: XCTestCase {

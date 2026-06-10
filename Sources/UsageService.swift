@@ -116,6 +116,18 @@ func formatTimeRemainingCompact(until date: Date, from now: Date = Date()) -> St
     return hours > 0 ? "\(hours)h\(minutes)m" : "\(minutes)m"
 }
 
+/// Whether a snapshot is stale — no successful refresh within `threshold`
+/// (default 12 min, i.e. more than two missed 5-minute polls). Used to dim the
+/// menu bar so stale numbers don't read as current.
+func isStale(lastUpdated: Date, now: Date = Date(), threshold: TimeInterval = 12 * 60) -> Bool {
+    now.timeIntervalSince(lastUpdated) > threshold
+}
+
+/// Whole minutes since `date`, for an "updated Nm ago" note.
+func minutesAgo(_ date: Date, from now: Date = Date()) -> Int {
+    max(0, Int(now.timeIntervalSince(date) / 60))
+}
+
 // MARK: - UsageService
 
 final class UsageService: ObservableObject {
