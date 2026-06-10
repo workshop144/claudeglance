@@ -269,6 +269,35 @@ final class FormatTimeRemainingTests: XCTestCase {
     }
 }
 
+// MARK: - Ring gauge fill fraction
+
+final class RingFillFractionTests: XCTestCase {
+
+    func testZeroAndFull() {
+        XCTAssertEqual(ringFillFraction(forPercent: 0), 0.0, accuracy: 0.0001)
+        XCTAssertEqual(ringFillFraction(forPercent: 100), 1.0, accuracy: 0.0001)
+    }
+
+    func testMidpoint() {
+        XCTAssertEqual(ringFillFraction(forPercent: 50), 0.5, accuracy: 0.0001)
+    }
+
+    func testClampsOutOfRange() {
+        // Transient readings outside 0–100 must never draw past a full circle
+        // (or a negative arc).
+        XCTAssertEqual(ringFillFraction(forPercent: -10), 0.0, accuracy: 0.0001)
+        XCTAssertEqual(ringFillFraction(forPercent: 150), 1.0, accuracy: 0.0001)
+    }
+
+    func testImageIsTemplateAndSized() {
+        // The gauge must be a template image so it adapts to light/dark menu bars.
+        let image = menuBarRingImage(fiveHourPercent: 35, sevenDayPercent: 71)
+        XCTAssertTrue(image.isTemplate)
+        XCTAssertEqual(image.size.width, 18, accuracy: 0.5)
+        XCTAssertEqual(image.size.height, 18, accuracy: 0.5)
+    }
+}
+
 // MARK: - formatTimeRemainingCompact (menu-bar "4h12m" form)
 
 final class FormatTimeRemainingCompactTests: XCTestCase {

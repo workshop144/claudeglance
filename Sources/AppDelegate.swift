@@ -425,9 +425,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 attributes: [.font: font, .foregroundColor: healthColor(for: statusService.status.indicator)]))
         }
 
-        // Nothing to show — fall back to a plain icon so the status item stays visible.
+        let ringImage: NSImage? = settings.showRingIcon
+            ? menuBarRingImage(fiveHourPercent: snapshot.fiveHourUtilization,
+                               sevenDayPercent: snapshot.sevenDayUtilization)
+            : nil
+
+        // With the ring enabled it leads the title — or stands alone if every
+        // text element (and the health dot) is turned off.
+        if let ringImage {
+            button.image = ringImage
+            button.imagePosition = title.length > 0 ? .imageLeading : .imageOnly
+            button.attributedTitle = title
+            return
+        }
+
+        // No ring: fall back to a plain icon only when there's also no text.
         guard title.length > 0 else {
             let config = NSImage.SymbolConfiguration(pointSize: 12, weight: .medium)
+            button.imagePosition = .imageOnly
             button.attributedTitle = NSAttributedString(string: "")
             button.image = NSImage(systemSymbolName: "chart.pie.fill", accessibilityDescription: "ClaudeGlance")?
                 .withSymbolConfiguration(config)

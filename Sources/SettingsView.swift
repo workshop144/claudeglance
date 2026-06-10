@@ -9,6 +9,7 @@ struct SettingsView: View {
     @State private var criticalThreshold: Double = 90
     @State private var notificationsEnabled: Bool = true
 
+    @State private var showRingIcon: Bool = false
     @State private var showFiveHour: Bool = true
     @State private var showSevenDay: Bool = true
     @State private var showSonnet: Bool = false
@@ -46,6 +47,9 @@ struct SettingsView: View {
                     }
                     rowDivider
 
+                    toggleRow(icon: "circle.circle", title: "Show ring gauge",
+                              description: "Show a dual-ring usage gauge (outer 5h, inner 7d) in the menu bar.",
+                              isOn: $showRingIcon) { settingsManager.setShowRingIcon($0) }
                     toggleRow(icon: "clock", title: "Show 5h session %",
                               description: "Display 5-hour session usage in the menu bar.",
                               isOn: $showFiveHour) { settingsManager.setShowFiveHour($0) }
@@ -214,6 +218,7 @@ struct SettingsView: View {
         warningThreshold = settingsManager.settings.warningThreshold
         criticalThreshold = settingsManager.settings.criticalThreshold
         notificationsEnabled = settingsManager.settings.notificationsEnabled
+        showRingIcon = settingsManager.settings.showRingIcon
         showFiveHour = settingsManager.settings.showFiveHour
         showSevenDay = settingsManager.settings.showSevenDay
         showSonnet = settingsManager.settings.showSonnet
