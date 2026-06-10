@@ -76,6 +76,15 @@ func formatTimeRemaining(until date: Date, from now: Date = Date()) -> String {
     return hours > 0 ? "\(hours)h \(minutes)m" : "\(minutes)m"
 }
 
+/// Like `formatTimeRemaining` but space-free (e.g. "4h12m"), suited to the menu bar title.
+func formatTimeRemainingCompact(until date: Date, from now: Date = Date()) -> String {
+    let interval = date.timeIntervalSince(now)
+    if interval <= 0 { return "now" }
+    let hours = Int(interval) / 3600
+    let minutes = (Int(interval) % 3600) / 60
+    return hours > 0 ? "\(hours)h\(minutes)m" : "\(minutes)m"
+}
+
 // MARK: - UsageService
 
 final class UsageService: ObservableObject {
@@ -144,6 +153,14 @@ final class UsageService: ObservableObject {
                     sevenDaySonnetUtilization: sonnetUtil,
                     fiveHourResetIn: fiveHourReset.map { formatTimeRemaining(until: $0) },
                     sevenDayResetIn: sevenDayReset.map { formatTimeRemaining(until: $0) },
+                    fiveHourResetAt: fiveHourReset,
+                    sevenDayResetAt: sevenDayReset,
+                    // TODO: /api/oauth/usage does not currently return a spendable
+                    // credit balance. It includes an `extra_usage` object, but its
+                    // credit fields (used_credits, monthly_limit) are null in practice
+                    // and there is no dollar balance to surface. Wire this up once the
+                    // API exposes a balance; until then the menu bar shows "N/A".
+                    creditBalance: nil,
                     lastUpdated: Date(),
                     weeklySessions: 0,
                     weeklyMessages: 0,
