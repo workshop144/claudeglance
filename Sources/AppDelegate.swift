@@ -18,6 +18,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var cancellables = Set<AnyCancellable>()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Under XCTest the app is launched only as a test host. Skip all UI /
+        // notification / polling bootstrap: the suite tests pure logic and the
+        // network seam directly, and this setup aborts in a headless CI runner
+        // (no window server / notification center) — "Early unexpected exit".
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil { return }
+
         setupStatusItem()
         setupNotifications()
         startUsagePolling()
@@ -100,8 +106,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(linkItem(title: "Usage credits: \(enabled ? "On" : "Off")",
                                   dotColor: enabled ? .systemGreen : .systemRed,
                                   action: #selector(openUsageCredits)))
-            if enabled, let util = snapshot.extraUsageUtilization {
-                menu.addItem(secondaryItem("\(util)% of credit limit used"))
+            if enabled {
+                // Prefer the dollar figure ("$1.20 / $50 (2%)") when the endpoint
+                // reports it; fall back to the percentage-only line otherwise.
+                if let used = snapshot.extraUsageUsedCents, let limit = snapshot.extraUsageLimitCents {
+                    var line = "\(formatDollars(cents: used)) / \(formatDollars(cents: limit))"
+                    if let util = snapshot.extraUsageUtilization { line += " (\(util)%)" }
+                    menu.addItem(secondaryItem(line))
+                } else if let util = snapshot.extraUsageUtilization {
+                    menu.addItem(secondaryItem("\(util)% of credit limit used"))
+                }
             }
             addedStatusRow = true
         }
@@ -114,6 +128,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                               symbol: usageSymbolName(for: snapshot.fiveHourUtilization)))
         if let resetIn = snapshot.fiveHourResetIn {
             menu.addItem(secondaryItem("Resets in: \(resetIn)"))
+        }
+        // Burn rate / run-out ETA, once a few polls have established a trend.
+        if let burn = usageService.fiveHourBurn, let secs = burn.secondsToLimit {
+            let now = Date()
+            if burn.hitsLimitBeforeReset(resetAt: snapshot.fiveHourResetAt, now: now) {
+                menu.addItem(secondaryItem("On pace for 100% by \(formatClockTime(now.addingTimeInterval(secs)))"))
+            } else if burn.percentPerHour >= 1 {
+                menu.addItem(secondaryItem("Using ~\(Int(burn.percentPerHour.rounded()))%/hr"))
+            }
         }
 
         menu.addItem(infoItem(title: "Week: \(snapshot.sevenDayUtilization)%", symbol: "calendar"))
@@ -146,6 +169,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(secondaryItem(error))
         }
 
+        // When the numbers are stale, say how old they are (the menu bar is also
+        // dimmed). Only shown while stale, so it stays out of the way normally.
+        if isStale(lastUpdated: snapshot.lastUpdated) {
+            menu.addItem(secondaryItem("Updated \(minutesAgo(snapshot.lastUpdated))m ago"))
+        }
+
         menu.addItem(.separator())
 
         menu.addItem(actionItem(title: "Open Dashboard", symbol: "chart.bar",
@@ -162,6 +191,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let quit = actionItem(title: "Quit", symbol: "power", action: #selector(quitApp))
         quit.keyEquivalent = "q"
         menu.addItem(quit)
+
+        menu.addItem(.separator())
+        menu.addItem(versionItem())
     }
 
     /// A read-only header row (e.g. "5hr: 12%"). Uses a custom view so the text is
@@ -180,6 +212,53 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let item = NSMenuItem()
         item.isEnabled = false
         item.view = readonlyRowView(symbol: nil, text: text, font: .systemFont(ofSize: 11))
+        return item
+    }
+
+    /// A clickable menu-row view that opens a URL without the standard blue menu
+    /// highlight — just a pointer cursor on hover, so the version signature reads
+    /// like the link in the Settings footer rather than a normal menu command.
+    private final class ClickableMenuRowView: NSView {
+        var onClick: (() -> Void)?
+        // Route every click in the row to this view (not the inner label).
+        override func hitTest(_ point: NSPoint) -> NSView? {
+            bounds.contains(convert(point, from: superview)) ? self : nil
+        }
+        override func mouseUp(with event: NSEvent) { onClick?() }
+        override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+    }
+
+    /// A tiny, washed-out version signature for the foot of the menu —
+    /// right-aligned, just `v1.1.1`, clickable to the running build on GitHub
+    /// (the full branch@commit provenance lives in the Settings window footer).
+    private func versionItem() -> NSMenuItem {
+        let item = NSMenuItem()
+        item.isEnabled = true
+
+        let container = ClickableMenuRowView()
+        container.translatesAutoresizingMaskIntoConstraints = false
+        container.onClick = { [weak container] in
+            NSWorkspace.shared.open(BuildInfo.current.url)
+            container?.enclosingMenuItem?.menu?.cancelTracking()
+        }
+
+        let label = NSTextField(labelWithString: "v\(BuildInfo.current.version)")
+        label.font = .systemFont(ofSize: 9)
+        label.textColor = .tertiaryLabelColor
+        label.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(label)
+
+        NSLayoutConstraint.activate([
+            container.heightAnchor.constraint(equalToConstant: 20),
+            // The menu stretches this view to its full width; pinning the label to
+            // the trailing edge right-aligns it. The min-width keeps it sane if it
+            // were ever the widest row (it won't be).
+            container.widthAnchor.constraint(greaterThanOrEqualToConstant: 120),
+            label.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+            label.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -14)
+        ])
+
+        item.view = container
         return item
     }
 
@@ -283,6 +362,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         
         Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             self?.checkForNotifications()
+            // Re-evaluate staleness even when no new data has arrived, so the
+            // menu bar dims once refreshes stop landing.
+            self?.updateStatusItemAppearance()
         }
     }
 
@@ -382,6 +464,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let snapshot = usageService.currentUsage
         let settings = settingsManager.settings
 
+        // Dim the entire status item (ring, text, and health dot) when the data
+        // is stale, so old numbers never read as current. Applies to every render
+        // path below; re-evaluated by the 60s tick even when no new data arrives.
+        button.appearsDisabled = isStale(lastUpdated: snapshot.lastUpdated)
+
         // Build the title from each enabled element in a fixed order:
         // 5h%, 7d%, sonnet%, 5h reset, 7d reset.
         var segments: [String] = []
@@ -419,9 +506,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 attributes: [.font: font, .foregroundColor: healthColor(for: statusService.status.indicator)]))
         }
 
-        // Nothing to show — fall back to a plain icon so the status item stays visible.
+        let ringImage: NSImage? = settings.showRingIcon
+            ? menuBarRingImage(fiveHourPercent: snapshot.fiveHourUtilization,
+                               sevenDayPercent: snapshot.sevenDayUtilization)
+            : nil
+
+        // With the ring enabled it leads the title — or stands alone if every
+        // text element (and the health dot) is turned off.
+        if let ringImage {
+            button.image = ringImage
+            button.imagePosition = title.length > 0 ? .imageLeading : .imageOnly
+            button.attributedTitle = title
+            return
+        }
+
+        // No ring: fall back to a plain icon only when there's also no text.
         guard title.length > 0 else {
             let config = NSImage.SymbolConfiguration(pointSize: 12, weight: .medium)
+            button.imagePosition = .imageOnly
             button.attributedTitle = NSAttributedString(string: "")
             button.image = NSImage(systemSymbolName: "chart.pie.fill", accessibilityDescription: "ClaudeGlance")?
                 .withSymbolConfiguration(config)

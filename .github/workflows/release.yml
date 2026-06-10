@@ -12,10 +12,31 @@ jobs:
   release:
     runs-on: macos-15
 
+    # Secrets can't be referenced directly in `if:`, so fold the "are the Apple
+    # Developer secrets configured?" check into a job-level env var that every
+    # step gates on. When they're absent (no Apple Developer account yet) the
+    # workflow takes the ad-hoc/unsigned path and still ships a working DMG;
+    # once the secrets exist it automatically produces a notarized, stapled build
+    # with no further changes.
+    env:
+      HAS_SIGNING: ${{ secrets.APPLE_CERTIFICATE_1 != '' && secrets.APPLE_ID != '' && secrets.APPLE_TEAM_ID != '' && secrets.APPLE_APP_PASSWORD != '' }}
+
     steps:
       - uses: actions/checkout@v4
 
+      - name: Report signing mode
+        run: |
+          if [ "$HAS_SIGNING" = "true" ]; then
+            echo "::notice::Apple signing secrets present — building a NOTARIZED release."
+          else
+            echo "::notice::No Apple signing secrets — building an AD-HOC (unsigned) release."
+          fi
+
+      # ---------------------------------------------------------------------
+      # Signed path (runs only when the Apple Developer secrets are present)
+      # ---------------------------------------------------------------------
       - name: Import Developer ID certificate
+        if: env.HAS_SIGNING == 'true'
         env:
           CERTIFICATE_PART1: ${{ secrets.APPLE_CERTIFICATE_1 }}
           CERTIFICATE_PART2: ${{ secrets.APPLE_CERTIFICATE_2 }}
@@ -38,15 +59,23 @@ jobs:
           security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
 
-      - name: Archive
+      - name: Archive (Developer ID)
+        if: env.HAS_SIGNING == 'true'
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           xcodebuild \
             -scheme ClaudeGlance \
             -configuration Release \
             -archivePath build/ClaudeGlance.xcarchive \
+            CODE_SIGN_IDENTITY="Developer ID Application" \
+            CODE_SIGN_STYLE=Automatic \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            GIT_COMMIT="$(git rev-parse --short HEAD)" \
             archive
 
       - name: Export (Developer ID signed)
+        if: env.HAS_SIGNING == 'true'
         run: |
           xcodebuild -exportArchive \
             -archivePath build/ClaudeGlance.xcarchive \
@@ -54,6 +83,7 @@ jobs:
             -exportOptionsPlist ExportOptions.plist
 
       - name: Notarize
+        if: env.HAS_SIGNING == 'true'
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
@@ -67,22 +97,64 @@ jobs:
             --wait
 
       - name: Staple
+        if: env.HAS_SIGNING == 'true'
         run: |
           xcrun stapler staple build/export/ClaudeGlance.app
           ditto -c -k --keepParent build/export/ClaudeGlance.app ClaudeGlance.zip
 
+      # ---------------------------------------------------------------------
+      # Unsigned path (runs only when the Apple Developer secrets are absent)
+      # Produces the same build/export/ClaudeGlance.app the signed path does,
+      # ad-hoc signed (the Release config's CODE_SIGN_IDENTITY is "-").
+      # ---------------------------------------------------------------------
+      - name: Archive (ad-hoc)
+        if: env.HAS_SIGNING != 'true'
+        run: |
+          xcodebuild \
+            -scheme ClaudeGlance \
+            -configuration Release \
+            -archivePath build/ClaudeGlance.xcarchive \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM="" \
+            GIT_COMMIT="$(git rev-parse --short HEAD)" \
+            archive
+          mkdir -p build/export
+          cp -R build/ClaudeGlance.xcarchive/Products/Applications/ClaudeGlance.app build/export/
+
+      # ---------------------------------------------------------------------
+      # Common path (both modes)
+      # ---------------------------------------------------------------------
       - name: Build DMG
         run: |
           VOL_NAME="ClaudeGlance" scripts/make-dmg.sh \
             build/export/ClaudeGlance.app \
             ClaudeGlance.dmg
 
+      - name: Compose release notes
+        run: |
+          if [ "$HAS_SIGNING" = "true" ]; then
+            echo "RELEASE_BODY=Signed with a Developer ID and notarized by Apple — just open it after installing." >> "$GITHUB_ENV"
+          else
+            {
+              echo "RELEASE_BODY<<EOF"
+              echo "This build is ad-hoc signed (not yet notarized). On first launch macOS may say it cannot verify the developer:"
+              echo ""
+              echo "- Right-click ClaudeGlance in /Applications and choose **Open** (once), or"
+              echo "- run: \`xattr -dr com.apple.quarantine /Applications/ClaudeGlance.app\`"
+              echo "EOF"
+            } >> "$GITHUB_ENV"
+          fi
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          # The .zip only exists on the signed (notarized) path; softprops skips
+          # unmatched files by default, so listing it here is safe in both modes.
           files: |
             ClaudeGlance.dmg
             ClaudeGlance.zip
+          body: ${{ env.RELEASE_BODY }}
           generate_release_notes: true
 
       - name: Update Homebrew tap
@@ -92,6 +164,22 @@ jobs:
         run: |
           VERSION=${TAG#v}
           SHA=$(shasum -a 256 ClaudeGlance.dmg | awk '{print $1}')
+
+          # Unsigned builds are quarantined by Gatekeeper, so the cask carries a
+          # caveat telling users how to clear it. Once the build is notarized this
+          # block is empty and the caveat disappears automatically.
+          if [ "$HAS_SIGNING" = "true" ]; then
+            CAVEATS=""
+          else
+            CAVEATS="
+            caveats <<~EOS
+              ClaudeGlance is ad-hoc signed (not notarized). On first launch macOS
+              may block it. Right-click the app in /Applications and choose Open,
+              or run:
+                xattr -dr com.apple.quarantine /Applications/ClaudeGlance.app
+            EOS
+          "
+          fi
 
           FORMULA="cask \"claudeglance\" do
             version \"$VERSION\"
@@ -103,7 +191,7 @@ jobs:
             homepage \"https://github.com/broots144/claudeglance\"
 
             app \"ClaudeGlance.app\"
-
+          $CAVEATS
             zap trash: [
               \"~/Library/Preferences/io.github.broots144.ClaudeGlance.plist\",
               \"~/Library/Application Support/ClaudeGlance\",

@@ -269,6 +269,181 @@ final class FormatTimeRemainingTests: XCTestCase {
     }
 }
 
+// MARK: - Staleness
+
+final class StalenessTests: XCTestCase {
+
+    private let now = Date(timeIntervalSince1970: 1_700_000_000)
+
+    func testFreshDataIsNotStale() {
+        XCTAssertFalse(isStale(lastUpdated: now, now: now))
+        XCTAssertFalse(isStale(lastUpdated: now.addingTimeInterval(-5 * 60), now: now))
+    }
+
+    func testOldDataIsStale() {
+        XCTAssertTrue(isStale(lastUpdated: now.addingTimeInterval(-13 * 60), now: now))
+    }
+
+    func testThresholdBoundaryIsNotStale() {
+        // Exactly at the threshold is not yet stale (strictly greater than).
+        XCTAssertFalse(isStale(lastUpdated: now.addingTimeInterval(-12 * 60), now: now))
+    }
+
+    func testMinutesAgo() {
+        XCTAssertEqual(minutesAgo(now, from: now), 0)
+        XCTAssertEqual(minutesAgo(now.addingTimeInterval(-90), from: now), 1)
+        XCTAssertEqual(minutesAgo(now.addingTimeInterval(-14 * 60), from: now), 14)
+        // A future timestamp (clock skew) clamps to 0 rather than going negative.
+        XCTAssertEqual(minutesAgo(now.addingTimeInterval(120), from: now), 0)
+    }
+}
+
+// MARK: - Burn rate & run-out ETA
+
+final class BurnRateTests: XCTestCase {
+
+    private let base = Date(timeIntervalSince1970: 1_700_000_000)
+
+    private func samples(_ pairs: [(min: Double, util: Int)]) -> [UsageSample] {
+        pairs.map { UsageSample(time: base.addingTimeInterval($0.min * 60), utilization: $0.util) }
+    }
+
+    func testTooFewOrTooShortReturnsNil() {
+        XCTAssertNil(estimateBurn(from: []))
+        XCTAssertNil(estimateBurn(from: samples([(0, 10)])))
+        // Two samples only 1 minute apart — below the 4-minute minimum span.
+        XCTAssertNil(estimateBurn(from: samples([(0, 10), (1, 20)])))
+    }
+
+    func testRisingUsageEstimatesRateAndEta() {
+        // 10% -> 40% over 30 minutes = 60%/hour; 60% remaining at 1%/min = 60 min.
+        let estimate = estimateBurn(from: samples([(0, 10), (30, 40)]))
+        XCTAssertNotNil(estimate)
+        XCTAssertEqual(estimate!.percentPerHour, 60, accuracy: 0.001)
+        XCTAssertEqual(estimate!.secondsToLimit!, 3600, accuracy: 0.5)
+    }
+
+    func testFlatUsageHasNoRunOut() {
+        let estimate = estimateBurn(from: samples([(0, 50), (30, 50)]))
+        XCTAssertEqual(estimate?.percentPerHour, 0)
+        XCTAssertNil(estimate?.secondsToLimit)
+    }
+
+    func testHitsLimitBeforeReset() {
+        let estimate = BurnEstimate(percentPerHour: 60, secondsToLimit: 3600)
+        // Reset is 2h away, run-out is 1h away -> hits the cap first.
+        XCTAssertTrue(estimate.hitsLimitBeforeReset(resetAt: base.addingTimeInterval(7200), now: base))
+        // Reset is 30m away, run-out is 1h away -> resets before running out.
+        XCTAssertFalse(estimate.hitsLimitBeforeReset(resetAt: base.addingTimeInterval(1800), now: base))
+        // No estimate / no reset date -> never "before reset".
+        XCTAssertFalse(BurnEstimate(percentPerHour: 0, secondsToLimit: nil)
+            .hitsLimitBeforeReset(resetAt: base.addingTimeInterval(7200), now: base))
+    }
+}
+
+final class AppendingSampleTests: XCTestCase {
+
+    private let base = Date(timeIntervalSince1970: 1_700_000_000)
+
+    func testAppendsToBuffer() {
+        let a = UsageSample(time: base, utilization: 10)
+        let b = UsageSample(time: base.addingTimeInterval(300), utilization: 20)
+        let result = appendingSample(b, to: [a])
+        XCTAssertEqual(result, [a, b])
+    }
+
+    func testResetsWhenUtilizationDrops() {
+        let a = UsageSample(time: base, utilization: 90)
+        // Window reset: utilization fell, so the old high sample is discarded.
+        let b = UsageSample(time: base.addingTimeInterval(300), utilization: 5)
+        XCTAssertEqual(appendingSample(b, to: [a]), [b])
+    }
+
+    func testPrunesSamplesOlderThanWindow() {
+        let old = UsageSample(time: base, utilization: 10)
+        let recent = UsageSample(time: base.addingTimeInterval(3000), utilization: 20)
+        // New sample is >1h after `old`, so `old` is pruned out of the window.
+        let new = UsageSample(time: base.addingTimeInterval(3700), utilization: 30)
+        XCTAssertEqual(appendingSample(new, to: [old, recent], window: 3600), [recent, new])
+    }
+}
+
+// MARK: - formatDollars (usage-credits overage line)
+
+final class FormatDollarsTests: XCTestCase {
+
+    func testWholeDollarsDropDecimals() {
+        XCTAssertEqual(formatDollars(cents: 5000), "$50")
+        XCTAssertEqual(formatDollars(cents: 0), "$0")
+    }
+
+    func testFractionalDollarsShowTwoDecimals() {
+        XCTAssertEqual(formatDollars(cents: 120), "$1.20")
+        XCTAssertEqual(formatDollars(cents: 12050), "$120.50")
+        XCTAssertEqual(formatDollars(cents: 7), "$0.07")
+    }
+}
+
+// MARK: - Build info (Settings footer provenance)
+
+final class BuildInfoTests: XCTestCase {
+
+    private let repo = "https://github.com/broots144/claudeglance"
+
+    func testLabelVersionOnlyWhenNoCommit() {
+        XCTAssertEqual(buildInfoLabel(version: "1.1.1", branch: nil, commit: nil), "v1.1.1")
+        XCTAssertEqual(buildInfoLabel(version: "1.1.1", branch: "feature/x", commit: nil), "v1.1.1")
+    }
+
+    func testLabelCommitOnlyOnMainOrNoBranch() {
+        XCTAssertEqual(buildInfoLabel(version: "1.1.1", branch: "main", commit: "abc1234"), "v1.1.1 · abc1234")
+        XCTAssertEqual(buildInfoLabel(version: "1.1.1", branch: "HEAD", commit: "abc1234"), "v1.1.1 · abc1234")
+        XCTAssertEqual(buildInfoLabel(version: "1.1.1", branch: nil, commit: "abc1234"), "v1.1.1 · abc1234")
+    }
+
+    func testLabelShowsBranchOnFeatureBranch() {
+        XCTAssertEqual(buildInfoLabel(version: "1.1.1", branch: "feature/v1.1-build-info", commit: "abc1234"),
+                       "v1.1.1 · feature/v1.1-build-info@abc1234")
+    }
+
+    func testURLPrefersCommitThenBranchThenRepo() {
+        XCTAssertEqual(buildInfoURL(repo: repo, branch: "feature/x", commit: "abc1234").absoluteString,
+                       "\(repo)/commit/abc1234")
+        XCTAssertEqual(buildInfoURL(repo: repo, branch: "feature/x", commit: nil).absoluteString,
+                       "\(repo)/tree/feature/x")
+        XCTAssertEqual(buildInfoURL(repo: repo, branch: nil, commit: nil).absoluteString, repo)
+    }
+}
+
+// MARK: - Ring gauge fill fraction
+
+final class RingFillFractionTests: XCTestCase {
+
+    func testZeroAndFull() {
+        XCTAssertEqual(ringFillFraction(forPercent: 0), 0.0, accuracy: 0.0001)
+        XCTAssertEqual(ringFillFraction(forPercent: 100), 1.0, accuracy: 0.0001)
+    }
+
+    func testMidpoint() {
+        XCTAssertEqual(ringFillFraction(forPercent: 50), 0.5, accuracy: 0.0001)
+    }
+
+    func testClampsOutOfRange() {
+        // Transient readings outside 0–100 must never draw past a full circle
+        // (or a negative arc).
+        XCTAssertEqual(ringFillFraction(forPercent: -10), 0.0, accuracy: 0.0001)
+        XCTAssertEqual(ringFillFraction(forPercent: 150), 1.0, accuracy: 0.0001)
+    }
+
+    func testImageIsTemplateAndSized() {
+        // The gauge must be a template image so it adapts to light/dark menu bars.
+        let image = menuBarRingImage(fiveHourPercent: 35, sevenDayPercent: 71)
+        XCTAssertTrue(image.isTemplate)
+        XCTAssertEqual(image.size.width, 18, accuracy: 0.5)
+        XCTAssertEqual(image.size.height, 18, accuracy: 0.5)
+    }
+}
+
 // MARK: - formatTimeRemainingCompact (menu-bar "4h12m" form)
 
 final class FormatTimeRemainingCompactTests: XCTestCase {
@@ -322,6 +497,19 @@ final class ExtraUsageDecodingTests: XCTestCase {
         let response = try JSONDecoder().decode(OAuthUsageResponse.self, from: json)
         XCTAssertEqual(response.extraUsage?.isEnabled, true)
         XCTAssertEqual(response.extraUsage?.utilization, 42.0)
+    }
+
+    func testEnabledExtraUsageDecodesDollarFields() throws {
+        let json = """
+        {
+          "five_hour": null, "seven_day": null, "seven_day_sonnet": null,
+          "extra_usage": { "is_enabled": true, "utilization": 2.0, "used_credits": 120, "monthly_limit": 5000 }
+        }
+        """.data(using: .utf8)!
+
+        let response = try JSONDecoder().decode(OAuthUsageResponse.self, from: json)
+        XCTAssertEqual(response.extraUsage?.usedCredits, 120)
+        XCTAssertEqual(response.extraUsage?.monthlyLimit, 5000)
     }
 
     func testMissingExtraUsageIsNil() throws {

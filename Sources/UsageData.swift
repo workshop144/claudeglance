@@ -5,6 +5,10 @@ struct AppSettings: Codable {
     var criticalThreshold: Double = 90.0
     var notificationsEnabled: Bool = true
 
+    // Dual-ring usage gauge in the menu bar (outer = 5h, inner = 7d). Off by
+    // default so the clean text display stays the out-of-box look.
+    var showRingIcon: Bool = false
+
     // Granular menu-bar element toggles. Defaults preserve the previous
     // "compact" behavior: two percentages + the 5h reset countdown.
     var showFiveHour: Bool = true
@@ -34,6 +38,7 @@ struct AppSettings: Codable {
         warningThreshold = try c.decodeIfPresent(Double.self, forKey: .warningThreshold) ?? 80.0
         criticalThreshold = try c.decodeIfPresent(Double.self, forKey: .criticalThreshold) ?? 90.0
         notificationsEnabled = try c.decodeIfPresent(Bool.self, forKey: .notificationsEnabled) ?? true
+        showRingIcon = try c.decodeIfPresent(Bool.self, forKey: .showRingIcon) ?? false
         showFiveHour = try c.decodeIfPresent(Bool.self, forKey: .showFiveHour) ?? true
         showSevenDay = try c.decodeIfPresent(Bool.self, forKey: .showSevenDay) ?? true
         showSonnet = try c.decodeIfPresent(Bool.self, forKey: .showSonnet) ?? false
@@ -63,6 +68,9 @@ struct UsageSnapshot {
     let extraUsageEnabled: Bool?
     // Percent of the monthly credit limit used, when enabled and reported.
     let extraUsageUtilization: Int?
+    // Overage spend so far, and the monthly cap, in cents (when enabled/reported).
+    let extraUsageUsedCents: Int?
+    let extraUsageLimitCents: Int?
 
     var displayText: String { "\(sevenDayUtilization)%" }
     var menuBarPrimaryText: String { "5hr: \(fiveHourUtilization)%" }
@@ -82,7 +90,9 @@ struct UsageSnapshot {
             weeklyMessages: 0,
             weeklyTokens: 0,
             extraUsageEnabled: nil,
-            extraUsageUtilization: nil
+            extraUsageUtilization: nil,
+            extraUsageUsedCents: nil,
+            extraUsageLimitCents: nil
         )
     }
 }

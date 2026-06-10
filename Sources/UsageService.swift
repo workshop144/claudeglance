@@ -50,10 +50,15 @@ struct OAuthUsageResponse: Decodable {
     struct ExtraUsage: Decodable {
         let isEnabled: Bool
         let utilization: Double?
+        // Dollar amounts in cents; null until credits are enabled and used.
+        let usedCredits: Int?
+        let monthlyLimit: Int?
 
         enum CodingKeys: String, CodingKey {
             case isEnabled = "is_enabled"
             case utilization
+            case usedCredits = "used_credits"
+            case monthlyLimit = "monthly_limit"
         }
     }
 
@@ -86,6 +91,13 @@ func calculateUtilization(tokens: Int, limit: Int) -> Int {
     return min(100, tokens * 100 / limit)
 }
 
+/// Formats a cents amount as dollars, dropping the decimals when it's a whole
+/// dollar: 120 → "$1.20", 5000 → "$50", 12050 → "$120.50".
+func formatDollars(cents: Int) -> String {
+    let dollars = Double(cents) / 100.0
+    return cents % 100 == 0 ? String(format: "$%.0f", dollars) : String(format: "$%.2f", dollars)
+}
+
 /// Formats a future date as a human-readable countdown string.
 func formatTimeRemaining(until date: Date, from now: Date = Date()) -> String {
     let interval = date.timeIntervalSince(now)
@@ -104,6 +116,18 @@ func formatTimeRemainingCompact(until date: Date, from now: Date = Date()) -> St
     return hours > 0 ? "\(hours)h\(minutes)m" : "\(minutes)m"
 }
 
+/// Whether a snapshot is stale — no successful refresh within `threshold`
+/// (default 12 min, i.e. more than two missed 5-minute polls). Used to dim the
+/// menu bar so stale numbers don't read as current.
+func isStale(lastUpdated: Date, now: Date = Date(), threshold: TimeInterval = 12 * 60) -> Bool {
+    now.timeIntervalSince(lastUpdated) > threshold
+}
+
+/// Whole minutes since `date`, for an "updated Nm ago" note.
+func minutesAgo(_ date: Date, from now: Date = Date()) -> Int {
+    max(0, Int(now.timeIntervalSince(date) / 60))
+}
+
 // MARK: - UsageService
 
 final class UsageService: ObservableObject {
@@ -115,6 +139,11 @@ final class UsageService: ObservableObject {
     @Published private(set) var weeklySessions: Int = 0
     @Published private(set) var weeklyMessages: Int = 0
     @Published private(set) var weeklyTokens: Int = 0
+
+    // Rolling 5-hour utilization samples (one per poll), used to estimate the
+    // burn rate and run-out ETA. In-memory only — rebuilds after a restart.
+    private var fiveHourSamples: [UsageSample] = []
+    var fiveHourBurn: BurnEstimate? { estimateBurn(from: fiveHourSamples) }
 
     private var refreshTimer: Timer?
     private let normalInterval: TimeInterval = 5 * 60   // 5 minutes
@@ -179,10 +208,15 @@ final class UsageService: ObservableObject {
                     weeklyMessages: 0,
                     weeklyTokens: 0,
                     extraUsageEnabled: response.extraUsage?.isEnabled,
-                    extraUsageUtilization: response.extraUsage?.utilization.map { Int($0) }
+                    extraUsageUtilization: response.extraUsage?.utilization.map { Int($0) },
+                    extraUsageUsedCents: response.extraUsage?.usedCredits,
+                    extraUsageLimitCents: response.extraUsage?.monthlyLimit
                 )
 
                 await MainActor.run {
+                    self.fiveHourSamples = appendingSample(
+                        UsageSample(time: Date(), utilization: fiveHourUtil),
+                        to: self.fiveHourSamples)
                     self.currentUsage = snapshot
                     self.error = nil
                     self.isLoading = false

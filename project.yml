@@ -8,8 +8,14 @@ options:
 
 settings:
   base:
-    MARKETING_VERSION: "1.0.0"
+    MARKETING_VERSION: "1.1.4"
     SWIFT_VERSION: "5.9"
+    # Build-time git provenance, surfaced in the Settings footer so it's obvious
+    # which build is running while testing. Empty by default (plain Xcode ⌘R
+    # builds); dev-install.sh and release.yml pass the real branch/commit on the
+    # xcodebuild command line, which Info.plist substitutes into GitBranch/GitCommit.
+    GIT_BRANCH: ""
+    GIT_COMMIT: ""
     MACOSX_DEPLOYMENT_TARGET: "13.0"
     CODE_SIGN_IDENTITY: "-"
     CODE_SIGN_STYLE: Manual
