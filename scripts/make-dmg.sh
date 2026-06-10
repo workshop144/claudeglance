@@ -28,6 +28,11 @@ mkdir -p "$STAGE"
 cp -R "$APP_PATH" "$STAGE/"
 ln -s /Applications "$STAGE/Applications"
 
+# Optional custom volume icon (.icns via VOL_ICON env). Best-effort.
+if [ -n "${VOL_ICON:-}" ] && [ -f "$VOL_ICON" ]; then
+  cp "$VOL_ICON" "$STAGE/.VolumeIcon.icns"
+fi
+
 # Read-write image sized to the staged content.
 TMP_DMG="$WORK/rw.dmg"
 hdiutil create -srcfolder "$STAGE" -volname "$VOL_NAME" -fs HFS+ \
@@ -38,13 +43,16 @@ hdiutil create -srcfolder "$STAGE" -volname "$VOL_NAME" -fs HFS+ \
 # best-effort: if Apple Events aren't authorized (e.g. headless CI) the DMG still
 # ships, just without the custom positioning — both icons are present and
 # draggable either way.
-hdiutil attach "$TMP_DMG" -noverify -noautoopen >/dev/null
-MOUNT_POINT="/Volumes/$VOL_NAME"
-for _ in $(seq 1 10); do [ -d "$MOUNT_POINT" ] && break; sleep 0.5; done
+# Capture the real mount point from hdiutil — if a volume of the same name is
+# already mounted, the new one gets a "<name> 1" suffix, so we must not assume.
+ATTACH_OUT="$(hdiutil attach "$TMP_DMG" -noverify -noautoopen)"
+MOUNT_POINT="$(printf '%s\n' "$ATTACH_OUT" | grep -Eo '/Volumes/.*$' | head -1)"
+[ -n "$MOUNT_POINT" ] || { echo "error: could not determine DMG mount point"; exit 1; }
+DISK_NAME="$(basename "$MOUNT_POINT")"
 
 osascript <<OSA || echo "warning: could not set DMG window layout (Apple Events not authorized?) — shipping unstyled"
 tell application "Finder"
-  tell disk "$VOL_NAME"
+  tell disk "$DISK_NAME"
     open
     set current view of container window to icon view
     set toolbar visible of container window to false
@@ -61,6 +69,11 @@ tell application "Finder"
   end tell
 end tell
 OSA
+
+# Flag the volume as having a custom icon so Finder shows .VolumeIcon.icns.
+if [ -f "$MOUNT_POINT/.VolumeIcon.icns" ] && command -v SetFile >/dev/null 2>&1; then
+  SetFile -a C "$MOUNT_POINT" || echo "warning: could not set custom volume icon flag"
+fi
 
 sync
 hdiutil detach "$MOUNT_POINT" >/dev/null
