@@ -3,12 +3,12 @@ import SwiftUI
 import UserNotifications
 import Combine
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
-    private var popover: NSPopover!
+    private var settingsWindow: NSWindow?
     private let usageService = UsageService.shared
     private let settingsManager = SettingsManager.shared
-    
+
     private var lastWarningNotified: Int = 0
     private var lastCriticalNotified: Int = 0
 
@@ -17,7 +17,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupStatusItem()
-        setupPopover()
         setupNotifications()
         startUsagePolling()
 
@@ -29,19 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.checkForNotifications()
             }
             .store(in: &cancellables)
-        
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(usageDidUpdate),
-            name: NSNotification.Name("UsageDidUpdate"),
-            object: nil
-        )
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(closePopover),
-            name: NSApplication.didResignActiveNotification,
-            object: nil
-        )
+
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(settingsDidChange),
@@ -56,25 +43,106 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        
+
         if let button = statusItem.button {
             button.image = NSImage(systemSymbolName: "chart.pie.fill", accessibilityDescription: "Claude Usage")
-            button.action = #selector(togglePopover)
-            button.target = self
         }
+
+        // A native NSMenu (like other menu-bar apps) drops down flush under the
+        // status item. It's rebuilt on each open via menuNeedsUpdate so it always
+        // reflects current usage. autoenablesItems = false lets the read-only info
+        // rows render in normal (non-greyed) text.
+        let menu = NSMenu()
+        menu.delegate = self
+        menu.autoenablesItems = false
+        statusItem.menu = menu
+
+        updateStatusItemAppearance()
     }
 
-    private func setupPopover() {
-        popover = NSPopover()
-        popover.contentSize = NSSize(width: 240, height: 200)
-        popover.behavior = .transient
-        popover.animates = true
-        popover.contentViewController = NSHostingController(
-            rootView: MenuBarView(
-                usageService: usageService,
-                settingsManager: settingsManager
-            )
-        )
+    // MARK: - Menu
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+
+        let snapshot = usageService.currentUsage
+
+        menu.addItem(infoItem(title: "5hr: \(snapshot.fiveHourUtilization)%",
+                              symbol: usageSymbolName(for: snapshot.fiveHourUtilization)))
+        if let resetIn = snapshot.fiveHourResetIn {
+            menu.addItem(secondaryItem("Resets in: \(resetIn)"))
+        }
+
+        menu.addItem(infoItem(title: "Week: \(snapshot.sevenDayUtilization)%", symbol: "calendar"))
+        if let resetIn = snapshot.sevenDayResetIn {
+            menu.addItem(secondaryItem("Resets in: \(resetIn)"))
+        }
+
+        if let sonnet = snapshot.sevenDaySonnetUtilization {
+            menu.addItem(infoItem(title: "Sonnet: \(sonnet)%", symbol: "cpu"))
+        }
+
+        if let error = usageService.error {
+            menu.addItem(secondaryItem(error))
+        }
+
+        menu.addItem(.separator())
+
+        menu.addItem(actionItem(title: "Open Dashboard", symbol: "chart.bar",
+                                action: #selector(openDashboard)))
+        menu.addItem(actionItem(title: "Refresh", symbol: "arrow.clockwise",
+                                action: #selector(refreshUsage)))
+        let settingsItem = actionItem(title: "Settings", symbol: "gear",
+                                      action: #selector(openSettings))
+        settingsItem.keyEquivalent = ","
+        menu.addItem(settingsItem)
+
+        menu.addItem(.separator())
+
+        let quit = actionItem(title: "Quit", symbol: "power", action: #selector(quitApp))
+        quit.keyEquivalent = "q"
+        menu.addItem(quit)
+    }
+
+    /// A read-only header row (e.g. "5hr: 12%") — enabled so it shows in normal
+    /// text, but with no action so clicking it does nothing.
+    private func infoItem(title: String, symbol: String) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        item.image = menuSymbol(symbol)
+        item.isEnabled = true
+        return item
+    }
+
+    /// A smaller, secondary-colored, indented detail row (e.g. "Resets in: 2h 19m").
+    private func secondaryItem(_ text: String) -> NSMenuItem {
+        let item = NSMenuItem(title: text, action: nil, keyEquivalent: "")
+        item.attributedTitle = NSAttributedString(string: text, attributes: [
+            .font: NSFont.systemFont(ofSize: 11),
+            .foregroundColor: NSColor.secondaryLabelColor
+        ])
+        item.indentationLevel = 1
+        item.isEnabled = true
+        return item
+    }
+
+    private func actionItem(title: String, symbol: String, action: Selector) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+        item.target = self
+        item.image = menuSymbol(symbol)
+        item.isEnabled = true
+        return item
+    }
+
+    private func menuSymbol(_ name: String) -> NSImage? {
+        let config = NSImage.SymbolConfiguration(pointSize: 13, weight: .regular)
+        return NSImage(systemSymbolName: name, accessibilityDescription: nil)?
+            .withSymbolConfiguration(config)
+    }
+
+    private func usageSymbolName(for usage: Int) -> String {
+        if usage >= 80 { return "exclamationmark.triangle.fill" }
+        if usage >= 50 { return "chart.pie.fill" }
+        return "chart.pie"
     }
 
     private func setupNotifications() {
@@ -95,83 +163,89 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    @objc private func togglePopover() {
-        if popover.isShown {
-            closePopover()
-        } else {
-            showPopover()
+    // MARK: - Menu actions
+
+    @objc private func openDashboard() {
+        if let url = URL(string: "https://console.anthropic.com/settings/usage") {
+            NSWorkspace.shared.open(url)
         }
     }
 
-    private func showPopover() {
-        if let button = statusItem.button {
-            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-            NSApp.activate(ignoringOtherApps: true)
-        }
+    @objc private func refreshUsage() {
+        usageService.fetchUsage()
     }
 
-    @objc private func closePopover() {
-        popover.performClose(nil)
+    @objc private func quitApp() {
+        NSApplication.shared.terminate(nil)
+    }
+
+    @objc private func openSettings() {
+        if settingsWindow == nil {
+            let hosting = NSHostingController(
+                rootView: SettingsView(settingsManager: settingsManager, usageService: usageService)
+            )
+            let window = NSWindow(contentViewController: hosting)
+            window.styleMask = [.titled, .closable]
+            window.titleVisibility = .hidden
+            window.titlebarAppearsTransparent = true
+            window.title = "Claude Usage Settings"
+            window.isReleasedWhenClosed = false
+            window.center()
+            settingsWindow = window
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        settingsWindow?.makeKeyAndOrderFront(nil)
     }
 
     @objc private func settingsDidChange() {
         updateStatusItemAppearance()
     }
 
-    @objc private func usageDidUpdate() {
-        updateStatusItemAppearance()
-        checkForNotifications()
-    }
-
     private func updateStatusItemAppearance() {
         guard let button = statusItem.button else { return }
 
         let snapshot = usageService.currentUsage
-        let weekUsage = snapshot.sevenDayUtilization
+        let settings = settingsManager.settings
 
-        if settingsManager.settings.compactDisplay {
-            let fiveH = snapshot.fiveHourUtilization
-            let sevenD = snapshot.sevenDayUtilization
-            let font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium)
+        // Build the title from each enabled element in a fixed order:
+        // 5h%, 7d%, sonnet%, 5h reset, 7d reset, credit balance.
+        var segments: [String] = []
 
-            let str = NSMutableAttributedString()
-            str.append(NSAttributedString(string: "\(fiveH)%",
-                attributes: [.font: font, .foregroundColor: usageColor(for: fiveH)]))
-            str.append(NSAttributedString(string: " · ",
-                attributes: [.font: font, .foregroundColor: NSColor.secondaryLabelColor]))
-            str.append(NSAttributedString(string: "\(sevenD)%",
-                attributes: [.font: font, .foregroundColor: usageColor(for: sevenD)]))
+        if settings.showFiveHour {
+            segments.append("\(snapshot.fiveHourUtilization)%")
+        }
+        if settings.showSevenDay {
+            segments.append("\(snapshot.sevenDayUtilization)%")
+        }
+        if settings.showSonnet, let sonnet = snapshot.sevenDaySonnetUtilization {
+            segments.append("\(sonnet)%")
+        }
+        if settings.showFiveHourReset, let resetAt = snapshot.fiveHourResetAt {
+            segments.append(formatTimeRemainingCompact(until: resetAt))
+        }
+        if settings.showSevenDayReset, let resetAt = snapshot.sevenDayResetAt {
+            segments.append(formatTimeRemainingCompact(until: resetAt))
+        }
+        if settings.showCreditBalance {
+            segments.append(snapshot.creditBalance ?? "N/A")
+        }
 
-            button.image = nil
-            button.attributedTitle = str
-        } else {
+        // Nothing to show — fall back to a plain icon so the status item stays visible.
+        guard !segments.isEmpty else {
             let config = NSImage.SymbolConfiguration(pointSize: 12, weight: .medium)
-            let symbolName: String
-            if weekUsage >= 80 { symbolName = "exclamationmark.triangle.fill" }
-            else if weekUsage >= 50 { symbolName = "chart.pie.fill" }
-            else { symbolName = "chart.pie" }
-
-            button.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: "Claude Usage")?
+            button.attributedTitle = NSAttributedString(string: "")
+            button.image = NSImage(systemSymbolName: "chart.pie.fill", accessibilityDescription: "Claude Usage")?
                 .withSymbolConfiguration(config)
-            button.attributedTitle = NSAttributedString(
-                string: "\(weekUsage)%",
-                attributes: [
-                    .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium),
-                    .foregroundColor: usageColor(for: weekUsage)
-                ]
-            )
+            return
         }
-    }
 
-    private func usageColor(for percentage: Int) -> NSColor {
-        let criticalThreshold = Int(settingsManager.settings.criticalThreshold)
-        let warningThreshold = Int(settingsManager.settings.warningThreshold)
-        if percentage >= criticalThreshold {
-            return .systemRed
-        } else if percentage >= warningThreshold {
-            return .systemOrange
-        }
-        return .labelColor
+        let font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium)
+        // All segments render white (.labelColor) in the menu bar, regardless of appearance.
+        button.image = nil
+        button.attributedTitle = NSAttributedString(
+            string: segments.joined(separator: " · "),
+            attributes: [.font: font, .foregroundColor: NSColor.labelColor]
+        )
     }
 
     private func checkForNotifications() {

@@ -7,7 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		22F4B6C5A7558EED3BD2DB95 /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06653C5881670A81199C42CC /* MenuBarView.swift */; };
 		354CBABB4F867F1E95A9A01E /* UsageService.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEE554A7DA6DDC77A08A3EEE /* UsageService.swift */; };
 		477DC01AB2A27BF9535464A1 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AFD01138604C8622102594F /* main.swift */; };
 		4B94CAD601C9365558A3A209 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C3BC14807EE08B3766D0A9C8 /* Assets.xcassets */; };
@@ -30,7 +29,6 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		06653C5881670A81199C42CC /* MenuBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarView.swift; sourceTree = "<group>"; };
 		20995FA0F9EEA9F7D67A33F6 /* ClaudeUsageSystray.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ClaudeUsageSystray.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		2AFD01138604C8622102594F /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		32234A82B1C94CCB6F3763AE /* UsageData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageData.swift; sourceTree = "<group>"; };
@@ -109,7 +107,6 @@
 			children = (
 				DE78D81A249AA2CBF9D9C9CB /* AppDelegate.swift */,
 				2AFD01138604C8622102594F /* main.swift */,
-				06653C5881670A81199C42CC /* MenuBarView.swift */,
 				C024067E6D3F865AF198511C /* SettingsManager.swift */,
 				B1107FB82A3A3C9FC04B4F35 /* SettingsView.swift */,
 				32234A82B1C94CCB6F3763AE /* UsageData.swift */,
@@ -217,7 +214,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				C33689B322FFA7525A92894A /* AppDelegate.swift in Sources */,
-				22F4B6C5A7558EED3BD2DB95 /* MenuBarView.swift in Sources */,
 				F25EDEE38ABF1A0E15C849DC /* SettingsManager.swift in Sources */,
 				59259AC8C5B89477A67D5A8D /* SettingsView.swift in Sources */,
 				80E1131433C5BE35E6CF65E4 /* UsageData.swift in Sources */,
