@@ -38,13 +38,17 @@ Mirrors the data on `claude.ai/settings/usage`.
 **Homebrew:**
 
 ```bash
-brew install --cask --no-quarantine broots144/tap/claude-usage-systray
+brew install --cask broots144/tap/claude-usage-systray
 ```
 
-`--no-quarantine` is needed because this fork's build is ad-hoc signed rather
-than notarized; it lets the app launch without the Gatekeeper "unverified
-developer" block. (`brew tap broots144/tap` then `brew install --cask
-claude-usage-systray` works too.)
+Because the build is ad-hoc signed (not notarized), macOS quarantines it. Clear
+that once after installing — either way:
+
+- Right-click the app in `/Applications` › **Open** › **Open**, or
+- `xattr -dr com.apple.quarantine /Applications/ClaudeUsageSystray.app`
+
+(Homebrew removed its `--no-quarantine` flag, so this is a one-time manual step
+until the app is notarized.)
 
 **Or download the DMG** from the [Releases page](https://github.com/broots144/claude-usage-systray/releases),
 open it, and drag **Claude Usage** onto the **Applications** folder in the same
