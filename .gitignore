@@ -20,3 +20,4 @@ build/
 # Release artifacts
 *.zip
 *.p12
+*.dmg
