@@ -187,15 +187,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func openSettings() {
         if settingsWindow == nil {
-            let hosting = NSHostingController(
-                rootView: SettingsView(settingsManager: settingsManager, usageService: usageService)
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 440, height: 560),
+                styleMask: [.titled, .closable, .fullSizeContentView],
+                backing: .buffered,
+                defer: false
             )
-            let window = NSWindow(contentViewController: hosting)
-            window.styleMask = [.titled, .closable]
+            // Blend the title bar into the content so the view's own "Settings"
+            // header sits beside the traffic-light controls, like a native app.
             window.titleVisibility = .hidden
             window.titlebarAppearsTransparent = true
-            window.title = "Claude Usage Settings"
+            window.isMovableByWindowBackground = true
             window.isReleasedWhenClosed = false
+
+            var view = SettingsView(settingsManager: settingsManager, usageService: usageService)
+            view.onClose = { [weak window] in window?.close() }
+            window.contentViewController = NSHostingController(rootView: view)
             window.center()
             settingsWindow = window
         }
