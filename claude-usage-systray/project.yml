@@ -13,6 +13,14 @@ settings:
     CODE_SIGN_IDENTITY: "-"
     CODE_SIGN_STYLE: Manual
     DEVELOPMENT_TEAM: ""
+  configs:
+    # Pin both architectures explicitly so release builds stay universal
+    # (Intel + Apple Silicon) even after a future Xcode drops x86_64 from
+    # ARCHS_STANDARD as Intel support is wound down. Debug is left on the
+    # default active-arch-only for fast local builds.
+    Release:
+      ARCHS: "x86_64 arm64"
+      ONLY_ACTIVE_ARCH: NO
 
 targets:
   ClaudeUsageSystray:
