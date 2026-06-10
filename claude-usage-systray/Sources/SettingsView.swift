@@ -15,6 +15,9 @@ struct SettingsView: View {
     @State private var showFiveHourReset: Bool = true
     @State private var showSevenDayReset: Bool = false
 
+    @State private var launchAtLogin: Bool = false
+    @State private var launchAtLoginError: String? = nil
+
     @State private var resetHovering = false
 
     var body: some View {
@@ -22,6 +25,22 @@ struct SettingsView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     authRow
+                    rowDivider
+
+                    // The binding's setter performs the register/unregister so
+                    // there's no onChange observer to recurse when we re-sync the
+                    // toggle to the real system status below.
+                    toggleRow(icon: "power", title: "Launch at login",
+                              description: "Start ClaudeUsageSystray automatically when you log in.",
+                              isOn: Binding(get: { launchAtLogin },
+                                            set: { applyLaunchAtLogin($0) })) { _ in }
+                    if let launchAtLoginError {
+                        Text(launchAtLoginError)
+                            .font(.system(size: 11))
+                            .foregroundColor(.red)
+                            .padding(.leading, 38)
+                            .padding(.bottom, 4)
+                    }
                     rowDivider
 
                     toggleRow(icon: "clock", title: "Show 5h session %",
@@ -188,6 +207,19 @@ struct SettingsView: View {
         showSonnet = settingsManager.settings.showSonnet
         showFiveHourReset = settingsManager.settings.showFiveHourReset
         showSevenDayReset = settingsManager.settings.showSevenDayReset
+        launchAtLogin = settingsManager.isLaunchAtLoginEnabled
+    }
+
+    private func applyLaunchAtLogin(_ enabled: Bool) {
+        do {
+            try settingsManager.setLaunchAtLogin(enabled)
+            launchAtLoginError = nil
+        } catch {
+            launchAtLoginError = "Couldn't \(enabled ? "enable" : "disable") launch at login: \(error.localizedDescription)"
+        }
+        // Re-sync to the actual system state — on success this is a no-op; on
+        // failure it snaps the toggle back to reality.
+        launchAtLogin = settingsManager.isLaunchAtLoginEnabled
     }
 
     private func resetToDefaults() {

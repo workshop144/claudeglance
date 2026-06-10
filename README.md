@@ -55,6 +55,7 @@ show just a countdown, just percentages, or any mix.
 
 | Setting | Default | Description |
 |---------|---------|-------------|
+| Launch at login | Off | Start the app automatically when you log in |
 | Show 5h % | On | Session usage in the menu bar |
 | Show 7d % | On | Weekly usage in the menu bar |
 | Show Sonnet % | Off | Weekly Sonnet usage in the menu bar |
@@ -97,6 +98,8 @@ xcodebuild test -scheme ClaudeUsageSystray -destination 'platform=macOS'
 
 This fork diverges from [adntgv/claude-usage-systray](https://github.com/adntgv/claude-usage-systray):
 
+- **Launch at login** toggle in Settings, using the modern `SMAppService` API
+  (no helper bundle, reflects the real system login-item state).
 - **Reset countdowns** in the menu bar (5h and 7d) in compact `4h12m` form.
 - **Granular per-element toggles** replacing the single "compact display"
   switch — show any mix of 5h %, 7d %, Sonnet %, and the two countdowns.

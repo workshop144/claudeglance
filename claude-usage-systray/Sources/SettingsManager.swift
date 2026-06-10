@@ -1,4 +1,5 @@
 import Foundation
+import ServiceManagement
 
 final class SettingsManager: ObservableObject {
     static let shared = SettingsManager()
@@ -34,4 +35,21 @@ final class SettingsManager: ObservableObject {
     func setShowFiveHourReset(_ enabled: Bool) { settings.showFiveHourReset = enabled }
     func setShowSevenDayReset(_ enabled: Bool) { settings.showSevenDayReset = enabled }
     func resetToDefaults() { settings = AppSettings() }
+
+    // MARK: - Launch at login
+
+    // Login-item state is owned by the system (SMAppService), not persisted in
+    // AppSettings — so the toggle always reflects reality even if the user
+    // changes it in System Settings › General › Login Items.
+    var isLaunchAtLoginEnabled: Bool {
+        SMAppService.mainApp.status == .enabled
+    }
+
+    func setLaunchAtLogin(_ enabled: Bool) throws {
+        if enabled {
+            try SMAppService.mainApp.register()
+        } else {
+            try SMAppService.mainApp.unregister()
+        }
+    }
 }
