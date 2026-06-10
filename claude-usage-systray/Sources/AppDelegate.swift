@@ -284,7 +284,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let settings = settingsManager.settings
 
         // Build the title from each enabled element in a fixed order:
-        // 5h%, 7d%, sonnet%, 5h reset, 7d reset, credit balance.
+        // 5h%, 7d%, sonnet%, 5h reset, 7d reset.
         var segments: [String] = []
 
         if settings.showFiveHour {
@@ -301,9 +301,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         if settings.showSevenDayReset, let resetAt = snapshot.sevenDayResetAt {
             segments.append(formatTimeRemainingCompact(until: resetAt))
-        }
-        if settings.showCreditBalance {
-            segments.append(snapshot.creditBalance ?? "N/A")
         }
 
         // Nothing to show — fall back to a plain icon so the status item stays visible.

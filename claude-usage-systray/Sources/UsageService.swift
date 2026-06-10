@@ -155,12 +155,6 @@ final class UsageService: ObservableObject {
                     sevenDayResetIn: sevenDayReset.map { formatTimeRemaining(until: $0) },
                     fiveHourResetAt: fiveHourReset,
                     sevenDayResetAt: sevenDayReset,
-                    // TODO: /api/oauth/usage does not currently return a spendable
-                    // credit balance. It includes an `extra_usage` object, but its
-                    // credit fields (used_credits, monthly_limit) are null in practice
-                    // and there is no dollar balance to surface. Wire this up once the
-                    // API exposes a balance; until then the menu bar shows "N/A".
-                    creditBalance: nil,
                     lastUpdated: Date(),
                     weeklySessions: 0,
                     weeklyMessages: 0,

@@ -12,7 +12,6 @@ struct AppSettings: Codable {
     var showSonnet: Bool = false
     var showFiveHourReset: Bool = true
     var showSevenDayReset: Bool = false
-    var showCreditBalance: Bool = false
 
     var isConfigured: Bool { true }
 
@@ -31,7 +30,6 @@ struct AppSettings: Codable {
         showSonnet = try c.decodeIfPresent(Bool.self, forKey: .showSonnet) ?? false
         showFiveHourReset = try c.decodeIfPresent(Bool.self, forKey: .showFiveHourReset) ?? true
         showSevenDayReset = try c.decodeIfPresent(Bool.self, forKey: .showSevenDayReset) ?? false
-        showCreditBalance = try c.decodeIfPresent(Bool.self, forKey: .showCreditBalance) ?? false
     }
 }
 
@@ -43,7 +41,6 @@ struct UsageSnapshot {
     let sevenDayResetIn: String?
     let fiveHourResetAt: Date?
     let sevenDayResetAt: Date?
-    let creditBalance: String?
     let lastUpdated: Date
     let weeklySessions: Int
     let weeklyMessages: Int
@@ -62,7 +59,6 @@ struct UsageSnapshot {
             sevenDayResetIn: nil,
             fiveHourResetAt: nil,
             sevenDayResetAt: nil,
-            creditBalance: nil,
             lastUpdated: Date(),
             weeklySessions: 0,
             weeklyMessages: 0,

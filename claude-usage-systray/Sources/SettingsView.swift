@@ -14,7 +14,6 @@ struct SettingsView: View {
     @State private var showSonnet: Bool = false
     @State private var showFiveHourReset: Bool = true
     @State private var showSevenDayReset: Bool = false
-    @State private var showCreditBalance: Bool = false
 
     @State private var resetHovering = false
 
@@ -40,9 +39,6 @@ struct SettingsView: View {
                     toggleRow(icon: "timer", title: "Show 7d reset countdown",
                               description: "Show time remaining until the weekly limit resets.",
                               isOn: $showSevenDayReset) { settingsManager.setShowSevenDayReset($0) }
-                    toggleRow(icon: "dollarsign.circle", title: "Show API credit balance",
-                              description: "Show your remaining API credit balance.",
-                              isOn: $showCreditBalance) { settingsManager.setShowCreditBalance($0) }
                     rowDivider
 
                     toggleRow(icon: "bell", title: "Enable usage alerts",
@@ -192,7 +188,6 @@ struct SettingsView: View {
         showSonnet = settingsManager.settings.showSonnet
         showFiveHourReset = settingsManager.settings.showFiveHourReset
         showSevenDayReset = settingsManager.settings.showSevenDayReset
-        showCreditBalance = settingsManager.settings.showCreditBalance
     }
 
     private func resetToDefaults() {
