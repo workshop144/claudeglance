@@ -219,25 +219,58 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if settingsWindow == nil {
             let window = NSWindow(
                 contentRect: NSRect(x: 0, y: 0, width: 440, height: 560),
-                styleMask: [.titled, .closable, .fullSizeContentView],
+                styleMask: [.titled, .closable],
                 backing: .buffered,
                 defer: false
             )
-            // Blend the title bar into the content so the view's own "Settings"
-            // header sits beside the traffic-light controls, like a native app.
             window.titleVisibility = .hidden
             window.titlebarAppearsTransparent = true
-            window.isMovableByWindowBackground = true
             window.isReleasedWhenClosed = false
-
-            var view = SettingsView(settingsManager: settingsManager, usageService: usageService)
-            view.onClose = { [weak window] in window?.close() }
-            window.contentViewController = NSHostingController(rootView: view)
+            window.contentViewController = NSHostingController(
+                rootView: SettingsView(settingsManager: settingsManager, usageService: usageService)
+            )
+            // "Settings" and a close "X" live in the title bar itself, beside the
+            // traffic lights. The 38pt-tall accessories raise the title bar so the
+            // lights center vertically. Content sits below — no scroll bleed.
+            window.addTitlebarAccessoryViewController(settingsTitleAccessory())
+            window.addTitlebarAccessoryViewController(settingsCloseAccessory(for: window))
             window.center()
             settingsWindow = window
         }
         NSApp.activate(ignoringOtherApps: true)
         settingsWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    private func settingsTitleAccessory() -> NSTitlebarAccessoryViewController {
+        let label = NSTextField(labelWithString: "Settings")
+        label.font = .systemFont(ofSize: 14, weight: .semibold)
+        label.sizeToFit()
+        let height: CGFloat = 38
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: label.frame.width + 12, height: height))
+        label.setFrameOrigin(NSPoint(x: 6, y: (height - label.frame.height) / 2))
+        container.addSubview(label)
+        let vc = NSTitlebarAccessoryViewController()
+        vc.view = container
+        vc.layoutAttribute = .leading
+        return vc
+    }
+
+    private func settingsCloseAccessory(for window: NSWindow) -> NSTitlebarAccessoryViewController {
+        let image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close")?
+            .withSymbolConfiguration(.init(pointSize: 12, weight: .semibold))
+        let button = NSButton(image: image ?? NSImage(), target: window,
+                              action: #selector(NSWindow.performClose(_:)))
+        button.isBordered = false
+        button.contentTintColor = .secondaryLabelColor
+        button.frame = NSRect(x: 0, y: 0, width: 22, height: 22)
+        let height: CGFloat = 38
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 40, height: height))
+        button.setFrameOrigin(NSPoint(x: 8, y: (height - 22) / 2))
+        container.addSubview(button)
+        let vc = NSTitlebarAccessoryViewController()
+        vc.view = container
+        vc.layoutAttribute = .trailing
+        return vc
     }
 
     @objc private func settingsDidChange() {

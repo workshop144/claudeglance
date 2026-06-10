@@ -5,9 +5,6 @@ struct SettingsView: View {
     @ObservedObject var settingsManager: SettingsManager
     @ObservedObject var usageService: UsageService
 
-    /// Closes the hosting window. Set by AppDelegate when the window is created.
-    var onClose: () -> Void = {}
-
     @State private var warningThreshold: Double = 80
     @State private var criticalThreshold: Double = 90
     @State private var notificationsEnabled: Bool = true
@@ -19,11 +16,10 @@ struct SettingsView: View {
     @State private var showSevenDayReset: Bool = false
     @State private var showCreditBalance: Bool = false
 
+    @State private var resetHovering = false
+
     var body: some View {
         VStack(spacing: 0) {
-            titleBar
-            Divider()
-
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     authRow
@@ -55,14 +51,33 @@ struct SettingsView: View {
 
                     sliderRow(icon: "exclamationmark.triangle", title: "Warning threshold",
                               description: "Warn at \(Int(warningThreshold))% of weekly usage.",
-                              value: $warningThreshold, range: 50...95) {
-                        settingsManager.setWarningThreshold($0)
-                    }
+                              value: $warningThreshold) { settingsManager.setWarningThreshold($0) }
                     sliderRow(icon: "exclamationmark.octagon", title: "Critical threshold",
                               description: "Alert at \(Int(criticalThreshold))% of weekly usage.",
-                              value: $criticalThreshold, range: 60...100) {
-                        settingsManager.setCriticalThreshold($0)
+                              value: $criticalThreshold) { settingsManager.setCriticalThreshold($0) }
+
+                    HStack {
+                        Spacer()
+                        Button(action: resetToDefaults) {
+                            Text("Reset to Defaults")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundColor(resetHovering ? .white : .primary)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 8)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .fill(resetHovering ? Color.blue : Color(NSColor.controlBackgroundColor))
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .stroke(Color.gray.opacity(0.35), lineWidth: resetHovering ? 0 : 1)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .onHover { resetHovering = $0 }
                     }
+                    .padding(.top, 28)
+                    .padding(.bottom, 4)
                 }
                 .padding(.horizontal, 20)
                 .padding(.vertical, 16)
@@ -73,26 +88,6 @@ struct SettingsView: View {
         }
         .frame(width: 440, height: 560)
         .onAppear { loadSettings() }
-    }
-
-    // MARK: - Title bar
-
-    private var titleBar: some View {
-        HStack {
-            Text("Settings")
-                .font(.system(size: 15, weight: .semibold))
-            Spacer()
-            Button(action: onClose) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(.secondary)
-            }
-            .buttonStyle(.plain)
-        }
-        // Leading inset clears the window's traffic-light controls.
-        .padding(.leading, 78)
-        .padding(.trailing, 18)
-        .frame(height: 48)
     }
 
     // MARK: - Rows
@@ -132,6 +127,7 @@ struct SettingsView: View {
             Spacer()
             Toggle("", isOn: isOn)
                 .toggleStyle(.switch)
+                .controlSize(.small)
                 .labelsHidden()
                 .onChange(of: isOn.wrappedValue) { onChange($0) }
         }
@@ -139,8 +135,7 @@ struct SettingsView: View {
     }
 
     private func sliderRow(icon: String, title: String, description: String,
-                           value: Binding<Double>, range: ClosedRange<Double>,
-                           onChange: @escaping (Double) -> Void) -> some View {
+                           value: Binding<Double>, onChange: @escaping (Double) -> Void) -> some View {
         HStack(alignment: .top, spacing: 14) {
             rowIcon(icon)
             VStack(alignment: .leading, spacing: 4) {
@@ -149,9 +144,18 @@ struct SettingsView: View {
                 Text(description)
                     .font(.system(size: 11))
                     .foregroundColor(.secondary)
-                Slider(value: value, in: range, step: 5)
+                Slider(value: value, in: 0...100, step: 5)
                     .onChange(of: value.wrappedValue) { onChange($0) }
                     .padding(.top, 2)
+                // Labeled ticks every 20% so the thumb position reads cleanly.
+                HStack(spacing: 0) {
+                    ForEach(Array(stride(from: 0, through: 100, by: 20)), id: \.self) { n in
+                        Text("\(n)")
+                        if n != 100 { Spacer() }
+                    }
+                }
+                .font(.system(size: 9))
+                .foregroundColor(.secondary)
             }
         }
         .padding(.vertical, 8)
@@ -174,9 +178,6 @@ struct SettingsView: View {
                 .font(.system(size: 11))
                 .foregroundColor(.secondary)
             Spacer()
-            Button("Reset to Defaults") { resetToDefaults() }
-                .buttonStyle(.link)
-                .font(.system(size: 11))
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 10)
