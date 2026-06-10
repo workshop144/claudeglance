@@ -92,6 +92,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             addedStatusRow = true
         }
 
+        // "Usage credits" on/off — read-only state from the OAuth usage endpoint
+        // (Anthropic exposes no API to toggle it), so the row links to the
+        // claude.ai setting where it's actually flipped. Hidden until the state
+        // is known to avoid flashing a wrong color on first launch.
+        if settingsManager.settings.showUsageCredits, let enabled = snapshot.extraUsageEnabled {
+            menu.addItem(linkItem(title: "Usage credits: \(enabled ? "On" : "Off")",
+                                  dotColor: enabled ? .systemGreen : .systemRed,
+                                  action: #selector(openUsageCredits)))
+            if enabled, let util = snapshot.extraUsageUtilization {
+                menu.addItem(secondaryItem("\(util)% of credit limit used"))
+            }
+            addedStatusRow = true
+        }
+
         if addedStatusRow {
             menu.addItem(.separator())
         }
@@ -286,6 +300,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func openStatusPage() {
         if let url = URL(string: "https://status.claude.com") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    @objc private func openUsageCredits() {
+        if let url = URL(string: "https://claude.ai/settings/usage") {
             NSWorkspace.shared.open(url)
         }
     }

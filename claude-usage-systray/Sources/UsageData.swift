@@ -19,6 +19,9 @@ struct AppSettings: Codable {
     // "Today" activity section in the menu, from local Claude Code logs.
     var showActivity: Bool = true
 
+    // "Usage credits" on/off status row in the menu (extra_usage from OAuth).
+    var showUsageCredits: Bool = true
+
     var isConfigured: Bool { true }
 
     init() {}
@@ -38,6 +41,7 @@ struct AppSettings: Codable {
         showSevenDayReset = try c.decodeIfPresent(Bool.self, forKey: .showSevenDayReset) ?? false
         showHealth = try c.decodeIfPresent(Bool.self, forKey: .showHealth) ?? true
         showActivity = try c.decodeIfPresent(Bool.self, forKey: .showActivity) ?? true
+        showUsageCredits = try c.decodeIfPresent(Bool.self, forKey: .showUsageCredits) ?? true
     }
 }
 
@@ -53,6 +57,12 @@ struct UsageSnapshot {
     let weeklySessions: Int
     let weeklyMessages: Int
     let weeklyTokens: Int
+
+    // "Usage credits" (extra_usage) state from the OAuth usage endpoint.
+    // nil = the response carried no extra_usage object (state unknown → hide row).
+    let extraUsageEnabled: Bool?
+    // Percent of the monthly credit limit used, when enabled and reported.
+    let extraUsageUtilization: Int?
 
     var displayText: String { "\(sevenDayUtilization)%" }
     var menuBarPrimaryText: String { "5hr: \(fiveHourUtilization)%" }
@@ -70,7 +80,9 @@ struct UsageSnapshot {
             lastUpdated: Date(),
             weeklySessions: 0,
             weeklyMessages: 0,
-            weeklyTokens: 0
+            weeklyTokens: 0,
+            extraUsageEnabled: nil,
+            extraUsageUtilization: nil
         )
     }
 }

@@ -35,11 +35,26 @@ struct OAuthUsageResponse: Decodable {
     let fiveHour: UsagePeriod?
     let sevenDay: UsagePeriod?
     let sevenDaySonnet: UsagePeriod?
+    let extraUsage: ExtraUsage?
 
     enum CodingKeys: String, CodingKey {
         case fiveHour = "five_hour"
         case sevenDay = "seven_day"
         case sevenDaySonnet = "seven_day_sonnet"
+        case extraUsage = "extra_usage"
+    }
+
+    /// "Usage credits" — pay-as-you-go overage that keeps Claude working past a
+    /// plan limit. `isEnabled` mirrors the claude.ai "Usage credits" toggle; the
+    /// remaining fields are null until credits are enabled and used.
+    struct ExtraUsage: Decodable {
+        let isEnabled: Bool
+        let utilization: Double?
+
+        enum CodingKeys: String, CodingKey {
+            case isEnabled = "is_enabled"
+            case utilization
+        }
     }
 
     struct UsagePeriod: Decodable {
@@ -162,7 +177,9 @@ final class UsageService: ObservableObject {
                     lastUpdated: Date(),
                     weeklySessions: 0,
                     weeklyMessages: 0,
-                    weeklyTokens: 0
+                    weeklyTokens: 0,
+                    extraUsageEnabled: response.extraUsage?.isEnabled,
+                    extraUsageUtilization: response.extraUsage?.utilization.map { Int($0) }
                 )
 
                 await MainActor.run {
