@@ -1,4 +1,5 @@
 import SwiftUI
+import Charts
 
 /// The three sections of the dashboard window. Menu rows deep-link to one of
 /// these, and `DashboardModel.selectedTab` drives the segmented switcher.
@@ -16,10 +17,11 @@ final class DashboardModel: ObservableObject {
 }
 
 /// One tabbed window (same shell as Settings) surfacing the richer views of the
-/// data we glance at in the menu. Tabs are placeholders in v1.4.0 — each fills in
-/// with its charts in the following increments (Usage → Cost → Activity).
+/// data we glance at in the menu.
 struct DashboardView: View {
     @ObservedObject var model: DashboardModel
+    @ObservedObject var usage: UsageService
+    @ObservedObject var history: HistoryStore
 
     var body: some View {
         VStack(spacing: 0) {
@@ -42,7 +44,7 @@ struct DashboardView: View {
                     case .cost:
                         placeholder("Cost", "Today / month / projection, per-model breakdown & spend chart")
                     case .usage:
-                        placeholder("Usage", "5h / 7d / Sonnet utilization history & current state")
+                        UsageTabView(usage: usage, history: history)
                     }
                 }
                 .frame(maxWidth: .infinity)
@@ -61,5 +63,71 @@ struct DashboardView: View {
                 .padding(.top, 4)
         }
         .padding(.vertical, 64)
+    }
+}
+
+// MARK: - Usage tab
+
+/// Current 5h/7d/Sonnet state plus a monochrome line chart of the recorded
+/// utilization history (from HistoryStore).
+struct UsageTabView: View {
+    @ObservedObject var usage: UsageService
+    @ObservedObject var history: HistoryStore
+
+    var body: some View {
+        let snap = usage.currentUsage
+        VStack(alignment: .leading, spacing: 20) {
+            HStack(spacing: 12) {
+                statCard("Session · 5h", snap.fiveHourUtilization, snap.fiveHourResetIn)
+                statCard("Weekly · 7d", snap.sevenDayUtilization, snap.sevenDayResetIn)
+                if let sonnet = snap.sevenDaySonnetUtilization {
+                    statCard("Sonnet · 7d", sonnet, nil)
+                }
+            }
+
+            Divider()
+
+            Text("Utilization history").font(.system(size: 13, weight: .semibold))
+            if history.samples.count >= 2 {
+                Chart {
+                    ForEach(history.samples, id: \.t) { s in
+                        LineMark(x: .value("Time", s.t), y: .value("%", s.h5))
+                            .foregroundStyle(by: .value("Window", "5h"))
+                    }
+                    ForEach(history.samples, id: \.t) { s in
+                        LineMark(x: .value("Time", s.t), y: .value("%", s.h7))
+                            .foregroundStyle(by: .value("Window", "7d"))
+                    }
+                }
+                .chartYScale(domain: 0...100)
+                .chartForegroundStyleScale(["5h": Color.orange, "7d": Color.blue])
+                .frame(height: 200)
+            } else {
+                collecting
+            }
+        }
+    }
+
+    private func statCard(_ title: String, _ pct: Int, _ resetIn: String?) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title).font(.system(size: 11)).foregroundColor(.secondary)
+            Text("\(pct)%").font(.system(size: 24, weight: .semibold)).monospacedDigit()
+            Text(resetIn.map { "resets in \($0)" } ?? " ")
+                .font(.system(size: 10)).foregroundColor(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color(NSColor.controlBackgroundColor)))
+    }
+
+    private var collecting: some View {
+        VStack(spacing: 6) {
+            Text("Collecting usage history…").font(.system(size: 12)).foregroundColor(.secondary)
+            Text("The chart fills in as ClaudeGlance records each poll (every ~5 min). History is kept for a week.")
+                .font(.system(size: 11)).foregroundColor(.secondary).opacity(0.7)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 44)
     }
 }

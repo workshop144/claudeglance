@@ -354,6 +354,16 @@ final class HistoryStoreTests: XCTestCase {
         XCTAssertEqual(kept.first?.h5, 30)
     }
 
+    func testHistorySampleDecodesLegacyFileWithoutSonnet() throws {
+        // Files written before v1.4.1 have no hSonnet — must still decode (nil).
+        let legacy = #"{"t":0,"h5":10,"h7":20}"#.data(using: .utf8)!
+        let s = try JSONDecoder().decode(HistorySample.self, from: legacy)
+        XCTAssertEqual(s.h5, 10)
+        XCTAssertNil(s.hSonnet)
+        let withSonnet = #"{"t":0,"h5":10,"h7":20,"hSonnet":7}"#.data(using: .utf8)!
+        XCTAssertEqual(try JSONDecoder().decode(HistorySample.self, from: withSonnet).hSonnet, 7)
+    }
+
     func testRecentFiveHourReturnsValuesInWindow() {
         let samples = [
             HistorySample(t: now.addingTimeInterval(-7200), h5: 5, h7: 0),   // outside 1h window
