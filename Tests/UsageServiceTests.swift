@@ -341,6 +341,35 @@ final class BurnRateTests: XCTestCase {
     }
 }
 
+final class ElapsedFractionTests: XCTestCase {
+
+    private let now = Date(timeIntervalSince1970: 1_700_000_000)
+    private let window: TimeInterval = 5 * 60 * 60   // 5 hours
+
+    func testHalfwayThroughWindow() {
+        // Resets in 2.5h of a 5h window → 50% elapsed.
+        let resetAt = now.addingTimeInterval(2.5 * 60 * 60)
+        XCTAssertEqual(elapsedFraction(resetAt: resetAt, windowLength: window, now: now), 0.5, accuracy: 0.0001)
+    }
+
+    func testFreshWindowIsZero() {
+        // Resets a full window from now → nothing elapsed yet.
+        let resetAt = now.addingTimeInterval(window)
+        XCTAssertEqual(elapsedFraction(resetAt: resetAt, windowLength: window, now: now), 0.0, accuracy: 0.0001)
+    }
+
+    func testAtResetIsOne() {
+        XCTAssertEqual(elapsedFraction(resetAt: now, windowLength: window, now: now), 1.0, accuracy: 0.0001)
+    }
+
+    func testClampsBeyondBounds() {
+        // A reset already in the past clamps to fully elapsed, not >1.
+        XCTAssertEqual(elapsedFraction(resetAt: now.addingTimeInterval(-3600), windowLength: window, now: now), 1.0)
+        // A reset further out than the window clamps to 0, not negative.
+        XCTAssertEqual(elapsedFraction(resetAt: now.addingTimeInterval(window + 3600), windowLength: window, now: now), 0.0)
+    }
+}
+
 final class AppendingSampleTests: XCTestCase {
 
     private let base = Date(timeIntervalSince1970: 1_700_000_000)

@@ -506,9 +506,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 attributes: [.font: font, .foregroundColor: healthColor(for: statusService.status.indicator)]))
         }
 
+        // Pace marker position: how far through the 5-hour window we are.
+        let pace = snapshot.fiveHourResetAt.map {
+            elapsedFraction(resetAt: $0, windowLength: 5 * 60 * 60)
+        }
         let ringImage: NSImage? = settings.showRingIcon
             ? menuBarRingImage(fiveHourPercent: snapshot.fiveHourUtilization,
-                               sevenDayPercent: snapshot.sevenDayUtilization)
+                               sevenDayPercent: snapshot.sevenDayUtilization,
+                               fiveHourPaceFraction: pace)
             : nil
 
         // With the ring enabled it leads the title — or stands alone if every

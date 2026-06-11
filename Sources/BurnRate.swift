@@ -54,6 +54,15 @@ func estimateBurn(from samples: [UsageSample], minSpan: TimeInterval = 240) -> B
     return BurnEstimate(percentPerHour: perHour, secondsToLimit: secondsToLimit)
 }
 
+/// Fraction (0...1) of a fixed-length window that has elapsed, given when it
+/// resets. Used to place the "pace" marker on the ring — if usage % is past this,
+/// you're burning faster than the clock.
+func elapsedFraction(resetAt: Date, windowLength: TimeInterval, now: Date = Date()) -> Double {
+    guard windowLength > 0 else { return 0 }
+    let elapsed = windowLength - resetAt.timeIntervalSince(now)
+    return min(1, max(0, elapsed / windowLength))
+}
+
 /// Locale-aware short clock time for an ETA, e.g. "3:47 PM" or "15:47".
 func formatClockTime(_ date: Date) -> String {
     let f = DateFormatter()
