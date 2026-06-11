@@ -8,6 +8,12 @@ struct HistorySample: Codable, Equatable {
     let t: Date
     let h5: Int
     let h7: Int
+    // Sonnet-weekly %, optional so files written before this field still decode.
+    let hSonnet: Int?
+
+    init(t: Date, h5: Int, h7: Int, hSonnet: Int? = nil) {
+        self.t = t; self.h5 = h5; self.h7 = h7; self.hSonnet = hSonnet
+    }
 }
 
 /// Drops samples older than `cutoff` — pure, testable.
@@ -23,18 +29,18 @@ func recentFiveHour(_ samples: [HistorySample], within window: TimeInterval, now
 /// Records the OAuth 5h/7d utilization on each poll and persists it to Application
 /// Support, pruned to a rolling window. The in-memory `samples` is the read path
 /// (touched only on the main thread, like the menu); disk writes are async.
-final class HistoryStore {
+final class HistoryStore: ObservableObject {
     static let shared = HistoryStore()
 
-    private(set) var samples: [HistorySample] = []
+    @Published private(set) var samples: [HistorySample] = []
     private let retention: TimeInterval = 7 * 24 * 3600   // keep a week
     private let io = DispatchQueue(label: "io.github.broots144.ClaudeGlance.history", qos: .utility)
 
     private init() { samples = HistoryStore.load(from: HistoryStore.fileURL) }
 
     /// Append a reading (main thread), prune the in-memory window, persist async.
-    func record(fiveHour: Int, sevenDay: Int, at date: Date = Date()) {
-        samples.append(HistorySample(t: date, h5: fiveHour, h7: sevenDay))
+    func record(fiveHour: Int, sevenDay: Int, sonnet: Int? = nil, at date: Date = Date()) {
+        samples.append(HistorySample(t: date, h5: fiveHour, h7: sevenDay, hSonnet: sonnet))
         samples = prunedHistory(samples, since: date.addingTimeInterval(-retention))
         let snapshot = samples
         io.async { HistoryStore.save(snapshot, to: HistoryStore.fileURL) }

@@ -28,19 +28,35 @@ colored **service-health dot** (🟢 operational → 🔴 outage) sourced from t
 public Claude status page. The whole status item **dims when the data goes
 stale** (no refresh in 12+ minutes), so old numbers never read as current.
 
-Open the menu for the full breakdown:
+Open the menu for the glance:
 
 - Each period's exact reset time and the current service status.
 - **Burn rate & run-out ETA** — when your 5h usage is climbing, a line like
   `On pace for 100% by 3:47 PM` (or `Using ~12%/hr`) projected from the trend.
 - **Usage credits in dollars** — when pay-as-you-go credits are on, your overage
   spend against the monthly cap (e.g. `$1.20 / $50 (2%)`).
-- **Today's activity** from local Claude Code logs — tokens, active time, and
-  messages, plus today's and this-month's **API-equivalent cost** (+ projection),
-  how much **caching saved** you, your usage **streak** with a 14-day activity
-  strip, and a **5h-trend sparkline** from locally-recorded history.
+- **A two-line "Today" glance** from local Claude Code logs — `Today: 1.2M tokens
+  · 5d streak` and `≈ $3.40 today · $42 this month`. Each row (and the 5h/7d rows)
+  **deep-links into the dashboard** on the matching tab — they bold on hover.
 
 Mirrors the data on `claude.ai/settings/usage`.
+
+## Dashboard
+
+Click any usage/cost/activity row in the menu — or pick **Dashboard** — to open a
+single tabbed window (built with SwiftUI + Swift Charts) that holds the richer
+detail the menu deliberately leaves out:
+
+- **Usage** — a 5h/7d utilization **history chart** recorded over time, plus the
+  current session/weekly/Sonnet cards and reset countdowns.
+- **Cost** — today / month-to-date / projected **spend cards**, a **per-model
+  breakdown** (e.g. Opus 4.8 vs Sonnet), and a daily-spend chart. All
+  API-equivalent (tokens × model price; a flat plan isn't billed per token).
+- **Activity** — a **GitHub-style contribution heatmap**, current/longest streak
+  and active-day stats, and a daily-token chart.
+
+Everything in the dashboard is computed locally — the cost/activity tabs from your
+`~/.claude/projects` logs, the usage history from ClaudeGlance's own recordings.
 
 ## Requirements
 
@@ -145,9 +161,11 @@ xcodebuild test -scheme ClaudeGlance -destination 'platform=macOS'
 
 This fork diverges from [adntgv/claude-usage-systray](https://github.com/adntgv/claude-usage-systray):
 
-- **Today's activity** — a menu section with today's token usage, active time,
-  message count, cache %, and a vs-yesterday delta, parsed from the local Claude
-  Code session logs (`~/.claude/projects`). No auth, no Keychain, no network.
+- **Today's activity + dashboard** — a two-line "Today" glance in the menu
+  (tokens · streak; cost today · this month), backed by a full **dashboard window**
+  (Activity / Cost / Usage tabs with charts, a heatmap, and a per-model cost
+  breakdown), all parsed from the local Claude Code session logs
+  (`~/.claude/projects`). No auth, no Keychain, no network.
 - **Service-health badge** — a colored dot from the public Claude status page
   (`status.claude.com`), in the menu bar and menu. No auth, no Keychain.
 - **Launch at login** toggle in Settings, using the modern `SMAppService` API

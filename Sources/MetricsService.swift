@@ -17,11 +17,15 @@ struct UsageMetrics {
     let monthSavingsUSD: Double
     // Tokens per day over the recent window, for streaks and the activity strip.
     let dailyTokens: [Date: Int]
+    // Month-to-date spend grouped by display model name (Cost tab breakdown).
+    let costByModel: [String: Double]
+    // API-equivalent spend per day over the recent window (Cost tab chart).
+    let dailyCost: [Date: Double]
 
     static let empty = UsageMetrics(todayTokens: 0, todayCachePercent: 0,
                                     todayActiveSeconds: 0, todayMessages: 0, yesterdayTokens: 0,
                                     todayCostUSD: 0, monthCostUSD: 0, monthSavingsUSD: 0,
-                                    dailyTokens: [:])
+                                    dailyTokens: [:], costByModel: [:], dailyCost: [:])
 
     var hasData: Bool { todayMessages > 0 }
 }
@@ -104,6 +108,8 @@ func aggregateMetrics(jsonlContents: [String], now: Date) -> UsageMetrics {
     var todayTimes: [Date] = []
     var yesterdayTokens = 0
     var dailyTokens: [Date: Int] = [:]
+    var costByModel: [String: Double] = [:]
+    var dailyCost: [Date: Double] = [:]
     let decoder = JSONDecoder()
 
     for content in jsonlContents {
@@ -124,29 +130,31 @@ func aggregateMetrics(jsonlContents: [String], now: Date) -> UsageMetrics {
             let total = (usage.input_tokens ?? 0) + (usage.output_tokens ?? 0)
                 + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0)
 
+            let model = entry.message?.model ?? ""
+            let input = usage.input_tokens ?? 0
+            let output = usage.output_tokens ?? 0
+            let cacheC = usage.cache_creation_input_tokens ?? 0
+            let cacheR = usage.cache_read_input_tokens ?? 0
+
             if date >= lookbackStart {
-                dailyTokens[cal.startOfDay(for: date), default: 0] += total
+                let day = cal.startOfDay(for: date)
+                dailyTokens[day, default: 0] += total
+                dailyCost[day, default: 0] += tokenCostUSD(model: model, input: input,
+                    output: output, cacheCreation: cacheC, cacheRead: cacheR)
             }
 
             if date >= startMonth {
-                let cost = tokenCostUSD(
-                    model: entry.message?.model ?? "",
-                    input: usage.input_tokens ?? 0,
-                    output: usage.output_tokens ?? 0,
-                    cacheCreation: usage.cache_creation_input_tokens ?? 0,
-                    cacheRead: usage.cache_read_input_tokens ?? 0)
+                let cost = tokenCostUSD(model: model, input: input, output: output,
+                                        cacheCreation: cacheC, cacheRead: cacheR)
                 monthCost += cost
-                monthSavings += tokenCostUncachedUSD(
-                    model: entry.message?.model ?? "",
-                    input: usage.input_tokens ?? 0,
-                    output: usage.output_tokens ?? 0,
-                    cacheCreation: usage.cache_creation_input_tokens ?? 0,
-                    cacheRead: usage.cache_read_input_tokens ?? 0) - cost
+                costByModel[displayModelName(for: model), default: 0] += cost
+                monthSavings += tokenCostUncachedUSD(model: model, input: input, output: output,
+                    cacheCreation: cacheC, cacheRead: cacheR) - cost
                 if date >= startToday {
-                    tIn += usage.input_tokens ?? 0
-                    tOut += usage.output_tokens ?? 0
-                    tCacheR += usage.cache_read_input_tokens ?? 0
-                    tCacheC += usage.cache_creation_input_tokens ?? 0
+                    tIn += input
+                    tOut += output
+                    tCacheR += cacheR
+                    tCacheC += cacheC
                     tMsgs += 1
                     todayCost += cost
                     todayTimes.append(date)
@@ -170,7 +178,9 @@ func aggregateMetrics(jsonlContents: [String], now: Date) -> UsageMetrics {
         todayCostUSD: todayCost,
         monthCostUSD: monthCost,
         monthSavingsUSD: monthSavings,
-        dailyTokens: dailyTokens
+        dailyTokens: dailyTokens,
+        costByModel: costByModel,
+        dailyCost: dailyCost
     )
 }
 

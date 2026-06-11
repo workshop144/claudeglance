@@ -336,6 +336,32 @@ final class ActivityTests: XCTestCase {
         // Out-of-range clamps rather than overflowing the level table.
         XCTAssertEqual(sparkline([150, -10], maxValue: 100), "█▁")
     }
+
+    // Nov 14 2023 is a Tuesday → its week starts Sunday Nov 12.
+    func testHeatmapGridShapeAndWeekAlignment() {
+        let grid = heatmapGrid(dailyTokens: [:], weeks: 2, endingAt: day(2023, 11, 14), calendar: cal)
+        XCTAssertEqual(grid.count, 2)                       // two week-columns
+        XCTAssertTrue(grid.allSatisfy { $0.count == 7 })    // Sun…Sat rows
+        // Oldest column first; its top cell (Sunday) is Nov 5.
+        XCTAssertEqual(grid.first?.first?.date, day(2023, 11, 5))
+        // Current week's Tuesday row (index 2) is today, Nov 14.
+        XCTAssertEqual(grid.last?[2].date, day(2023, 11, 14))
+    }
+
+    func testHeatmapGridFlagsFutureDays() {
+        let grid = heatmapGrid(dailyTokens: [:], weeks: 1, endingAt: day(2023, 11, 14), calendar: cal)
+        XCTAssertFalse(grid[0][2].isFuture)   // Tue Nov 14 (today)
+        XCTAssertTrue(grid[0][3].isFuture)    // Wed Nov 15 (future)
+        XCTAssertTrue(grid[0][6].isFuture)    // Sat Nov 18 (future)
+    }
+
+    func testHeatmapGridFillsTokensFromDailyMap() {
+        let tokens = [day(2023, 11, 14): 1234, day(2023, 11, 13): 0]
+        let grid = heatmapGrid(dailyTokens: tokens, weeks: 1, endingAt: day(2023, 11, 14), calendar: cal)
+        XCTAssertEqual(grid[0][2].tokens, 1234)   // Tue Nov 14
+        XCTAssertEqual(grid[0][1].tokens, 0)      // Mon Nov 13 (present, but zero)
+        XCTAssertEqual(grid[0][0].tokens, 0)      // Sun Nov 12 (absent → 0)
+    }
 }
 
 // MARK: - History store (persisted utilization)
@@ -352,6 +378,16 @@ final class HistoryStoreTests: XCTestCase {
         let kept = prunedHistory(samples, since: now.addingTimeInterval(-120))
         XCTAssertEqual(kept.count, 1)
         XCTAssertEqual(kept.first?.h5, 30)
+    }
+
+    func testHistorySampleDecodesLegacyFileWithoutSonnet() throws {
+        // Files written before v1.4.1 have no hSonnet — must still decode (nil).
+        let legacy = #"{"t":0,"h5":10,"h7":20}"#.data(using: .utf8)!
+        let s = try JSONDecoder().decode(HistorySample.self, from: legacy)
+        XCTAssertEqual(s.h5, 10)
+        XCTAssertNil(s.hSonnet)
+        let withSonnet = #"{"t":0,"h5":10,"h7":20,"hSonnet":7}"#.data(using: .utf8)!
+        XCTAssertEqual(try JSONDecoder().decode(HistorySample.self, from: withSonnet).hSonnet, 7)
     }
 
     func testRecentFiveHourReturnsValuesInWindow() {
@@ -404,6 +440,20 @@ final class PricingTests: XCTestCase {
         // Day 10 of November (30 days), $100 spent → $10/day × 30 = $300 projected.
         let day10 = cal.date(from: DateComponents(year: 2023, month: 11, day: 10))!
         XCTAssertEqual(monthlyProjection(monthCostUSD: 100, now: day10, calendar: cal), 300, accuracy: 1e-6)
+    }
+
+    func testDisplayModelNameExtractsOpusMinor() {
+        XCTAssertEqual(displayModelName(for: "claude-opus-4-8-2026"), "Opus 4.8")
+        XCTAssertEqual(displayModelName(for: "claude-opus-4-1-20250805"), "Opus 4.1")
+    }
+
+    func testDisplayModelNameFamilyFallbacks() {
+        XCTAssertEqual(displayModelName(for: "claude-fable-5"), "Fable 5")
+        XCTAssertEqual(displayModelName(for: "claude-sonnet-4-6"), "Sonnet")
+        XCTAssertEqual(displayModelName(for: "claude-3-5-haiku-20241022"), "Haiku")
+        XCTAssertEqual(displayModelName(for: "claude-haiku-4-5"), "Haiku 4.5")
+        XCTAssertEqual(displayModelName(for: "claude-3-opus-20240229"), "Opus 3")
+        XCTAssertEqual(displayModelName(for: ""), "Unknown")
     }
 }
 
@@ -996,5 +1046,35 @@ final class AggregateMetricsTests: XCTestCase {
         let dup = line(ts: todayStamp(36_000), id: "shared", reqId: "r", input: 100)
         let m = aggregateMetrics(jsonlContents: [dup, dup], now: now)
         XCTAssertEqual(m.todayMessages, 1)
+    }
+
+    func testCostByModelGroupsMonthToDateByDisplayName() {
+        // Opus 4.8 today ($30) + earlier-this-month Opus 4.8 ($5) collapse into one
+        // "Opus 4.8" bucket; a Sonnet line lands in its own bucket; last month excluded.
+        let opusToday = line(ts: todayStamp(36_000), id: "a", reqId: "1",
+                             input: 1_000_000, output: 1_000_000, model: "claude-opus-4-8")   // $30
+        let opusEarlier = line(ts: todayStamp(-8 * 86_400), id: "b", reqId: "2",
+                               input: 1_000_000, model: "claude-opus-4-8")                     // $5
+        let sonnet = line(ts: todayStamp(36_100), id: "c", reqId: "3",
+                          input: 1_000_000, model: "claude-sonnet-4-6")                        // $3
+        let lastMonth = line(ts: todayStamp(-25 * 86_400), id: "d", reqId: "4",
+                             input: 1_000_000, model: "claude-opus-4-8")                       // excluded
+        let m = aggregateMetrics(jsonlContents: ["\(opusToday)\n\(opusEarlier)\n\(sonnet)\n\(lastMonth)"], now: now)
+        XCTAssertEqual(m.costByModel["Opus 4.8"] ?? 0, 35, accuracy: 1e-6)
+        XCTAssertEqual(m.costByModel["Sonnet"] ?? 0, 3, accuracy: 1e-6)
+        XCTAssertNil(m.costByModel["Opus 4"])  // nothing leaked from last month
+    }
+
+    func testDailyCostBucketsByDayOverLookback() {
+        // Two lines today, one ~5 days ago → today's bucket sums both; the older day
+        // has its own bucket. Daily cost spans the 30-day window, not just this month.
+        let t1 = line(ts: todayStamp(36_000), id: "a", reqId: "1", input: 1_000_000, model: "claude-opus-4-8")  // $5
+        let t2 = line(ts: todayStamp(40_000), id: "b", reqId: "2", input: 1_000_000, model: "claude-opus-4-8")  // $5
+        let older = line(ts: todayStamp(-5 * 86_400), id: "c", reqId: "3", input: 1_000_000, model: "claude-opus-4-8") // $5
+        let m = aggregateMetrics(jsonlContents: ["\(t1)\n\(t2)\n\(older)"], now: now)
+        let today = Calendar.current.startOfDay(for: now)
+        let olderDay = Calendar.current.date(byAdding: .day, value: -5, to: today)!
+        XCTAssertEqual(m.dailyCost[today] ?? 0, 10, accuracy: 1e-6)
+        XCTAssertEqual(m.dailyCost[olderDay] ?? 0, 5, accuracy: 1e-6)
     }
 }

@@ -24,6 +24,27 @@ func modelRate(for model: String) -> ModelRate {
     return ModelRate(input: 3, output: 15)                                                          // unknown → Sonnet-class
 }
 
+/// A short, human label for a raw model id from the logs — used to group the
+/// Cost tab's per-model breakdown. Pulls the "4-8"-style minor out of current
+/// Opus ids (e.g. "claude-opus-4-8-2026…" → "Opus 4.8") and otherwise falls back
+/// to the model family. Pure and testable.
+func displayModelName(for model: String) -> String {
+    let m = model.lowercased()
+    if m.contains("fable") { return "Fable 5" }
+    if m.contains("opus") {
+        if let r = m.range(of: "opus-4-") ?? m.range(of: "opus4-"),
+           let minor = m[r.upperBound...].first, minor.isNumber {
+            return "Opus 4.\(minor)"
+        }
+        if m.contains("opus-4") || m.contains("opus4") { return "Opus 4" }
+        return "Opus 3"
+    }
+    if m.contains("sonnet") { return "Sonnet" }
+    if m.contains("haiku-4") || m.contains("haiku4") { return "Haiku 4.5" }
+    if m.contains("haiku") { return "Haiku" }
+    return model.isEmpty ? "Unknown" : model
+}
+
 /// USD cost for one usage record. Cache-creation (write) tokens bill at 1.25× the
 /// input rate and cache-read at 0.10× — Anthropic's standard cache multipliers.
 /// This is the "API-equivalent" value: what the usage would cost at pay-as-you-go

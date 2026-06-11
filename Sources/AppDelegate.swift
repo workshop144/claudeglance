@@ -6,6 +6,8 @@ import Combine
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
     private var settingsWindow: NSWindow?
+    private var dashboardWindow: NSWindow?
+    private let dashboardModel = DashboardModel()
     private let usageService = UsageService.shared
     private let statusService = StatusService.shared
     private let metricsService = MetricsService.shared
@@ -132,67 +134,56 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(.separator())
         }
 
-        menu.addItem(infoItem(title: "5hr: \(snapshot.fiveHourUtilization)%",
-                              symbol: usageSymbolName(for: snapshot.fiveHourUtilization)))
+        // The OAuth usage rows deep-link to the dashboard's Usage tab (they dim
+        // slightly and brighten on hover — no blue highlight).
+        menu.addItem(linkInfoItem(title: "5hr: \(snapshot.fiveHourUtilization)%",
+                                  symbol: usageSymbolName(for: snapshot.fiveHourUtilization), tab: .usage))
         if let resetIn = snapshot.fiveHourResetIn {
-            menu.addItem(secondaryItem("Resets in: \(resetIn)"))
+            menu.addItem(linkSecondaryItem("Resets in: \(resetIn)", tab: .usage))
         }
         // Burn rate / run-out ETA, once a few polls have established a trend.
         if let burn = usageService.fiveHourBurn, let secs = burn.secondsToLimit {
             let now = Date()
             if burn.hitsLimitBeforeReset(resetAt: snapshot.fiveHourResetAt, now: now) {
-                menu.addItem(secondaryItem("On pace for 100% by \(formatClockTime(now.addingTimeInterval(secs)))"))
+                menu.addItem(linkSecondaryItem("On pace for 100% by \(formatClockTime(now.addingTimeInterval(secs)))", tab: .usage))
             } else if burn.percentPerHour >= 1 {
-                menu.addItem(secondaryItem("Using ~\(Int(burn.percentPerHour.rounded()))%/hr"))
+                menu.addItem(linkSecondaryItem("Using ~\(Int(burn.percentPerHour.rounded()))%/hr", tab: .usage))
             }
         }
         // Recent 5h-usage trend from persisted history (survives restarts).
         let trend = HistoryStore.shared.fiveHourTrend()
         if trend.count >= 2 {
-            menu.addItem(secondaryItem("Trend: \(sparkline(trend, maxValue: 100))"))
+            menu.addItem(linkSecondaryItem("Trend: \(sparkline(trend, maxValue: 100))", tab: .usage))
         }
 
-        menu.addItem(infoItem(title: "Week: \(snapshot.sevenDayUtilization)%", symbol: "calendar"))
+        menu.addItem(linkInfoItem(title: "Week: \(snapshot.sevenDayUtilization)%", symbol: "calendar", tab: .usage))
         if let resetIn = snapshot.sevenDayResetIn {
-            menu.addItem(secondaryItem("Resets in: \(resetIn)"))
+            menu.addItem(linkSecondaryItem("Resets in: \(resetIn)", tab: .usage))
         }
 
         if let sonnet = snapshot.sevenDaySonnetUtilization {
-            menu.addItem(infoItem(title: "Sonnet: \(sonnet)%", symbol: "cpu"))
+            menu.addItem(linkInfoItem(title: "Sonnet: \(sonnet)%", symbol: "cpu", tab: .usage))
         }
 
-        // "Today" activity from local Claude Code logs (no Keychain / network).
+        // "Today" glance from the local Claude Code logs (no Keychain / network).
+        // Deliberately slim — a calm one/two-line summary that deep-links into the
+        // dashboard, which now holds the detail (token chart, per-model cost,
+        // contribution heatmap, streak & spend history).
         if settingsManager.settings.showActivity {
             let m = metricsService.metrics
             if m.hasData {
                 menu.addItem(.separator())
-                menu.addItem(infoItem(title: "Today: \(formatTokenCount(m.todayTokens)) tokens", symbol: "number"))
-                var detail = "\(formatDuration(m.todayActiveSeconds)) active · \(m.todayMessages) msgs"
-                if m.todayCachePercent > 0 { detail += " · \(m.todayCachePercent)% cached" }
-                menu.addItem(secondaryItem(detail))
+
+                let active = Set(m.dailyTokens.filter { $0.value > 0 }.keys)
+                let streak = currentStreak(activeDays: active, today: Date())
+                let streakSuffix = streak > 0 ? " · \(streak)d streak" : ""
+                menu.addItem(linkInfoItem(title: "Today: \(formatTokenCount(m.todayTokens)) tokens\(streakSuffix)",
+                                          symbol: "number", tab: .activity))
+
                 if m.todayCostUSD > 0 {
-                    let cost = formatDollars(cents: Int((m.todayCostUSD * 100).rounded()))
-                    menu.addItem(secondaryItem("≈ \(cost) at API rates"))
-                }
-                if m.monthCostUSD > 0 {
-                    let mcost = formatDollars(cents: Int((m.monthCostUSD * 100).rounded()))
-                    let proj = formatDollars(cents: Int((monthlyProjection(monthCostUSD: m.monthCostUSD) * 100).rounded()))
-                    menu.addItem(secondaryItem("Month: \(mcost) · ~\(proj) projected"))
-                }
-                if m.monthSavingsUSD >= 0.01 {
-                    let saved = formatDollars(cents: Int((m.monthSavingsUSD * 100).rounded()))
-                    menu.addItem(secondaryItem("Caching saved ~\(saved) this month"))
-                }
-                if !m.dailyTokens.isEmpty {
-                    let active = Set(m.dailyTokens.filter { $0.value > 0 }.keys)
-                    let now = Date()
-                    let strip = activityStrip(dailyTokens: m.dailyTokens, days: 14, endingAt: now)
-                    menu.addItem(secondaryItem("Streak \(currentStreak(activeDays: active, today: now))d (best \(longestStreak(activeDays: active))) · \(strip)"))
-                }
-                if m.yesterdayTokens > 0 {
-                    let delta = m.todayTokens - m.yesterdayTokens
-                    let sign = delta >= 0 ? "+" : "\u{2212}"
-                    menu.addItem(secondaryItem("vs yesterday: \(sign)\(formatTokenCount(abs(delta)))"))
+                    let today = formatDollars(cents: Int((m.todayCostUSD * 100).rounded()))
+                    let month = formatDollars(cents: Int((m.monthCostUSD * 100).rounded()))
+                    menu.addItem(linkSecondaryItem("≈ \(today) today · \(month) this month", tab: .cost))
                 }
             }
         }
@@ -209,7 +200,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(.separator())
 
-        menu.addItem(actionItem(title: "Open Dashboard", symbol: "chart.bar",
+        menu.addItem(actionItem(title: "Dashboard", symbol: "chart.bar",
                                 action: #selector(openDashboard)))
         menu.addItem(actionItem(title: "Refresh", symbol: "arrow.clockwise",
                                 action: #selector(refreshUsage)))
@@ -228,16 +219,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(versionItem())
     }
 
-    /// A read-only header row (e.g. "5hr: 12%"). Uses a custom view so the text is
-    /// solid black and the row never gets the blue hover highlight (a standard
-    /// disabled item dims to gray; a standard enabled item highlights).
-    private func infoItem(title: String, symbol: String, symbolColor: NSColor = .secondaryLabelColor) -> NSMenuItem {
-        let item = NSMenuItem()
-        item.isEnabled = false
-        item.view = readonlyRowView(symbol: symbol, text: title, font: .menuFont(ofSize: 0), symbolColor: symbolColor)
-        return item
-    }
-
     /// A smaller, indented detail row (e.g. "Resets in: 2h 19m") — same black text,
     /// no highlight, aligned under the header title.
     private func secondaryItem(_ text: String) -> NSMenuItem {
@@ -247,17 +228,123 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return item
     }
 
+    // MARK: - Deep-link rows (open a dashboard tab)
+
+    /// A non-highlighting deep-link row: full-black label at rest, **bolded** on
+    /// hover (plus a pointer cursor) so the affordance reads as a link without a
+    /// blue highlight or any color. Builds its own icon + label so it can hold the
+    /// label reference and swap its font weight on enter/exit.
+    private final class LinkRowView: NSView {
+        var onClick: (() -> Void)?
+        private let label: NSTextField
+        private let baseFont: NSFont
+        private let boldFont: NSFont
+        private var tracking: NSTrackingArea?
+
+        init(image: NSImage?, text: String, font: NSFont, symbolColor: NSColor) {
+            self.baseFont = font
+            self.boldFont = NSFontManager.shared.convert(font, toHaveTrait: .boldFontMask)
+            self.label = NSTextField(labelWithString: text)
+            super.init(frame: .zero)
+            translatesAutoresizingMaskIntoConstraints = false
+
+            label.font = baseFont
+            label.textColor = .labelColor
+            label.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(label)
+
+            var constraints = [
+                heightAnchor.constraint(equalToConstant: 22),
+                label.centerYAnchor.constraint(equalTo: centerYAnchor),
+                trailingAnchor.constraint(equalTo: label.trailingAnchor, constant: 14)
+            ]
+
+            if let image {
+                let icon = NSImageView(image: image)
+                icon.contentTintColor = symbolColor
+                icon.translatesAutoresizingMaskIntoConstraints = false
+                addSubview(icon)
+                constraints += [
+                    icon.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
+                    icon.centerYAnchor.constraint(equalTo: centerYAnchor),
+                    icon.widthAnchor.constraint(equalToConstant: 16),
+                    label.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 8)
+                ]
+            } else {
+                // Align the label under where a header row's title starts (14 + 16 + 8).
+                constraints.append(label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 38))
+            }
+            NSLayoutConstraint.activate(constraints)
+        }
+        required init?(coder: NSCoder) { fatalError() }
+
+        // Route clicks anywhere in the row to this view, not the inner label.
+        override func hitTest(_ point: NSPoint) -> NSView? {
+            bounds.contains(convert(point, from: superview)) ? self : nil
+        }
+        override func mouseUp(with event: NSEvent) { onClick?() }
+        override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+        override func updateTrackingAreas() {
+            super.updateTrackingAreas()
+            if let tracking { removeTrackingArea(tracking) }
+            let t = NSTrackingArea(rect: bounds,
+                                   options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+                                   owner: self)
+            addTrackingArea(t); tracking = t
+        }
+        override func mouseEntered(with event: NSEvent) { label.font = boldFont }
+        override func mouseExited(with event: NSEvent) { label.font = baseFont }
+    }
+
+    private func linkItem(symbol: String?, title: String, font: NSFont, tab: DashboardTab) -> NSMenuItem {
+        let item = NSMenuItem()
+        item.isEnabled = true
+        let row = LinkRowView(image: symbol.flatMap { menuSymbol($0) },
+                              text: title, font: font, symbolColor: .secondaryLabelColor)
+        row.onClick = { [weak self] in self?.showDashboard(tab) }
+        item.view = row
+        return item
+    }
+
+    /// Header-weight deep-link row (e.g. "5hr: 12%").
+    private func linkInfoItem(title: String, symbol: String, tab: DashboardTab) -> NSMenuItem {
+        linkItem(symbol: symbol, title: title, font: .menuFont(ofSize: 0), tab: tab)
+    }
+
+    /// Detail-weight deep-link row (e.g. "Resets in: 2h 19m").
+    private func linkSecondaryItem(_ text: String, tab: DashboardTab) -> NSMenuItem {
+        linkItem(symbol: nil, title: text, font: .systemFont(ofSize: 11), tab: tab)
+    }
+
     /// A clickable menu-row view that opens a URL without the standard blue menu
     /// highlight — just a pointer cursor on hover, so the version signature reads
     /// like the link in the Settings footer rather than a normal menu command.
+    /// On hover it darkens `hoverLabel` from `restColor` to `hoverColor` — the same
+    /// subtle "this is a link" affordance the deep-link rows get (here a darken
+    /// rather than a bold, since the footer text is intentionally tiny and washed).
     private final class ClickableMenuRowView: NSView {
         var onClick: (() -> Void)?
+        weak var hoverLabel: NSTextField?
+        var restColor: NSColor = .tertiaryLabelColor
+        var hoverColor: NSColor = .secondaryLabelColor
+        private var tracking: NSTrackingArea?
+
         // Route every click in the row to this view (not the inner label).
         override func hitTest(_ point: NSPoint) -> NSView? {
             bounds.contains(convert(point, from: superview)) ? self : nil
         }
         override func mouseUp(with event: NSEvent) { onClick?() }
         override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+        override func updateTrackingAreas() {
+            super.updateTrackingAreas()
+            if let tracking { removeTrackingArea(tracking) }
+            let t = NSTrackingArea(rect: bounds,
+                                   options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+                                   owner: self)
+            addTrackingArea(t); tracking = t
+        }
+        override func mouseEntered(with event: NSEvent) { hoverLabel?.textColor = hoverColor }
+        override func mouseExited(with event: NSEvent) { hoverLabel?.textColor = restColor }
     }
 
     /// A tiny, washed-out version signature for the foot of the menu —
@@ -280,6 +367,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         label.textColor = .tertiaryLabelColor
         label.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(label)
+        // Darken the signature on hover (tertiary → secondary) so it reads as the
+        // link it is, matching the deep-link rows' bold-on-hover affordance.
+        container.hoverLabel = label
 
         NSLayoutConstraint.activate([
             container.heightAnchor.constraint(equalToConstant: 20),
@@ -404,9 +494,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: - Menu actions
 
     @objc private func openDashboard() {
-        if let url = URL(string: "https://console.anthropic.com/settings/usage") {
-            NSWorkspace.shared.open(url)
+        showDashboard(.activity)
+    }
+
+    /// Open (or focus) the single dashboard window on a specific tab — the
+    /// deep-link entry point menu rows call.
+    func showDashboard(_ tab: DashboardTab) {
+        dashboardModel.selectedTab = tab
+        if dashboardWindow == nil {
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 640, height: 520),
+                styleMask: [.titled, .closable, .resizable],
+                backing: .buffered,
+                defer: false
+            )
+            window.titleVisibility = .hidden
+            window.titlebarAppearsTransparent = true
+            window.isReleasedWhenClosed = false
+            window.contentViewController = NSHostingController(
+                rootView: DashboardView(model: dashboardModel, usage: usageService,
+                                        history: HistoryStore.shared, metrics: metricsService))
+            window.addTitlebarAccessoryViewController(titleAccessory("Dashboard"))
+            window.addTitlebarAccessoryViewController(closeAccessory(for: window))
+            window.setFrameAutosaveName("ClaudeGlanceDashboard")
+            window.center()
+            dashboardWindow = window
         }
+        NSApp.activate(ignoringOtherApps: true)
+        dashboardWindow?.makeKeyAndOrderFront(nil)
     }
 
     @objc private func refreshUsage() {
@@ -446,8 +561,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             // "Settings" and a close "X" live in the title bar itself, beside the
             // traffic lights. The 38pt-tall accessories raise the title bar so the
             // lights center vertically. Content sits below — no scroll bleed.
-            window.addTitlebarAccessoryViewController(settingsTitleAccessory())
-            window.addTitlebarAccessoryViewController(settingsCloseAccessory(for: window))
+            window.addTitlebarAccessoryViewController(titleAccessory("Settings"))
+            window.addTitlebarAccessoryViewController(closeAccessory(for: window))
             window.center()
             settingsWindow = window
         }
@@ -455,8 +570,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         settingsWindow?.makeKeyAndOrderFront(nil)
     }
 
-    private func settingsTitleAccessory() -> NSTitlebarAccessoryViewController {
-        let label = NSTextField(labelWithString: "Settings")
+    private func titleAccessory(_ title: String) -> NSTitlebarAccessoryViewController {
+        let label = NSTextField(labelWithString: title)
         label.font = .systemFont(ofSize: 14, weight: .semibold)
         label.sizeToFit()
         let height: CGFloat = 38
@@ -469,7 +584,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return vc
     }
 
-    private func settingsCloseAccessory(for window: NSWindow) -> NSTitlebarAccessoryViewController {
+    private func closeAccessory(for window: NSWindow) -> NSTitlebarAccessoryViewController {
         let image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close")?
             .withSymbolConfiguration(.init(pointSize: 12, weight: .semibold))
         let button = NSButton(image: image ?? NSImage(), target: window,

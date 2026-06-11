@@ -47,6 +47,34 @@ func sparkline(_ values: [Int], maxValue: Int) -> String {
     })
 }
 
+// MARK: - Contribution heatmap (dashboard Activity tab)
+
+/// One cell of the GitHub-style contribution grid.
+struct HeatCell: Equatable {
+    let date: Date
+    let tokens: Int      // 0 when no activity recorded for that day
+    let isFuture: Bool   // days beyond `endingAt` — rendered as empty placeholders
+}
+
+/// Builds a `weeks`-wide contribution grid ending in the week containing
+/// `endingAt`. Each column is a calendar week (row 0 = Sunday … row 6 = Saturday),
+/// oldest week first, so it lays out left→right like GitHub's heatmap. Days with
+/// no entry read as 0; days after `endingAt` are flagged future. Pure, testable.
+func heatmapGrid(dailyTokens: [Date: Int], weeks: Int, endingAt: Date,
+                 calendar: Calendar = .current) -> [[HeatCell]] {
+    let today = calendar.startOfDay(for: endingAt)
+    let weekdayIdx = calendar.component(.weekday, from: today) - 1   // 0 = Sunday
+    let startOfThisWeek = calendar.date(byAdding: .day, value: -weekdayIdx, to: today) ?? today
+
+    return stride(from: weeks - 1, through: 0, by: -1).map { w -> [HeatCell] in
+        let weekStart = calendar.date(byAdding: .day, value: -7 * w, to: startOfThisWeek) ?? startOfThisWeek
+        return (0..<7).map { d -> HeatCell in
+            let date = calendar.date(byAdding: .day, value: d, to: weekStart) ?? weekStart
+            return HeatCell(date: date, tokens: dailyTokens[date] ?? 0, isFuture: date > today)
+        }
+    }
+}
+
 /// A compact `days`-wide activity strip ending today, drawn with block elements
 /// scaled to the busiest day in the window (`·` = a day with no activity). Reads
 /// like a tiny GitHub contribution row in a single menu line.
