@@ -296,6 +296,13 @@ final class PricingTests: XCTestCase {
         XCTAssertEqual(tokenCostUSD(model: "claude-sonnet-4-6", input: 0, output: 0, cacheCreation: 0, cacheRead: 0), 0)
     }
 
+    func testUncachedCostBillsCacheTokensAsInput() {
+        // Opus 4: 1M cache-read tokens, uncached, = ordinary input = $5
+        // (vs the $0.50 cached cost — a $4.50 saving).
+        XCTAssertEqual(tokenCostUncachedUSD(model: "claude-opus-4-8", input: 0, output: 0, cacheCreation: 0, cacheRead: 1_000_000), 5.0, accuracy: 1e-9)
+        XCTAssertEqual(tokenCostUncachedUSD(model: "claude-opus-4-8", input: 1_000_000, output: 0, cacheCreation: 0, cacheRead: 1_000_000), 10.0, accuracy: 1e-9)
+    }
+
     func testMonthlyProjection() {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = TimeZone(identifier: "UTC")!
@@ -822,6 +829,14 @@ final class AggregateMetricsTests: XCTestCase {
         let m = aggregateMetrics(jsonlContents: ["\(today)\n\(earlier)\n\(lastMonth)"], now: now)
         XCTAssertEqual(m.todayCostUSD, 30, accuracy: 1e-6)
         XCTAssertEqual(m.monthCostUSD, 35, accuracy: 1e-6)
+    }
+
+    func testMonthCacheSavings() {
+        // Today, Opus 4, 1M cache-read tokens: actual $0.50, uncached $5.00,
+        // so caching saved $4.50 (counted into the month).
+        let l = line(ts: todayStamp(36_000), id: "c", reqId: "1", cacheR: 1_000_000, model: "claude-opus-4-8")
+        let m = aggregateMetrics(jsonlContents: [l], now: now)
+        XCTAssertEqual(m.monthSavingsUSD, 4.5, accuracy: 1e-6)
     }
 
     func testCachePercentUsesInputSideOnly() {

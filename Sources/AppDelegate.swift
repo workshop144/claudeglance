@@ -174,6 +174,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     let proj = formatDollars(cents: Int((monthlyProjection(monthCostUSD: m.monthCostUSD) * 100).rounded()))
                     menu.addItem(secondaryItem("Month: \(mcost) · ~\(proj) projected"))
                 }
+                if m.monthSavingsUSD >= 0.01 {
+                    let saved = formatDollars(cents: Int((m.monthSavingsUSD * 100).rounded()))
+                    menu.addItem(secondaryItem("Caching saved ~\(saved) this month"))
+                }
                 if m.yesterdayTokens > 0 {
                     let delta = m.todayTokens - m.yesterdayTokens
                     let sign = delta >= 0 ? "+" : "\u{2212}"

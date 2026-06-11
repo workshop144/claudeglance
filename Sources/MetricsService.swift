@@ -13,10 +13,12 @@ struct UsageMetrics {
     // Today's and this-month's API-equivalent spend (tokens × model price), USD.
     let todayCostUSD: Double
     let monthCostUSD: Double
+    // This-month dollars saved by prompt caching (uncached cost − actual cost).
+    let monthSavingsUSD: Double
 
     static let empty = UsageMetrics(todayTokens: 0, todayCachePercent: 0,
                                     todayActiveSeconds: 0, todayMessages: 0, yesterdayTokens: 0,
-                                    todayCostUSD: 0, monthCostUSD: 0)
+                                    todayCostUSD: 0, monthCostUSD: 0, monthSavingsUSD: 0)
 
     var hasData: Bool { todayMessages > 0 }
 }
@@ -93,7 +95,7 @@ func aggregateMetrics(jsonlContents: [String], now: Date) -> UsageMetrics {
 
     var seen = Set<String>()
     var tIn = 0, tOut = 0, tCacheR = 0, tCacheC = 0, tMsgs = 0
-    var todayCost = 0.0, monthCost = 0.0
+    var todayCost = 0.0, monthCost = 0.0, monthSavings = 0.0
     var todayTimes: [Date] = []
     var yesterdayTokens = 0
     let decoder = JSONDecoder()
@@ -124,6 +126,12 @@ func aggregateMetrics(jsonlContents: [String], now: Date) -> UsageMetrics {
                     cacheCreation: usage.cache_creation_input_tokens ?? 0,
                     cacheRead: usage.cache_read_input_tokens ?? 0)
                 monthCost += cost
+                monthSavings += tokenCostUncachedUSD(
+                    model: entry.message?.model ?? "",
+                    input: usage.input_tokens ?? 0,
+                    output: usage.output_tokens ?? 0,
+                    cacheCreation: usage.cache_creation_input_tokens ?? 0,
+                    cacheRead: usage.cache_read_input_tokens ?? 0) - cost
                 if date >= startToday {
                     tIn += usage.input_tokens ?? 0
                     tOut += usage.output_tokens ?? 0
@@ -150,7 +158,8 @@ func aggregateMetrics(jsonlContents: [String], now: Date) -> UsageMetrics {
         todayMessages: tMsgs,
         yesterdayTokens: yesterdayTokens,
         todayCostUSD: todayCost,
-        monthCostUSD: monthCost
+        monthCostUSD: monthCost,
+        monthSavingsUSD: monthSavings
     )
 }
 

@@ -38,6 +38,16 @@ func tokenCostUSD(model: String, input: Int, output: Int, cacheCreation: Int, ca
         + Double(cacheRead) * inPerToken * 0.10
 }
 
+/// What a usage record would have cost with **no** prompt caching — cache-read
+/// and cache-creation tokens billed as ordinary input. The gap between this and
+/// `tokenCostUSD` is what caching saved you.
+func tokenCostUncachedUSD(model: String, input: Int, output: Int, cacheCreation: Int, cacheRead: Int) -> Double {
+    let rate = modelRate(for: model)
+    let inPerToken = rate.input / 1_000_000
+    let outPerToken = rate.output / 1_000_000
+    return Double(input + cacheCreation + cacheRead) * inPerToken + Double(output) * outPerToken
+}
+
 /// Projects a full month's spend from the month-to-date total: the daily average
 /// so far (`monthCost / day-of-month`) extrapolated across every day in the month.
 func monthlyProjection(monthCostUSD: Double, now: Date = Date(), calendar: Calendar = .current) -> Double {
