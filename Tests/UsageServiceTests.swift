@@ -269,6 +269,67 @@ final class FormatTimeRemainingTests: XCTestCase {
     }
 }
 
+// MARK: - Streaks & activity strip
+
+final class ActivityTests: XCTestCase {
+
+    private var cal: Calendar {
+        var c = Calendar(identifier: .gregorian)
+        c.timeZone = TimeZone(identifier: "UTC")!
+        return c
+    }
+    private func day(_ y: Int, _ mo: Int, _ d: Int) -> Date {
+        cal.date(from: DateComponents(year: y, month: mo, day: d))!
+    }
+
+    func testCurrentStreakCountsConsecutiveDaysEndingToday() {
+        let today = day(2023, 11, 14)
+        let active: Set<Date> = [day(2023, 11, 14), day(2023, 11, 13), day(2023, 11, 12)]
+        XCTAssertEqual(currentStreak(activeDays: active, today: today, calendar: cal), 3)
+    }
+
+    func testCurrentStreakAllowsTodayInactiveAndCountsFromYesterday() {
+        let today = day(2023, 11, 14)   // no activity today yet
+        let active: Set<Date> = [day(2023, 11, 13), day(2023, 11, 12)]
+        XCTAssertEqual(currentStreak(activeDays: active, today: today, calendar: cal), 2)
+    }
+
+    func testCurrentStreakBreaksOnGap() {
+        let today = day(2023, 11, 14)
+        // Gap: nothing on the 13th, so the streak is broken before today/yesterday.
+        let active: Set<Date> = [day(2023, 11, 12), day(2023, 11, 11)]
+        XCTAssertEqual(currentStreak(activeDays: active, today: today, calendar: cal), 0)
+    }
+
+    func testLongestStreakFindsTheBestRun() {
+        let active: Set<Date> = [
+            day(2023, 11, 1), day(2023, 11, 2),                      // run of 2
+            day(2023, 11, 5), day(2023, 11, 6), day(2023, 11, 7),    // run of 3
+            day(2023, 11, 10),                                       // run of 1
+        ]
+        XCTAssertEqual(longestStreak(activeDays: active, calendar: cal), 3)
+        XCTAssertEqual(longestStreak(activeDays: [], calendar: cal), 0)
+    }
+
+    func testActivityStripScalesToBusiestDayAndMarksIdleDays() {
+        let today = day(2023, 11, 14)
+        let tokens: [Date: Int] = [
+            day(2023, 11, 14): 100,   // busiest → full block
+            day(2023, 11, 13): 0,     // idle → "·"
+            day(2023, 11, 12): 50,    // mid
+        ]
+        let strip = activityStrip(dailyTokens: tokens, days: 3, endingAt: today, calendar: cal)
+        // Order is oldest→newest: 12th, 13th, 14th.
+        XCTAssertEqual(strip.count, 3)
+        XCTAssertEqual(Array(strip)[1], "·")          // idle 13th
+        XCTAssertEqual(Array(strip)[2], "█")          // busiest 14th
+    }
+
+    func testActivityStripAllIdleIsAllDots() {
+        XCTAssertEqual(activityStrip(dailyTokens: [:], days: 5, endingAt: day(2023, 11, 14), calendar: cal), "·····")
+    }
+}
+
 // MARK: - Model pricing & cost
 
 final class PricingTests: XCTestCase {

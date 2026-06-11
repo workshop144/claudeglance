@@ -15,10 +15,13 @@ struct UsageMetrics {
     let monthCostUSD: Double
     // This-month dollars saved by prompt caching (uncached cost − actual cost).
     let monthSavingsUSD: Double
+    // Tokens per day over the recent window, for streaks and the activity strip.
+    let dailyTokens: [Date: Int]
 
     static let empty = UsageMetrics(todayTokens: 0, todayCachePercent: 0,
                                     todayActiveSeconds: 0, todayMessages: 0, yesterdayTokens: 0,
-                                    todayCostUSD: 0, monthCostUSD: 0, monthSavingsUSD: 0)
+                                    todayCostUSD: 0, monthCostUSD: 0, monthSavingsUSD: 0,
+                                    dailyTokens: [:])
 
     var hasData: Bool { todayMessages > 0 }
 }
@@ -89,6 +92,8 @@ func aggregateMetrics(jsonlContents: [String], now: Date) -> UsageMetrics {
     let startToday = cal.startOfDay(for: now)
     guard let startYesterday = cal.date(byAdding: .day, value: -1, to: startToday) else { return .empty }
     let startMonth = cal.date(from: cal.dateComponents([.year, .month], from: now)) ?? startToday
+    // Per-day window for streaks / the activity strip (last 30 days incl. today).
+    let lookbackStart = cal.date(byAdding: .day, value: -29, to: startToday) ?? startToday
 
     let isoFrac = ISO8601DateFormatter(); isoFrac.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
     let iso = ISO8601DateFormatter(); iso.formatOptions = [.withInternetDateTime]
@@ -98,6 +103,7 @@ func aggregateMetrics(jsonlContents: [String], now: Date) -> UsageMetrics {
     var todayCost = 0.0, monthCost = 0.0, monthSavings = 0.0
     var todayTimes: [Date] = []
     var yesterdayTokens = 0
+    var dailyTokens: [Date: Int] = [:]
     let decoder = JSONDecoder()
 
     for content in jsonlContents {
@@ -117,6 +123,10 @@ func aggregateMetrics(jsonlContents: [String], now: Date) -> UsageMetrics {
 
             let total = (usage.input_tokens ?? 0) + (usage.output_tokens ?? 0)
                 + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0)
+
+            if date >= lookbackStart {
+                dailyTokens[cal.startOfDay(for: date), default: 0] += total
+            }
 
             if date >= startMonth {
                 let cost = tokenCostUSD(
@@ -159,7 +169,8 @@ func aggregateMetrics(jsonlContents: [String], now: Date) -> UsageMetrics {
         yesterdayTokens: yesterdayTokens,
         todayCostUSD: todayCost,
         monthCostUSD: monthCost,
-        monthSavingsUSD: monthSavings
+        monthSavingsUSD: monthSavings,
+        dailyTokens: dailyTokens
     )
 }
 
@@ -213,10 +224,10 @@ final class MetricsService: ObservableObject {
         let startToday = cal.startOfDay(for: now)
         guard let startYesterday = cal.date(byAdding: .day, value: -1, to: startToday) else { return .empty }
         let startMonth = cal.date(from: cal.dateComponents([.year, .month], from: now)) ?? startToday
-        // Read files touched since the earlier of (start of month, yesterday) so
-        // the month total is complete and the vs-yesterday delta still works on
-        // the 1st (when yesterday falls in the previous month).
-        let cutoff = min(startMonth, startYesterday)
+        let lookbackStart = cal.date(byAdding: .day, value: -29, to: startToday) ?? startToday
+        // Read files touched since the earliest window we report on (30-day strip,
+        // month-to-date, or yesterday) so every figure is complete.
+        let cutoff = min(startMonth, startYesterday, lookbackStart)
 
         var contents: [String] = []
         for case let url as URL in enumerator where url.pathExtension == "jsonl" {

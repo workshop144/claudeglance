@@ -178,6 +178,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     let saved = formatDollars(cents: Int((m.monthSavingsUSD * 100).rounded()))
                     menu.addItem(secondaryItem("Caching saved ~\(saved) this month"))
                 }
+                if !m.dailyTokens.isEmpty {
+                    let active = Set(m.dailyTokens.filter { $0.value > 0 }.keys)
+                    let now = Date()
+                    let strip = activityStrip(dailyTokens: m.dailyTokens, days: 14, endingAt: now)
+                    menu.addItem(secondaryItem("Streak \(currentStreak(activeDays: active, today: now))d (best \(longestStreak(activeDays: active))) · \(strip)"))
+                }
                 if m.yesterdayTokens > 0 {
                     let delta = m.todayTokens - m.yesterdayTokens
                     let sign = delta >= 0 ? "+" : "\u{2212}"
