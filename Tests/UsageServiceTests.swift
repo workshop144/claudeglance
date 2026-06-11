@@ -328,6 +328,40 @@ final class ActivityTests: XCTestCase {
     func testActivityStripAllIdleIsAllDots() {
         XCTAssertEqual(activityStrip(dailyTokens: [:], days: 5, endingAt: day(2023, 11, 14), calendar: cal), "·····")
     }
+
+    func testSparklineScalesToMax() {
+        // 0 → lowest block, 50/100 → mid, 100 → full.
+        XCTAssertEqual(sparkline([0, 50, 100], maxValue: 100), "▁▄█")
+        XCTAssertEqual(sparkline([], maxValue: 100), "")
+        // Out-of-range clamps rather than overflowing the level table.
+        XCTAssertEqual(sparkline([150, -10], maxValue: 100), "█▁")
+    }
+}
+
+// MARK: - History store (persisted utilization)
+
+final class HistoryStoreTests: XCTestCase {
+
+    private let now = Date(timeIntervalSince1970: 1_700_000_000)
+
+    func testPruneDropsOldSamples() {
+        let samples = [
+            HistorySample(t: now.addingTimeInterval(-3600), h5: 10, h7: 20),
+            HistorySample(t: now.addingTimeInterval(-60), h5: 30, h7: 40),
+        ]
+        let kept = prunedHistory(samples, since: now.addingTimeInterval(-120))
+        XCTAssertEqual(kept.count, 1)
+        XCTAssertEqual(kept.first?.h5, 30)
+    }
+
+    func testRecentFiveHourReturnsValuesInWindow() {
+        let samples = [
+            HistorySample(t: now.addingTimeInterval(-7200), h5: 5, h7: 0),   // outside 1h window
+            HistorySample(t: now.addingTimeInterval(-1800), h5: 12, h7: 0),
+            HistorySample(t: now.addingTimeInterval(-60), h5: 18, h7: 0),
+        ]
+        XCTAssertEqual(recentFiveHour(samples, within: 3600, now: now), [12, 18])
+    }
 }
 
 // MARK: - Model pricing & cost

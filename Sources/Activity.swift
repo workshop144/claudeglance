@@ -34,6 +34,19 @@ func longestStreak(activeDays: Set<Date>, calendar: Calendar = .current) -> Int 
     return best
 }
 
+/// A block-element sparkline of `values` scaled to `maxValue` (e.g. 100 for a
+/// utilization %). Unlike the activity strip, 0 maps to the lowest block (a 0%
+/// reading is a real level, not an idle gap). Pure, testable.
+func sparkline(_ values: [Int], maxValue: Int) -> String {
+    guard !values.isEmpty, maxValue > 0 else { return "" }
+    let levels = Array("▁▂▃▄▅▆▇█")   // 8 heights, index 0...7
+    return String(values.map { v -> Character in
+        let clamped = max(0, min(maxValue, v))
+        let idx = Int((Double(clamped) / Double(maxValue)) * 7.0)
+        return levels[min(7, idx)]
+    })
+}
+
 /// A compact `days`-wide activity strip ending today, drawn with block elements
 /// scaled to the busiest day in the window (`·` = a day with no activity). Reads
 /// like a tiny GitHub contribution row in a single menu line.

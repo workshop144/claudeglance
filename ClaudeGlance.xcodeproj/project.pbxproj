@@ -23,6 +23,7 @@
 		AE544F59981EFC7528DB706E /* BuildInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F3A98B4FB00A61798935BF6 /* BuildInfo.swift */; };
 		D5901D4A120D88360A14272E /* AppIcon.icns in Resources */ = {isa = PBXBuildFile; fileRef = 41DBB8C43A660F12A6C09B8C /* AppIcon.icns */; };
 		D5C6822375FC7952CB358FC6 /* UsageService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 389B96510CE84AF4DA0D39BF /* UsageService.swift */; };
+		EE03B28A6FDCF419578F9309 /* HistoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01DF3C6B8EDFEDE6A749C2F0 /* HistoryStore.swift */; };
 		F228D6812CD9ABAA0B73B62A /* BurnRate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A990F191E512F052132FC6BF /* BurnRate.swift */; };
 /* End PBXBuildFile section */
 
@@ -37,6 +38,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		01DF3C6B8EDFEDE6A749C2F0 /* HistoryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryStore.swift; sourceTree = "<group>"; };
 		0F3A98B4FB00A61798935BF6 /* BuildInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuildInfo.swift; sourceTree = "<group>"; };
 		1949DB119DBBF5FE0F65D2A4 /* UsageServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageServiceTests.swift; sourceTree = "<group>"; };
 		235D97063A45F0B54F4B17FF /* Activity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Activity.swift; sourceTree = "<group>"; };
@@ -99,6 +101,7 @@
 				73C3777959157876E1139AF1 /* AppDelegate.swift */,
 				0F3A98B4FB00A61798935BF6 /* BuildInfo.swift */,
 				A990F191E512F052132FC6BF /* BurnRate.swift */,
+				01DF3C6B8EDFEDE6A749C2F0 /* HistoryStore.swift */,
 				53CFE271FC0ED6CCD0C70D05 /* main.swift */,
 				23F3D9F26ACD335A9867053D /* MenuBarIcon.swift */,
 				58363E6825D4E0B111A03DFD /* MetricsService.swift */,
@@ -247,6 +250,7 @@
 				6D214E56F105333C2AA79C24 /* AppDelegate.swift in Sources */,
 				AE544F59981EFC7528DB706E /* BuildInfo.swift in Sources */,
 				F228D6812CD9ABAA0B73B62A /* BurnRate.swift in Sources */,
+				EE03B28A6FDCF419578F9309 /* HistoryStore.swift in Sources */,
 				7DF83E170CC197AA3BF0BCC8 /* MenuBarIcon.swift in Sources */,
 				0A5539902838346BC1CC4924 /* MetricsService.swift in Sources */,
 				8DB4C6CC3966426FB55BE3B9 /* Pricing.swift in Sources */,
@@ -327,7 +331,7 @@
 				GIT_BRANCH = "";
 				GIT_COMMIT = "";
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
-				MARKETING_VERSION = 1.3.3;
+				MARKETING_VERSION = 1.3.4;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -453,7 +457,7 @@
 				GIT_BRANCH = "";
 				GIT_COMMIT = "";
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
-				MARKETING_VERSION = 1.3.3;
+				MARKETING_VERSION = 1.3.4;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = NO;

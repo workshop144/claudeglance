@@ -146,6 +146,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 menu.addItem(secondaryItem("Using ~\(Int(burn.percentPerHour.rounded()))%/hr"))
             }
         }
+        // Recent 5h-usage trend from persisted history (survives restarts).
+        let trend = HistoryStore.shared.fiveHourTrend()
+        if trend.count >= 2 {
+            menu.addItem(secondaryItem("Trend: \(sparkline(trend, maxValue: 100))"))
+        }
 
         menu.addItem(infoItem(title: "Week: \(snapshot.sevenDayUtilization)%", symbol: "calendar"))
         if let resetIn = snapshot.sevenDayResetIn {
