@@ -165,38 +165,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(linkInfoItem(title: "Sonnet: \(sonnet)%", symbol: "cpu", tab: .usage))
         }
 
-        // "Today" activity from local Claude Code logs (no Keychain / network).
+        // "Today" glance from the local Claude Code logs (no Keychain / network).
+        // Deliberately slim — a calm one/two-line summary that deep-links into the
+        // dashboard, which now holds the detail (token chart, per-model cost,
+        // contribution heatmap, streak & spend history).
         if settingsManager.settings.showActivity {
             let m = metricsService.metrics
             if m.hasData {
                 menu.addItem(.separator())
-                menu.addItem(linkInfoItem(title: "Today: \(formatTokenCount(m.todayTokens)) tokens", symbol: "number", tab: .activity))
-                var detail = "\(formatDuration(m.todayActiveSeconds)) active · \(m.todayMessages) msgs"
-                if m.todayCachePercent > 0 { detail += " · \(m.todayCachePercent)% cached" }
-                menu.addItem(linkSecondaryItem(detail, tab: .activity))
+
+                let active = Set(m.dailyTokens.filter { $0.value > 0 }.keys)
+                let streak = currentStreak(activeDays: active, today: Date())
+                let streakSuffix = streak > 0 ? " · \(streak)d streak" : ""
+                menu.addItem(linkInfoItem(title: "Today: \(formatTokenCount(m.todayTokens)) tokens\(streakSuffix)",
+                                          symbol: "number", tab: .activity))
+
                 if m.todayCostUSD > 0 {
-                    let cost = formatDollars(cents: Int((m.todayCostUSD * 100).rounded()))
-                    menu.addItem(linkSecondaryItem("≈ \(cost) at API rates", tab: .cost))
-                }
-                if m.monthCostUSD > 0 {
-                    let mcost = formatDollars(cents: Int((m.monthCostUSD * 100).rounded()))
-                    let proj = formatDollars(cents: Int((monthlyProjection(monthCostUSD: m.monthCostUSD) * 100).rounded()))
-                    menu.addItem(linkSecondaryItem("Month: \(mcost) · ~\(proj) projected", tab: .cost))
-                }
-                if m.monthSavingsUSD >= 0.01 {
-                    let saved = formatDollars(cents: Int((m.monthSavingsUSD * 100).rounded()))
-                    menu.addItem(linkSecondaryItem("Caching saved ~\(saved) this month", tab: .cost))
-                }
-                if !m.dailyTokens.isEmpty {
-                    let active = Set(m.dailyTokens.filter { $0.value > 0 }.keys)
-                    let now = Date()
-                    let strip = activityStrip(dailyTokens: m.dailyTokens, days: 14, endingAt: now)
-                    menu.addItem(linkSecondaryItem("Streak \(currentStreak(activeDays: active, today: now))d (best \(longestStreak(activeDays: active))) · \(strip)", tab: .activity))
-                }
-                if m.yesterdayTokens > 0 {
-                    let delta = m.todayTokens - m.yesterdayTokens
-                    let sign = delta >= 0 ? "+" : "\u{2212}"
-                    menu.addItem(linkSecondaryItem("vs yesterday: \(sign)\(formatTokenCount(abs(delta)))", tab: .activity))
+                    let today = formatDollars(cents: Int((m.todayCostUSD * 100).rounded()))
+                    let month = formatDollars(cents: Int((m.monthCostUSD * 100).rounded()))
+                    menu.addItem(linkSecondaryItem("≈ \(today) today · \(month) this month", tab: .cost))
                 }
             }
         }
