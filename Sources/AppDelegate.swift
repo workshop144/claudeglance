@@ -165,6 +165,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 var detail = "\(formatDuration(m.todayActiveSeconds)) active · \(m.todayMessages) msgs"
                 if m.todayCachePercent > 0 { detail += " · \(m.todayCachePercent)% cached" }
                 menu.addItem(secondaryItem(detail))
+                if m.todayCostUSD > 0 {
+                    let cost = formatDollars(cents: Int((m.todayCostUSD * 100).rounded()))
+                    menu.addItem(secondaryItem("≈ \(cost) at API rates"))
+                }
                 if m.yesterdayTokens > 0 {
                     let delta = m.todayTokens - m.yesterdayTokens
                     let sign = delta >= 0 ? "+" : "\u{2212}"

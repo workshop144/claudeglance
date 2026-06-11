@@ -10,9 +10,12 @@ struct UsageMetrics {
     let todayActiveSeconds: Int
     let todayMessages: Int
     let yesterdayTokens: Int
+    // Today's API-equivalent spend (tokens × model price), in USD.
+    let todayCostUSD: Double
 
     static let empty = UsageMetrics(todayTokens: 0, todayCachePercent: 0,
-                                    todayActiveSeconds: 0, todayMessages: 0, yesterdayTokens: 0)
+                                    todayActiveSeconds: 0, todayMessages: 0, yesterdayTokens: 0,
+                                    todayCostUSD: 0)
 
     var hasData: Bool { todayMessages > 0 }
 }
@@ -48,6 +51,7 @@ struct MetricsLogLine: Decodable {
 
     struct Message: Decodable {
         let id: String?
+        let model: String?
         let usage: Usage?
     }
     struct Usage: Decodable {
@@ -87,6 +91,7 @@ func aggregateMetrics(jsonlContents: [String], now: Date) -> UsageMetrics {
 
     var seen = Set<String>()
     var tIn = 0, tOut = 0, tCacheR = 0, tCacheC = 0, tMsgs = 0
+    var todayCost = 0.0
     var todayTimes: [Date] = []
     var yesterdayTokens = 0
     let decoder = JSONDecoder()
@@ -115,6 +120,12 @@ func aggregateMetrics(jsonlContents: [String], now: Date) -> UsageMetrics {
                 tCacheR += usage.cache_read_input_tokens ?? 0
                 tCacheC += usage.cache_creation_input_tokens ?? 0
                 tMsgs += 1
+                todayCost += tokenCostUSD(
+                    model: entry.message?.model ?? "",
+                    input: usage.input_tokens ?? 0,
+                    output: usage.output_tokens ?? 0,
+                    cacheCreation: usage.cache_creation_input_tokens ?? 0,
+                    cacheRead: usage.cache_read_input_tokens ?? 0)
                 todayTimes.append(date)
             } else if date >= startYesterday {
                 yesterdayTokens += total
@@ -130,7 +141,8 @@ func aggregateMetrics(jsonlContents: [String], now: Date) -> UsageMetrics {
         todayCachePercent: cachePct,
         todayActiveSeconds: activeSeconds(todayTimes),
         todayMessages: tMsgs,
-        yesterdayTokens: yesterdayTokens
+        yesterdayTokens: yesterdayTokens,
+        todayCostUSD: todayCost
     )
 }
 

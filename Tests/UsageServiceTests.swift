@@ -269,6 +269,34 @@ final class FormatTimeRemainingTests: XCTestCase {
     }
 }
 
+// MARK: - Model pricing & cost
+
+final class PricingTests: XCTestCase {
+
+    func testModelRateMatchingBySubstring() {
+        XCTAssertEqual(modelRate(for: "claude-opus-4-8"), ModelRate(input: 5, output: 25))
+        XCTAssertEqual(modelRate(for: "claude-3-opus-20240229"), ModelRate(input: 15, output: 75))
+        XCTAssertEqual(modelRate(for: "claude-sonnet-4-6"), ModelRate(input: 3, output: 15))
+        XCTAssertEqual(modelRate(for: "claude-3-5-haiku-20241022"), ModelRate(input: 0.8, output: 4))
+        XCTAssertEqual(modelRate(for: "claude-haiku-4-5"), ModelRate(input: 1, output: 5))
+        XCTAssertEqual(modelRate(for: "claude-fable-5"), ModelRate(input: 10, output: 50))
+        // Unknown model falls back to Sonnet-class rates.
+        XCTAssertEqual(modelRate(for: "some-future-model"), ModelRate(input: 3, output: 15))
+    }
+
+    func testTokenCostAppliesRatesAndCacheMultipliers() {
+        // Opus 4: $5/1M input, $25/1M output, cache-write 1.25× input, cache-read 0.10× input.
+        XCTAssertEqual(tokenCostUSD(model: "claude-opus-4-8", input: 1_000_000, output: 0, cacheCreation: 0, cacheRead: 0), 5.0, accuracy: 1e-9)
+        XCTAssertEqual(tokenCostUSD(model: "claude-opus-4-8", input: 0, output: 1_000_000, cacheCreation: 0, cacheRead: 0), 25.0, accuracy: 1e-9)
+        XCTAssertEqual(tokenCostUSD(model: "claude-opus-4-8", input: 0, output: 0, cacheCreation: 1_000_000, cacheRead: 0), 6.25, accuracy: 1e-9)
+        XCTAssertEqual(tokenCostUSD(model: "claude-opus-4-8", input: 0, output: 0, cacheCreation: 0, cacheRead: 1_000_000), 0.50, accuracy: 1e-9)
+    }
+
+    func testZeroTokensCostNothing() {
+        XCTAssertEqual(tokenCostUSD(model: "claude-sonnet-4-6", input: 0, output: 0, cacheCreation: 0, cacheRead: 0), 0)
+    }
+}
+
 // MARK: - Staleness
 
 final class StalenessTests: XCTestCase {
@@ -738,8 +766,10 @@ final class AggregateMetricsTests: XCTestCase {
     }
 
     private func line(ts: String, id: String? = nil, reqId: String? = nil,
-                      input: Int = 0, output: Int = 0, cacheR: Int = 0, cacheC: Int = 0) -> String {
+                      input: Int = 0, output: Int = 0, cacheR: Int = 0, cacheC: Int = 0,
+                      model: String? = nil) -> String {
         var msg = "\"usage\":{\"input_tokens\":\(input),\"output_tokens\":\(output),\"cache_read_input_tokens\":\(cacheR),\"cache_creation_input_tokens\":\(cacheC)}"
+        if let model { msg = "\"model\":\"\(model)\"," + msg }
         if let id { msg = "\"id\":\"\(id)\"," + msg }
         var fields = ["\"timestamp\":\"\(ts)\"", "\"message\":{\(msg)}"]
         if let reqId { fields.append("\"requestId\":\"\(reqId)\"") }
@@ -764,6 +794,14 @@ final class AggregateMetricsTests: XCTestCase {
         XCTAssertEqual(m.todayTokens, 100 + 50 + 30 + 20 + 10 + 5)
         XCTAssertEqual(m.todayActiveSeconds, 60)
         XCTAssertTrue(m.hasData)
+    }
+
+    func testTodayCostFromModelPricing() {
+        // 1M input + 1M output on Opus 4 = $5 + $25 = $30.
+        let content = line(ts: todayStamp(36_000), id: "a", reqId: "1",
+                           input: 1_000_000, output: 1_000_000, model: "claude-opus-4-8")
+        let m = aggregateMetrics(jsonlContents: [content], now: now)
+        XCTAssertEqual(m.todayCostUSD, 30.0, accuracy: 1e-6)
     }
 
     func testCachePercentUsesInputSideOnly() {
