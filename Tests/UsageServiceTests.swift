@@ -336,6 +336,32 @@ final class ActivityTests: XCTestCase {
         // Out-of-range clamps rather than overflowing the level table.
         XCTAssertEqual(sparkline([150, -10], maxValue: 100), "█▁")
     }
+
+    // Nov 14 2023 is a Tuesday → its week starts Sunday Nov 12.
+    func testHeatmapGridShapeAndWeekAlignment() {
+        let grid = heatmapGrid(dailyTokens: [:], weeks: 2, endingAt: day(2023, 11, 14), calendar: cal)
+        XCTAssertEqual(grid.count, 2)                       // two week-columns
+        XCTAssertTrue(grid.allSatisfy { $0.count == 7 })    // Sun…Sat rows
+        // Oldest column first; its top cell (Sunday) is Nov 5.
+        XCTAssertEqual(grid.first?.first?.date, day(2023, 11, 5))
+        // Current week's Tuesday row (index 2) is today, Nov 14.
+        XCTAssertEqual(grid.last?[2].date, day(2023, 11, 14))
+    }
+
+    func testHeatmapGridFlagsFutureDays() {
+        let grid = heatmapGrid(dailyTokens: [:], weeks: 1, endingAt: day(2023, 11, 14), calendar: cal)
+        XCTAssertFalse(grid[0][2].isFuture)   // Tue Nov 14 (today)
+        XCTAssertTrue(grid[0][3].isFuture)    // Wed Nov 15 (future)
+        XCTAssertTrue(grid[0][6].isFuture)    // Sat Nov 18 (future)
+    }
+
+    func testHeatmapGridFillsTokensFromDailyMap() {
+        let tokens = [day(2023, 11, 14): 1234, day(2023, 11, 13): 0]
+        let grid = heatmapGrid(dailyTokens: tokens, weeks: 1, endingAt: day(2023, 11, 14), calendar: cal)
+        XCTAssertEqual(grid[0][2].tokens, 1234)   // Tue Nov 14
+        XCTAssertEqual(grid[0][1].tokens, 0)      // Mon Nov 13 (present, but zero)
+        XCTAssertEqual(grid[0][0].tokens, 0)      // Sun Nov 12 (absent → 0)
+    }
 }
 
 // MARK: - History store (persisted utilization)

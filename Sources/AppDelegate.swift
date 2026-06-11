@@ -170,10 +170,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let m = metricsService.metrics
             if m.hasData {
                 menu.addItem(.separator())
-                menu.addItem(infoItem(title: "Today: \(formatTokenCount(m.todayTokens)) tokens", symbol: "number"))
+                menu.addItem(linkInfoItem(title: "Today: \(formatTokenCount(m.todayTokens)) tokens", symbol: "number", tab: .activity))
                 var detail = "\(formatDuration(m.todayActiveSeconds)) active · \(m.todayMessages) msgs"
                 if m.todayCachePercent > 0 { detail += " · \(m.todayCachePercent)% cached" }
-                menu.addItem(secondaryItem(detail))
+                menu.addItem(linkSecondaryItem(detail, tab: .activity))
                 if m.todayCostUSD > 0 {
                     let cost = formatDollars(cents: Int((m.todayCostUSD * 100).rounded()))
                     menu.addItem(linkSecondaryItem("≈ \(cost) at API rates", tab: .cost))
@@ -191,12 +191,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     let active = Set(m.dailyTokens.filter { $0.value > 0 }.keys)
                     let now = Date()
                     let strip = activityStrip(dailyTokens: m.dailyTokens, days: 14, endingAt: now)
-                    menu.addItem(secondaryItem("Streak \(currentStreak(activeDays: active, today: now))d (best \(longestStreak(activeDays: active))) · \(strip)"))
+                    menu.addItem(linkSecondaryItem("Streak \(currentStreak(activeDays: active, today: now))d (best \(longestStreak(activeDays: active))) · \(strip)", tab: .activity))
                 }
                 if m.yesterdayTokens > 0 {
                     let delta = m.todayTokens - m.yesterdayTokens
                     let sign = delta >= 0 ? "+" : "\u{2212}"
-                    menu.addItem(secondaryItem("vs yesterday: \(sign)\(formatTokenCount(abs(delta)))"))
+                    menu.addItem(linkSecondaryItem("vs yesterday: \(sign)\(formatTokenCount(abs(delta)))", tab: .activity))
                 }
             }
         }
@@ -230,16 +230,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(.separator())
         menu.addItem(versionItem())
-    }
-
-    /// A read-only header row (e.g. "5hr: 12%"). Uses a custom view so the text is
-    /// solid black and the row never gets the blue hover highlight (a standard
-    /// disabled item dims to gray; a standard enabled item highlights).
-    private func infoItem(title: String, symbol: String, symbolColor: NSColor = .secondaryLabelColor) -> NSMenuItem {
-        let item = NSMenuItem()
-        item.isEnabled = false
-        item.view = readonlyRowView(symbol: symbol, text: title, font: .menuFont(ofSize: 0), symbolColor: symbolColor)
-        return item
     }
 
     /// A smaller, indented detail row (e.g. "Resets in: 2h 19m") — same black text,
