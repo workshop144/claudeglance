@@ -35,7 +35,10 @@ Open the menu for the full breakdown:
   `On pace for 100% by 3:47 PM` (or `Using ~12%/hr`) projected from the trend.
 - **Usage credits in dollars** — when pay-as-you-go credits are on, your overage
   spend against the monthly cap (e.g. `$1.20 / $50 (2%)`).
-- **Today's activity** from local Claude Code logs (tokens, active time, messages).
+- **Today's activity** from local Claude Code logs — tokens, active time, and
+  messages, plus today's and this-month's **API-equivalent cost** (+ projection),
+  how much **caching saved** you, your usage **streak** with a 14-day activity
+  strip, and a **5h-trend sparkline** from locally-recorded history.
 
 Mirrors the data on `claude.ai/settings/usage`.
 
