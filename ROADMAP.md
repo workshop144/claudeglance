@@ -14,14 +14,19 @@
 
 ## ✅ Shipped
 
+**v1.2.2 — "Foresight"** (June 2026): pacemaker pace marker on the 5h ring [3],
+reset-countdown notifications with anti-spam [14], and a dev/prod channel marker
+on the menu version row. **Sparkle auto-update [13] deferred** — it pairs with
+notarization (ad-hoc updates still hit Gatekeeper), so it's parked until the
+Apple Developer account lands.
+
 **v1.1.4 — "Sharper glance"** (June 2026): dual-ring usage gauge [1], burn rate
 & run-out ETA [2][5], usage-credit overage in dollars [4], stale-data dimming
 (part of [21]), and build version + git provenance (a dev-QoL extra, not in the
 list below). Released as an unsigned DMG via the CI fallback + Homebrew cask.
 
-Still open from the original v1.1 plan: **notarization [6]** (deferred — pending
-an Apple Developer account; the release pipeline auto-upgrades once its secrets
-are added).
+Still open: **notarization [6]** (deferred — pending an Apple Developer account;
+the release pipeline auto-upgrades once its secrets are added).
 
 ---
 
@@ -76,7 +81,7 @@ this is the "pure coolness" ordering you asked for.
 |---|---------|---------|----------------------|
 | 1 | ✅ **Graphical dual-ring menu-bar icon** (outer arc = 5h, inner disc = 7d, template for light/dark) — *shipped v1.1.0, monochrome; pulse/color intentionally skipped* | ac3charland, cctray, hamed, AgentLimits | ★★★ yes, the #1 gap & most-requested |
 | 2 | ✅ **Run-out ETA as a clock time** + "on pace for 100% by 3:47 PM" — *shipped v1.1.3* | CCUM, par_cc_usage, ClaudePulse | ★★★ |
-| 3 | **Pacemaker** — % of window elapsed vs % used; over-pace arrow/color (render as the ring's inner state) | AgentLimits, ac3 (`isAhead`), CCUM #216 | ★★★ |
+| 3 | ✅ **Pacemaker** — pace notch on the 5h ring (fill past it = ahead of pace) — *shipped v1.2.0* | AgentLimits, ac3 (`isAhead`), CCUM #216 | ★★★ |
 | 4 | ✅ **`extra_usage` dollars** — `$X / $Y (Z%)` overage line — *shipped v1.1.2* | cfranci, elliot/ClaudeWatch | ★★★ |
 | 5 | ✅ **Burn rate** (as %/hr, not tokens/min) — *shipped v1.1.3* | ccowl, cctray, Sapeet, CCUM | ★★★ |
 | 6 | **Notarize the app** + drop the `xattr` step | saqoosha, hamed, ClaudeMeter | ★★★ table-stakes |
@@ -87,7 +92,7 @@ this is the "pure coolness" ordering you asked for.
 | 11 | **Context-window monitor** — last-msg `usage / 200k` per active session, 75/90% alerts | gosparq, leeguo | ★★ differentiated 2nd mode |
 | 12 | **Prompt-cache freshness countdown** (`cache 4m23s` / `COLD`; cold burns quota ~10×) | leeguo | ★★ |
 | 13 | **Sparkle EdDSA auto-update** | ClaudePulse, AgentLimits, vibepulse | ★★ |
-| 14 | **Reset-countdown notifications** (5h + weekly) with anti-spam throttle | hamed #243, lugia #48/#51 | ★★ |
+| 14 | ✅ **Reset-countdown notifications** (5h + weekly) with anti-spam — *shipped v1.2.1* | hamed #243, lugia #48/#51 | ★★ |
 | 15 | **Usage heatmap** (GitHub-style) + **streaks** (current/max) | cc-wrapped, AgentLimits, 658jjh | ★★ |
 | 16 | **Session health grade A–F** (errors/abandons/retries/compactions) | agentsview | ★★ novel |
 | 17 | **"Where your tokens go"** — your prompts vs tool-results vs thinking | jack21/ClaudeCodeUsage | ★★ actionable |
@@ -121,14 +126,13 @@ Dual-ring gauge [1], `extra_usage` dollar line [4], burn rate + run-out ETA
 workflow auto-upgrades from the unsigned-DMG fallback to a notarized build the
 moment the `APPLE_*` secrets are added (no code changes needed).
 
-### v1.2 — "Foresight" (the rest of prediction/pace + auto-update)
-- **[3] Pacemaker** indicator (window-elapsed vs used) — best rendered as the
-  v1.1 ring's **inner state** (solid when ahead of pace, hollow when behind), or
-  a small ↑/↓. The natural next step now that the ring and burn rate both ship.
-- **[14] Reset-countdown notifications** with anti-spam (debounce/dedupe — the
-  extension's #48/#51 spam complaints are the cautionary tale).
-- **[13] Sparkle auto-update** (EdDSA-signed appcast) — fixes the unnotarized-
-  download friction for good, and gives the dev/beta channel a delivery path.
+### ✅ v1.2 — "Foresight" — SHIPPED (v1.2.2)
+Pacemaker pace notch on the 5h ring [3], reset-countdown notifications with
+anti-spam [14], plus a dev/prod channel marker on the menu version row.
+**Deferred: [13] Sparkle auto-update** — its value is *seamless* updates, which
+an ad-hoc build can't deliver (the downloaded update is still Gatekeeper-
+quarantined). Parked to land together with notarization, so it's set up once
+cleanly. Updates meanwhile: `brew upgrade`.
 
 ### v1.3 — "Memory" (local history & money insight, still from local jsonl)
 - **[9] Lightweight local history** store (snapshots; SQLite or flat file).

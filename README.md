@@ -16,7 +16,7 @@ fixed order, separated by `·`:
 
 | Element | Default | Description |
 |--------------|---------|-------------|
-| **Ring gauge** | off | Dual-ring icon — outer ring = 5h session, inner ring = 7d weekly |
+| **Ring gauge** | off | Dual-ring icon — outer = 5h session, inner = 7d weekly, with a pace notch on the 5h ring (fill past it = ahead of pace) |
 | **5h %** | on | Current session usage (resets ~every 5 hours) |
 | **7d %** | on | Weekly all-models usage |
 | **Sonnet %** | off | Weekly Sonnet-only usage |
@@ -107,6 +107,7 @@ show just a countdown, just percentages, or any mix.
 | Warning threshold | 80% | Usage % that triggers a warning notification |
 | Critical threshold | 90% | Usage % that triggers a critical notification |
 | Usage alerts | On | macOS notification when a threshold is crossed |
+| Reset notifications | On | Notify when a limit resets after you were near it |
 
 > Thresholds drive **notifications** — the menu bar text itself stays a single
 > neutral color for legibility across light and dark menu bars.
