@@ -415,6 +415,20 @@ final class PricingTests: XCTestCase {
         let day10 = cal.date(from: DateComponents(year: 2023, month: 11, day: 10))!
         XCTAssertEqual(monthlyProjection(monthCostUSD: 100, now: day10, calendar: cal), 300, accuracy: 1e-6)
     }
+
+    func testDisplayModelNameExtractsOpusMinor() {
+        XCTAssertEqual(displayModelName(for: "claude-opus-4-8-2026"), "Opus 4.8")
+        XCTAssertEqual(displayModelName(for: "claude-opus-4-1-20250805"), "Opus 4.1")
+    }
+
+    func testDisplayModelNameFamilyFallbacks() {
+        XCTAssertEqual(displayModelName(for: "claude-fable-5"), "Fable 5")
+        XCTAssertEqual(displayModelName(for: "claude-sonnet-4-6"), "Sonnet")
+        XCTAssertEqual(displayModelName(for: "claude-3-5-haiku-20241022"), "Haiku")
+        XCTAssertEqual(displayModelName(for: "claude-haiku-4-5"), "Haiku 4.5")
+        XCTAssertEqual(displayModelName(for: "claude-3-opus-20240229"), "Opus 3")
+        XCTAssertEqual(displayModelName(for: ""), "Unknown")
+    }
 }
 
 // MARK: - Staleness
@@ -1006,5 +1020,35 @@ final class AggregateMetricsTests: XCTestCase {
         let dup = line(ts: todayStamp(36_000), id: "shared", reqId: "r", input: 100)
         let m = aggregateMetrics(jsonlContents: [dup, dup], now: now)
         XCTAssertEqual(m.todayMessages, 1)
+    }
+
+    func testCostByModelGroupsMonthToDateByDisplayName() {
+        // Opus 4.8 today ($30) + earlier-this-month Opus 4.8 ($5) collapse into one
+        // "Opus 4.8" bucket; a Sonnet line lands in its own bucket; last month excluded.
+        let opusToday = line(ts: todayStamp(36_000), id: "a", reqId: "1",
+                             input: 1_000_000, output: 1_000_000, model: "claude-opus-4-8")   // $30
+        let opusEarlier = line(ts: todayStamp(-8 * 86_400), id: "b", reqId: "2",
+                               input: 1_000_000, model: "claude-opus-4-8")                     // $5
+        let sonnet = line(ts: todayStamp(36_100), id: "c", reqId: "3",
+                          input: 1_000_000, model: "claude-sonnet-4-6")                        // $3
+        let lastMonth = line(ts: todayStamp(-25 * 86_400), id: "d", reqId: "4",
+                             input: 1_000_000, model: "claude-opus-4-8")                       // excluded
+        let m = aggregateMetrics(jsonlContents: ["\(opusToday)\n\(opusEarlier)\n\(sonnet)\n\(lastMonth)"], now: now)
+        XCTAssertEqual(m.costByModel["Opus 4.8"] ?? 0, 35, accuracy: 1e-6)
+        XCTAssertEqual(m.costByModel["Sonnet"] ?? 0, 3, accuracy: 1e-6)
+        XCTAssertNil(m.costByModel["Opus 4"])  // nothing leaked from last month
+    }
+
+    func testDailyCostBucketsByDayOverLookback() {
+        // Two lines today, one ~5 days ago → today's bucket sums both; the older day
+        // has its own bucket. Daily cost spans the 30-day window, not just this month.
+        let t1 = line(ts: todayStamp(36_000), id: "a", reqId: "1", input: 1_000_000, model: "claude-opus-4-8")  // $5
+        let t2 = line(ts: todayStamp(40_000), id: "b", reqId: "2", input: 1_000_000, model: "claude-opus-4-8")  // $5
+        let older = line(ts: todayStamp(-5 * 86_400), id: "c", reqId: "3", input: 1_000_000, model: "claude-opus-4-8") // $5
+        let m = aggregateMetrics(jsonlContents: ["\(t1)\n\(t2)\n\(older)"], now: now)
+        let today = Calendar.current.startOfDay(for: now)
+        let olderDay = Calendar.current.date(byAdding: .day, value: -5, to: today)!
+        XCTAssertEqual(m.dailyCost[today] ?? 0, 10, accuracy: 1e-6)
+        XCTAssertEqual(m.dailyCost[olderDay] ?? 0, 5, accuracy: 1e-6)
     }
 }

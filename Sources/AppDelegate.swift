@@ -176,16 +176,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 menu.addItem(secondaryItem(detail))
                 if m.todayCostUSD > 0 {
                     let cost = formatDollars(cents: Int((m.todayCostUSD * 100).rounded()))
-                    menu.addItem(secondaryItem("≈ \(cost) at API rates"))
+                    menu.addItem(linkSecondaryItem("≈ \(cost) at API rates", tab: .cost))
                 }
                 if m.monthCostUSD > 0 {
                     let mcost = formatDollars(cents: Int((m.monthCostUSD * 100).rounded()))
                     let proj = formatDollars(cents: Int((monthlyProjection(monthCostUSD: m.monthCostUSD) * 100).rounded()))
-                    menu.addItem(secondaryItem("Month: \(mcost) · ~\(proj) projected"))
+                    menu.addItem(linkSecondaryItem("Month: \(mcost) · ~\(proj) projected", tab: .cost))
                 }
                 if m.monthSavingsUSD >= 0.01 {
                     let saved = formatDollars(cents: Int((m.monthSavingsUSD * 100).rounded()))
-                    menu.addItem(secondaryItem("Caching saved ~\(saved) this month"))
+                    menu.addItem(linkSecondaryItem("Caching saved ~\(saved) this month", tab: .cost))
                 }
                 if !m.dailyTokens.isEmpty {
                     let active = Set(m.dailyTokens.filter { $0.value > 0 }.keys)
@@ -253,9 +253,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // MARK: - Deep-link rows (open a dashboard tab)
 
-    /// A menu row that opens a dashboard `tab` on click. It renders like a normal
-    /// read-only row but dims slightly and brightens on hover (with a pointer
-    /// cursor) — no standard blue menu highlight.
     /// A non-highlighting deep-link row: full-black label at rest, **bolded** on
     /// hover (plus a pointer cursor) so the affordance reads as a link without a
     /// blue highlight or any color. Builds its own icon + label so it can hold the
@@ -517,7 +514,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             window.titlebarAppearsTransparent = true
             window.isReleasedWhenClosed = false
             window.contentViewController = NSHostingController(
-                rootView: DashboardView(model: dashboardModel, usage: usageService, history: HistoryStore.shared))
+                rootView: DashboardView(model: dashboardModel, usage: usageService,
+                                        history: HistoryStore.shared, metrics: metricsService))
             window.addTitlebarAccessoryViewController(titleAccessory("Dashboard"))
             window.addTitlebarAccessoryViewController(closeAccessory(for: window))
             window.setFrameAutosaveName("ClaudeGlanceDashboard")
