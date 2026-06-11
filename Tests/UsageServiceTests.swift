@@ -476,6 +476,17 @@ final class BuildInfoTests: XCTestCase {
                        "v1.1.1 · feature/v1.1-build-info@abc1234")
     }
 
+    func testChannelIsProdForReleaseOrMain() {
+        XCTAssertEqual(buildChannel(branch: nil), "prod")     // release build (no branch passed)
+        XCTAssertEqual(buildChannel(branch: ""), "prod")
+        XCTAssertEqual(buildChannel(branch: "main"), "prod")
+    }
+
+    func testChannelIsDevForFeatureOrDevelop() {
+        XCTAssertEqual(buildChannel(branch: "develop"), "dev")
+        XCTAssertEqual(buildChannel(branch: "feature/v1.2-build-channel"), "dev")
+    }
+
     func testURLPrefersCommitThenBranchThenRepo() {
         XCTAssertEqual(buildInfoURL(repo: repo, branch: "feature/x", commit: "abc1234").absoluteString,
                        "\(repo)/commit/abc1234")

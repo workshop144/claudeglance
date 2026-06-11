@@ -250,7 +250,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             container?.enclosingMenuItem?.menu?.cancelTracking()
         }
 
-        let label = NSTextField(labelWithString: "v\(BuildInfo.current.version)")
+        let info = BuildInfo.current
+        let label = NSTextField(labelWithString: "v\(info.version) (\(info.channel))")
         label.font = .systemFont(ofSize: 9)
         label.textColor = .tertiaryLabelColor
         label.translatesAutoresizingMaskIntoConstraints = false
