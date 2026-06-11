@@ -20,6 +20,10 @@ jobs:
     # with no further changes.
     env:
       HAS_SIGNING: ${{ secrets.APPLE_CERTIFICATE_1 != '' && secrets.APPLE_ID != '' && secrets.APPLE_TEAM_ID != '' && secrets.APPLE_APP_PASSWORD != '' }}
+      # When the cross-repo Homebrew token is absent, skip the cask update with a
+      # visible warning instead of silently failing (the old curl-based step
+      # returned 0 even on a 401, so a missing token looked like success).
+      HAS_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN != '' }}
 
     steps:
       - uses: actions/checkout@v4
@@ -158,10 +162,13 @@ jobs:
           generate_release_notes: true
 
       - name: Update Homebrew tap
+        if: env.HAS_TAP_TOKEN == 'true'
         env:
-          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          # Authenticate gh as the cross-repo token so it can write to the tap.
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           TAG: ${{ github.ref_name }}
         run: |
+          set -euo pipefail
           VERSION=${TAG#v}
           SHA=$(shasum -a 256 ClaudeGlance.dmg | awk '{print $1}')
 
@@ -198,16 +205,15 @@ jobs:
             ]
           end"
 
-          ENCODED=$(echo "$FORMULA" | base64)
+          # gh exits non-zero on any HTTP error (bad/expired token, lost access),
+          # so a broken tap update now fails the release loudly instead of silently.
+          FILE_SHA=$(gh api repos/broots144/homebrew-tap/contents/Casks/claudeglance.rb --jq .sha)
+          gh api -X PUT repos/broots144/homebrew-tap/contents/Casks/claudeglance.rb \
+            -f message="Update claudeglance to $VERSION" \
+            -f content="$(printf '%s' "$FORMULA" | base64)" \
+            -f sha="$FILE_SHA"
+          echo "::notice::Homebrew cask updated to $VERSION."
 
-          # Get current file SHA (needed to update an existing cask file)
-          CURRENT=$(curl -s \
-            -H "Authorization: token $HOMEBREW_TAP_TOKEN" \
-            https://api.github.com/repos/broots144/homebrew-tap/contents/Casks/claudeglance.rb)
-          FILE_SHA=$(echo "$CURRENT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('sha',''))")
-
-          curl -s -X PUT \
-            -H "Authorization: token $HOMEBREW_TAP_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            https://api.github.com/repos/broots144/homebrew-tap/contents/Casks/claudeglance.rb \
-            -d "{\"message\":\"Update claudeglance to $VERSION\",\"content\":\"$ENCODED\",\"sha\":\"$FILE_SHA\"}"
+      - name: Note skipped Homebrew update
+        if: env.HAS_TAP_TOKEN != 'true'
+        run: echo "::warning::HOMEBREW_TAP_TOKEN secret not set — the GitHub release shipped, but the Homebrew cask was NOT updated. Add the secret to automate it."
