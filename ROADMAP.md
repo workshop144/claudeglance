@@ -12,6 +12,19 @@
 
 ---
 
+## ✅ Shipped
+
+**v1.1.4 — "Sharper glance"** (June 2026): dual-ring usage gauge [1], burn rate
+& run-out ETA [2][5], usage-credit overage in dollars [4], stale-data dimming
+(part of [21]), and build version + git provenance (a dev-QoL extra, not in the
+list below). Released as an unsigned DMG via the CI fallback + Homebrew cask.
+
+Still open from the original v1.1 plan: **notarization [6]** (deferred — pending
+an Apple Developer account; the release pipeline auto-upgrades once its secrets
+are added).
+
+---
+
 ## Where we already lead
 
 Before the wish-list, what v1.0.0 already does that most competitors don't:
@@ -26,8 +39,10 @@ Before the wish-list, what v1.0.0 already does that most competitors don't:
 - **Granular text menu bar, service-health dot, threshold notifications,
   launch-at-login, Homebrew cask + DMG.** Already at or above par.
 
-The honest gaps everyone else has and we don't: **a graphical icon**,
-**any $ figure**, **any prediction/pace**, **any history**, and **notarization**.
+The honest gaps everyone else had and we didn't — as of v1.0.0: a graphical
+icon, any $ figure, any prediction/pace, any history, and notarization. **v1.1.4
+closed the icon, the $ figure, and prediction/pace.** Remaining: **history** and
+**notarization** (the latter just pending the Apple account).
 
 ---
 
@@ -38,7 +53,8 @@ The single most-asked-about feature. Status after auditing every repo:
 - The OAuth endpoint we already call **cannot** see the prepaid Console dollar
   balance. It only carries `extra_usage` = pay-as-you-go *overage* (`used_credits`,
   `monthly_limit` in cents, `utilization`). **Showing `$used / $limit (Z%)` from
-  that is essentially free** — it's in the payload we already decode. → **v1.1.**
+  that is essentially free** — it's in the payload we already decode.
+  → ✅ **shipped in v1.1.2.**
 - The real prepaid balance (your ~$160) lives on the **Anthropic Console** and
   needs a **separate auth** beyond Claude Code OAuth — two confirmed routes:
   - Capture the `sessionKey` cookie via a one-time embedded Console login, then
@@ -58,11 +74,11 @@ this is the "pure coolness" ordering you asked for.
 
 | # | Feature | Seen in | Fits our aesthetic? |
 |---|---------|---------|----------------------|
-| 1 | **Graphical dual-ring menu-bar icon** (outer arc = 5h, inner disc = 7d, color-coded, pulses near limit, template for light/dark) | ac3charland, cctray, hamed, AgentLimits | ★★★ yes, the #1 gap & most-requested |
-| 2 | **Run-out ETA as a clock time** + "you'll hit the 5h cap ~3:47 PM, *before* reset" alert | CCUM, par_cc_usage, ClaudePulse | ★★★ |
-| 3 | **Pacemaker** — % of window elapsed vs % used; over-pace arrow/color | AgentLimits, ac3 (`isAhead`), CCUM #216 | ★★★ |
-| 4 | **`extra_usage` dollars** — `$X / $Y (Z%)` overage line (near-free, in our payload) | cfranci, elliot/ClaudeWatch | ★★★ |
-| 5 | **Burn rate** (tokens/min) with low/med/high color bands | ccowl, cctray, Sapeet, CCUM | ★★★ |
+| 1 | ✅ **Graphical dual-ring menu-bar icon** (outer arc = 5h, inner disc = 7d, template for light/dark) — *shipped v1.1.0, monochrome; pulse/color intentionally skipped* | ac3charland, cctray, hamed, AgentLimits | ★★★ yes, the #1 gap & most-requested |
+| 2 | ✅ **Run-out ETA as a clock time** + "on pace for 100% by 3:47 PM" — *shipped v1.1.3* | CCUM, par_cc_usage, ClaudePulse | ★★★ |
+| 3 | **Pacemaker** — % of window elapsed vs % used; over-pace arrow/color (render as the ring's inner state) | AgentLimits, ac3 (`isAhead`), CCUM #216 | ★★★ |
+| 4 | ✅ **`extra_usage` dollars** — `$X / $Y (Z%)` overage line — *shipped v1.1.2* | cfranci, elliot/ClaudeWatch | ★★★ |
+| 5 | ✅ **Burn rate** (as %/hr, not tokens/min) — *shipped v1.1.3* | ccowl, cctray, Sapeet, CCUM | ★★★ |
 | 6 | **Notarize the app** + drop the `xattr` step | saqoosha, hamed, ClaudeMeter | ★★★ table-stakes |
 | 7 | **Sparklines + trend arrows** (↗︎↘︎↔︎) in the dropdown | cctray | ★★★ |
 | 8 | **"Caching saved you $X"** + "API-equivalent value $Y" | ccstory | ★★★ delightful |
@@ -78,7 +94,7 @@ this is the "pure coolness" ordering you asked for.
 | 18 | **Top tools / MCP usage** ("most-used today: Bash, Edit, …") | par_cc_usage | ★ |
 | 19 | **Used-vs-Remaining toggle** (flip every metric) | joachim, AgentLimits #10 | ★ |
 | 20 | **Per-model cost breakdown** (Opus vs Sonnet; $5/$25 vs legacy $15/$75) | otel, viberank, 658jjh | ★ |
-| 21 | **Hide-menu-bar-icon option**, configurable poll interval, stale-data dimming, rotating metric | AgentLimits, ClaudePulse, ac3, cctray | ★ |
+| 21 | **Hide-menu-bar-icon option**, configurable poll interval, rotating metric (✅ stale-data dimming shipped v1.1.4) | AgentLimits, ClaudePulse, ac3, cctray | ★ |
 | 22 | **`CLAUDE_CONFIG_DIR` + multiple data-path** support | masorange, CCUM | ★ cheap, expected |
 | 23 | **Real prepaid $ balance** via opt-in Console login | hamed, mnapoli | ★★ but heavy (new auth) |
 | 24 | **Multi-account** + "headroom" score (`100−max(5h%,7d%)`) + sortable table | rjmon, dsado, hamed | ★ scope-expanding |
@@ -98,32 +114,21 @@ this is the "pure coolness" ordering you asked for.
 Each release stays small and coherent. Nothing here changes the default minimal
 look — new surfaces are toggles or dropdown rows.
 
-### v1.1 — "Sharper glance" (visual polish + the near-free $ win + install)
-The highest impact-to-effort items; closes our two most visible gaps.
-- **[1] Graphical dual-ring icon**, opt-in (text mode stays default). The
-  `DualRingIcon.swift` in `ac3charland/claude-usage-menu-bar` is a portable
-  ~100-line reference: outer arc = 5h, inner-disc radius = 7d, solid-vs-hollow =
-  on/ahead-of-pace, `isTemplate=true` so it auto-themes.
-- **[4] `extra_usage` dollar line** in the dropdown — `$1.20 / $50 (2%)`. Zero
-  new auth; we already decode `extra_usage`.
-- **[6] Notarize** the DMG (`notarytool` + hardened runtime; saqoosha's Makefile
-  pipeline is the template) and drop the `xattr` instructions from the README.
-- **README polish** — brew one-liner marked *Recommended* at top, real menu-bar
-  + dropdown screenshots/GIF, a privacy statement, a Troubleshooting section
-  covering OAuth token refresh, badges.
-- **[21] Stale-data dimming** when a fetch is overdue (cheap trust signal).
+### ✅ v1.1 — "Sharper glance" — SHIPPED (v1.1.4)
+Dual-ring gauge [1], `extra_usage` dollar line [4], burn rate + run-out ETA
+[2][5], stale-data dimming [21], README refresh, and build-version provenance.
+**Deferred: [6] Notarize** — pending the Apple Developer account; the release
+workflow auto-upgrades from the unsigned-DMG fallback to a notarized build the
+moment the `APPLE_*` secrets are added (no code changes needed).
 
-### v1.2 — "Foresight" (predictions — no new data, all derived from what we poll)
-- **[5] Burn rate** (tokens/min, color-banded) from today's jsonl.
-- **[2] Run-out ETA as clock time** + "before reset" alert. The cleanest logic:
-  `cost_per_min` from the active 5h block → `predicted_end = now + remaining/rate`
-  → warn when `predicted_end < reset_time` (CCUM's `display_controller`).
-- **[3] Pacemaker** indicator (window-elapsed vs used; can render as the ring's
-  inner state or a small ↑/↓).
+### v1.2 — "Foresight" (the rest of prediction/pace + auto-update)
+- **[3] Pacemaker** indicator (window-elapsed vs used) — best rendered as the
+  v1.1 ring's **inner state** (solid when ahead of pace, hollow when behind), or
+  a small ↑/↓. The natural next step now that the ring and burn rate both ship.
 - **[14] Reset-countdown notifications** with anti-spam (debounce/dedupe — the
   extension's #48/#51 spam complaints are the cautionary tale).
 - **[13] Sparkle auto-update** (EdDSA-signed appcast) — fixes the unnotarized-
-  download friction for good.
+  download friction for good, and gives the dev/beta channel a delivery path.
 
 ### v1.3 — "Memory" (local history & money insight, still from local jsonl)
 - **[9] Lightweight local history** store (snapshots; SQLite or flat file).
