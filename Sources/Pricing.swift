@@ -37,3 +37,12 @@ func tokenCostUSD(model: String, input: Int, output: Int, cacheCreation: Int, ca
         + Double(cacheCreation) * inPerToken * 1.25
         + Double(cacheRead) * inPerToken * 0.10
 }
+
+/// Projects a full month's spend from the month-to-date total: the daily average
+/// so far (`monthCost / day-of-month`) extrapolated across every day in the month.
+func monthlyProjection(monthCostUSD: Double, now: Date = Date(), calendar: Calendar = .current) -> Double {
+    let day = calendar.component(.day, from: now)
+    guard day > 0 else { return monthCostUSD }
+    let daysInMonth = calendar.range(of: .day, in: .month, for: now)?.count ?? 30
+    return (monthCostUSD / Double(day)) * Double(daysInMonth)
+}

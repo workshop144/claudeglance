@@ -295,6 +295,14 @@ final class PricingTests: XCTestCase {
     func testZeroTokensCostNothing() {
         XCTAssertEqual(tokenCostUSD(model: "claude-sonnet-4-6", input: 0, output: 0, cacheCreation: 0, cacheRead: 0), 0)
     }
+
+    func testMonthlyProjection() {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "UTC")!
+        // Day 10 of November (30 days), $100 spent → $10/day × 30 = $300 projected.
+        let day10 = cal.date(from: DateComponents(year: 2023, month: 11, day: 10))!
+        XCTAssertEqual(monthlyProjection(monthCostUSD: 100, now: day10, calendar: cal), 300, accuracy: 1e-6)
+    }
 }
 
 // MARK: - Staleness
@@ -802,6 +810,18 @@ final class AggregateMetricsTests: XCTestCase {
                            input: 1_000_000, output: 1_000_000, model: "claude-opus-4-8")
         let m = aggregateMetrics(jsonlContents: [content], now: now)
         XCTAssertEqual(m.todayCostUSD, 30.0, accuracy: 1e-6)
+    }
+
+    func testMonthCostIncludesEarlierThisMonthNotLastMonth() {
+        let today = line(ts: todayStamp(36_000), id: "t", reqId: "1",
+                         input: 1_000_000, output: 1_000_000, model: "claude-opus-4-8")   // $30
+        let earlier = line(ts: todayStamp(-9 * 86_400), id: "e", reqId: "2",
+                           input: 1_000_000, model: "claude-opus-4-8")                    // $5, earlier this month
+        let lastMonth = line(ts: todayStamp(-25 * 86_400), id: "l", reqId: "3",
+                             input: 1_000_000, model: "claude-opus-4-8")                  // $5, previous month (excluded)
+        let m = aggregateMetrics(jsonlContents: ["\(today)\n\(earlier)\n\(lastMonth)"], now: now)
+        XCTAssertEqual(m.todayCostUSD, 30, accuracy: 1e-6)
+        XCTAssertEqual(m.monthCostUSD, 35, accuracy: 1e-6)
     }
 
     func testCachePercentUsesInputSideOnly() {

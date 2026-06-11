@@ -169,6 +169,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     let cost = formatDollars(cents: Int((m.todayCostUSD * 100).rounded()))
                     menu.addItem(secondaryItem("≈ \(cost) at API rates"))
                 }
+                if m.monthCostUSD > 0 {
+                    let mcost = formatDollars(cents: Int((m.monthCostUSD * 100).rounded()))
+                    let proj = formatDollars(cents: Int((monthlyProjection(monthCostUSD: m.monthCostUSD) * 100).rounded()))
+                    menu.addItem(secondaryItem("Month: \(mcost) · ~\(proj) projected"))
+                }
                 if m.yesterdayTokens > 0 {
                     let delta = m.todayTokens - m.yesterdayTokens
                     let sign = delta >= 0 ? "+" : "\u{2212}"

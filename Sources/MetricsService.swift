@@ -10,12 +10,13 @@ struct UsageMetrics {
     let todayActiveSeconds: Int
     let todayMessages: Int
     let yesterdayTokens: Int
-    // Today's API-equivalent spend (tokens × model price), in USD.
+    // Today's and this-month's API-equivalent spend (tokens × model price), USD.
     let todayCostUSD: Double
+    let monthCostUSD: Double
 
     static let empty = UsageMetrics(todayTokens: 0, todayCachePercent: 0,
                                     todayActiveSeconds: 0, todayMessages: 0, yesterdayTokens: 0,
-                                    todayCostUSD: 0)
+                                    todayCostUSD: 0, monthCostUSD: 0)
 
     var hasData: Bool { todayMessages > 0 }
 }
@@ -85,13 +86,14 @@ func aggregateMetrics(jsonlContents: [String], now: Date) -> UsageMetrics {
     let cal = Calendar.current
     let startToday = cal.startOfDay(for: now)
     guard let startYesterday = cal.date(byAdding: .day, value: -1, to: startToday) else { return .empty }
+    let startMonth = cal.date(from: cal.dateComponents([.year, .month], from: now)) ?? startToday
 
     let isoFrac = ISO8601DateFormatter(); isoFrac.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
     let iso = ISO8601DateFormatter(); iso.formatOptions = [.withInternetDateTime]
 
     var seen = Set<String>()
     var tIn = 0, tOut = 0, tCacheR = 0, tCacheC = 0, tMsgs = 0
-    var todayCost = 0.0
+    var todayCost = 0.0, monthCost = 0.0
     var todayTimes: [Date] = []
     var yesterdayTokens = 0
     let decoder = JSONDecoder()
@@ -114,20 +116,25 @@ func aggregateMetrics(jsonlContents: [String], now: Date) -> UsageMetrics {
             let total = (usage.input_tokens ?? 0) + (usage.output_tokens ?? 0)
                 + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0)
 
-            if date >= startToday {
-                tIn += usage.input_tokens ?? 0
-                tOut += usage.output_tokens ?? 0
-                tCacheR += usage.cache_read_input_tokens ?? 0
-                tCacheC += usage.cache_creation_input_tokens ?? 0
-                tMsgs += 1
-                todayCost += tokenCostUSD(
+            if date >= startMonth {
+                let cost = tokenCostUSD(
                     model: entry.message?.model ?? "",
                     input: usage.input_tokens ?? 0,
                     output: usage.output_tokens ?? 0,
                     cacheCreation: usage.cache_creation_input_tokens ?? 0,
                     cacheRead: usage.cache_read_input_tokens ?? 0)
-                todayTimes.append(date)
-            } else if date >= startYesterday {
+                monthCost += cost
+                if date >= startToday {
+                    tIn += usage.input_tokens ?? 0
+                    tOut += usage.output_tokens ?? 0
+                    tCacheR += usage.cache_read_input_tokens ?? 0
+                    tCacheC += usage.cache_creation_input_tokens ?? 0
+                    tMsgs += 1
+                    todayCost += cost
+                    todayTimes.append(date)
+                }
+            }
+            if date >= startYesterday && date < startToday {
                 yesterdayTokens += total
             }
         }
@@ -142,7 +149,8 @@ func aggregateMetrics(jsonlContents: [String], now: Date) -> UsageMetrics {
         todayActiveSeconds: activeSeconds(todayTimes),
         todayMessages: tMsgs,
         yesterdayTokens: yesterdayTokens,
-        todayCostUSD: todayCost
+        todayCostUSD: todayCost,
+        monthCostUSD: monthCost
     )
 }
 
@@ -195,11 +203,16 @@ final class MetricsService: ObservableObject {
         let cal = Calendar.current
         let startToday = cal.startOfDay(for: now)
         guard let startYesterday = cal.date(byAdding: .day, value: -1, to: startToday) else { return .empty }
+        let startMonth = cal.date(from: cal.dateComponents([.year, .month], from: now)) ?? startToday
+        // Read files touched since the earlier of (start of month, yesterday) so
+        // the month total is complete and the vs-yesterday delta still works on
+        // the 1st (when yesterday falls in the previous month).
+        let cutoff = min(startMonth, startYesterday)
 
         var contents: [String] = []
         for case let url as URL in enumerator where url.pathExtension == "jsonl" {
             let mod = (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-            if mod < startYesterday { continue }            // only files touched today/yesterday
+            if mod < cutoff { continue }
             guard let content = try? String(contentsOf: url, encoding: .utf8) else { continue }
             contents.append(content)
         }
