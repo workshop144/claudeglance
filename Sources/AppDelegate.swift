@@ -6,6 +6,8 @@ import Combine
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
     private var settingsWindow: NSWindow?
+    private var dashboardWindow: NSWindow?
+    private let dashboardModel = DashboardModel()
     private let usageService = UsageService.shared
     private let statusService = StatusService.shared
     private let metricsService = MetricsService.shared
@@ -209,7 +211,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(.separator())
 
-        menu.addItem(actionItem(title: "Open Dashboard", symbol: "chart.bar",
+        menu.addItem(actionItem(title: "Dashboard", symbol: "chart.bar",
                                 action: #selector(openDashboard)))
         menu.addItem(actionItem(title: "Refresh", symbol: "arrow.clockwise",
                                 action: #selector(refreshUsage)))
@@ -404,9 +406,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: - Menu actions
 
     @objc private func openDashboard() {
-        if let url = URL(string: "https://console.anthropic.com/settings/usage") {
-            NSWorkspace.shared.open(url)
+        showDashboard(.activity)
+    }
+
+    /// Open (or focus) the single dashboard window on a specific tab — the
+    /// deep-link entry point menu rows call.
+    func showDashboard(_ tab: DashboardTab) {
+        dashboardModel.selectedTab = tab
+        if dashboardWindow == nil {
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 640, height: 520),
+                styleMask: [.titled, .closable, .resizable],
+                backing: .buffered,
+                defer: false
+            )
+            window.titleVisibility = .hidden
+            window.titlebarAppearsTransparent = true
+            window.isReleasedWhenClosed = false
+            window.contentViewController = NSHostingController(rootView: DashboardView(model: dashboardModel))
+            window.addTitlebarAccessoryViewController(titleAccessory("Dashboard"))
+            window.addTitlebarAccessoryViewController(closeAccessory(for: window))
+            window.setFrameAutosaveName("ClaudeGlanceDashboard")
+            window.center()
+            dashboardWindow = window
         }
+        NSApp.activate(ignoringOtherApps: true)
+        dashboardWindow?.makeKeyAndOrderFront(nil)
     }
 
     @objc private func refreshUsage() {
@@ -446,8 +471,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             // "Settings" and a close "X" live in the title bar itself, beside the
             // traffic lights. The 38pt-tall accessories raise the title bar so the
             // lights center vertically. Content sits below — no scroll bleed.
-            window.addTitlebarAccessoryViewController(settingsTitleAccessory())
-            window.addTitlebarAccessoryViewController(settingsCloseAccessory(for: window))
+            window.addTitlebarAccessoryViewController(titleAccessory("Settings"))
+            window.addTitlebarAccessoryViewController(closeAccessory(for: window))
             window.center()
             settingsWindow = window
         }
@@ -455,8 +480,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         settingsWindow?.makeKeyAndOrderFront(nil)
     }
 
-    private func settingsTitleAccessory() -> NSTitlebarAccessoryViewController {
-        let label = NSTextField(labelWithString: "Settings")
+    private func titleAccessory(_ title: String) -> NSTitlebarAccessoryViewController {
+        let label = NSTextField(labelWithString: title)
         label.font = .systemFont(ofSize: 14, weight: .semibold)
         label.sizeToFit()
         let height: CGFloat = 38
@@ -469,7 +494,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return vc
     }
 
-    private func settingsCloseAccessory(for window: NSWindow) -> NSTitlebarAccessoryViewController {
+    private func closeAccessory(for window: NSWindow) -> NSTitlebarAccessoryViewController {
         let image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close")?
             .withSymbolConfiguration(.init(pointSize: 12, weight: .semibold))
         let button = NSButton(image: image ?? NSImage(), target: window,
