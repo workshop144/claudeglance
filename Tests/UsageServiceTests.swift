@@ -298,6 +298,47 @@ final class StalenessTests: XCTestCase {
     }
 }
 
+// MARK: - Reset notifications
+
+final class ShouldNotifyResetTests: XCTestCase {
+
+    private let now = Date(timeIntervalSince1970: 1_700_000_000)
+    private let threshold = 80
+
+    func testFirstRunDoesNotNotify() {
+        // No previous reset yet (startup) -> never notify.
+        XCTAssertFalse(shouldNotifyReset(previousResetAt: nil, newResetAt: now,
+                                         previousUtilization: 95, threshold: threshold))
+    }
+
+    func testNilNewResetDoesNotNotify() {
+        XCTAssertFalse(shouldNotifyReset(previousResetAt: now, newResetAt: nil,
+                                         previousUtilization: 95, threshold: threshold))
+    }
+
+    func testSameOrEarlierBoundaryDoesNotNotify() {
+        // Same window (reset time unchanged) -> not a reset.
+        XCTAssertFalse(shouldNotifyReset(previousResetAt: now, newResetAt: now,
+                                         previousUtilization: 95, threshold: threshold))
+    }
+
+    func testResetWhileConstrainedNotifies() {
+        let later = now.addingTimeInterval(5 * 60 * 60)
+        XCTAssertTrue(shouldNotifyReset(previousResetAt: now, newResetAt: later,
+                                        previousUtilization: 95, threshold: threshold))
+        // Exactly at threshold counts.
+        XCTAssertTrue(shouldNotifyReset(previousResetAt: now, newResetAt: later,
+                                        previousUtilization: 80, threshold: threshold))
+    }
+
+    func testResetWhileNotConstrainedStaysQuiet() {
+        // Window rolled over but you weren't near the limit -> no noise.
+        let later = now.addingTimeInterval(5 * 60 * 60)
+        XCTAssertFalse(shouldNotifyReset(previousResetAt: now, newResetAt: later,
+                                         previousUtilization: 12, threshold: threshold))
+    }
+}
+
 // MARK: - Burn rate & run-out ETA
 
 final class BurnRateTests: XCTestCase {
@@ -338,6 +379,35 @@ final class BurnRateTests: XCTestCase {
         // No estimate / no reset date -> never "before reset".
         XCTAssertFalse(BurnEstimate(percentPerHour: 0, secondsToLimit: nil)
             .hitsLimitBeforeReset(resetAt: base.addingTimeInterval(7200), now: base))
+    }
+}
+
+final class ElapsedFractionTests: XCTestCase {
+
+    private let now = Date(timeIntervalSince1970: 1_700_000_000)
+    private let window: TimeInterval = 5 * 60 * 60   // 5 hours
+
+    func testHalfwayThroughWindow() {
+        // Resets in 2.5h of a 5h window → 50% elapsed.
+        let resetAt = now.addingTimeInterval(2.5 * 60 * 60)
+        XCTAssertEqual(elapsedFraction(resetAt: resetAt, windowLength: window, now: now), 0.5, accuracy: 0.0001)
+    }
+
+    func testFreshWindowIsZero() {
+        // Resets a full window from now → nothing elapsed yet.
+        let resetAt = now.addingTimeInterval(window)
+        XCTAssertEqual(elapsedFraction(resetAt: resetAt, windowLength: window, now: now), 0.0, accuracy: 0.0001)
+    }
+
+    func testAtResetIsOne() {
+        XCTAssertEqual(elapsedFraction(resetAt: now, windowLength: window, now: now), 1.0, accuracy: 0.0001)
+    }
+
+    func testClampsBeyondBounds() {
+        // A reset already in the past clamps to fully elapsed, not >1.
+        XCTAssertEqual(elapsedFraction(resetAt: now.addingTimeInterval(-3600), windowLength: window, now: now), 1.0)
+        // A reset further out than the window clamps to 0, not negative.
+        XCTAssertEqual(elapsedFraction(resetAt: now.addingTimeInterval(window + 3600), windowLength: window, now: now), 0.0)
     }
 }
 
@@ -404,6 +474,17 @@ final class BuildInfoTests: XCTestCase {
     func testLabelShowsBranchOnFeatureBranch() {
         XCTAssertEqual(buildInfoLabel(version: "1.1.1", branch: "feature/v1.1-build-info", commit: "abc1234"),
                        "v1.1.1 · feature/v1.1-build-info@abc1234")
+    }
+
+    func testChannelIsProdForReleaseOrMain() {
+        XCTAssertEqual(buildChannel(branch: nil), "prod")     // release build (no branch passed)
+        XCTAssertEqual(buildChannel(branch: ""), "prod")
+        XCTAssertEqual(buildChannel(branch: "main"), "prod")
+    }
+
+    func testChannelIsDevForFeatureOrDevelop() {
+        XCTAssertEqual(buildChannel(branch: "develop"), "dev")
+        XCTAssertEqual(buildChannel(branch: "feature/v1.2-build-channel"), "dev")
     }
 
     func testURLPrefersCommitThenBranchThenRepo() {

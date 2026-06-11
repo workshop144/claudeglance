@@ -29,6 +29,7 @@ final class SettingsManager: ObservableObject {
     func setWarningThreshold(_ value: Double) { settings.warningThreshold = value }
     func setCriticalThreshold(_ value: Double) { settings.criticalThreshold = value }
     func setNotificationsEnabled(_ enabled: Bool) { settings.notificationsEnabled = enabled }
+    func setResetNotificationsEnabled(_ enabled: Bool) { settings.resetNotificationsEnabled = enabled }
     func setShowRingIcon(_ enabled: Bool) { settings.showRingIcon = enabled }
     func setShowFiveHour(_ enabled: Bool) { settings.showFiveHour = enabled }
     func setShowSevenDay(_ enabled: Bool) { settings.showSevenDay = enabled }

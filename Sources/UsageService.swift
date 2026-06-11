@@ -128,6 +128,17 @@ func minutesAgo(_ date: Date, from now: Date = Date()) -> Int {
     max(0, Int(now.timeIntervalSince(date) / 60))
 }
 
+/// Whether a window that just rolled over is worth a "reset" notification. A
+/// reset = the reset time advanced to a new, later boundary; we only ping if you
+/// were actually constrained beforehand (≥ threshold), which keeps it from firing
+/// every window regardless of usage. Returns false on first run (no prior reset).
+func shouldNotifyReset(previousResetAt: Date?, newResetAt: Date?,
+                       previousUtilization: Int, threshold: Int) -> Bool {
+    guard let previousResetAt, let newResetAt else { return false }
+    guard newResetAt > previousResetAt else { return false }
+    return previousUtilization >= threshold
+}
+
 // MARK: - UsageService
 
 final class UsageService: ObservableObject {

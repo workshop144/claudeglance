@@ -14,6 +14,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var lastWarningNotified: Int = 0
     private var lastCriticalNotified: Int = 0
 
+    // Previous window state, to detect a reset (reset time advanced) and how
+    // constrained we were just before it. nil until the first snapshot arrives.
+    private var lastFiveHourReset: Date?
+    private var lastFiveHourUtil: Int = 0
+    private var lastSevenDayReset: Date?
+    private var lastSevenDayUtil: Int = 0
+
     // Keep Combine subscriptions alive
     private var cancellables = Set<AnyCancellable>()
 
@@ -34,6 +41,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             .sink { [weak self] _ in
                 self?.updateStatusItemAppearance()
                 self?.checkForNotifications()
+                self?.checkForResets()
             }
             .store(in: &cancellables)
 
@@ -242,7 +250,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             container?.enclosingMenuItem?.menu?.cancelTracking()
         }
 
-        let label = NSTextField(labelWithString: "v\(BuildInfo.current.version)")
+        let info = BuildInfo.current
+        let label = NSTextField(labelWithString: "v\(info.version) (\(info.channel))")
         label.font = .systemFont(ofSize: 9)
         label.textColor = .tertiaryLabelColor
         label.translatesAutoresizingMaskIntoConstraints = false
@@ -506,9 +515,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 attributes: [.font: font, .foregroundColor: healthColor(for: statusService.status.indicator)]))
         }
 
+        // Pace marker position: how far through the 5-hour window we are.
+        let pace = snapshot.fiveHourResetAt.map {
+            elapsedFraction(resetAt: $0, windowLength: 5 * 60 * 60)
+        }
         let ringImage: NSImage? = settings.showRingIcon
             ? menuBarRingImage(fiveHourPercent: snapshot.fiveHourUtilization,
-                               sevenDayPercent: snapshot.sevenDayUtilization)
+                               sevenDayPercent: snapshot.sevenDayUtilization,
+                               fiveHourPaceFraction: pace)
             : nil
 
         // With the ring enabled it leads the title — or stands alone if every
@@ -544,6 +558,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .maintenance: return .systemBlue
         case .unknown:     return .systemGray
         }
+    }
+
+    /// Fire a one-shot "reset" notification when a 5h/7d window rolls over after
+    /// we were near its limit. Comparison/dedup lives in `shouldNotifyReset`; we
+    /// always update the stored previous-state so each boundary pings at most once.
+    private func checkForResets() {
+        let snapshot = usageService.currentUsage
+        let threshold = Int(settingsManager.settings.warningThreshold)
+        let enabled = settingsManager.settings.resetNotificationsEnabled
+
+        if enabled, shouldNotifyReset(previousResetAt: lastFiveHourReset,
+                                      newResetAt: snapshot.fiveHourResetAt,
+                                      previousUtilization: lastFiveHourUtil,
+                                      threshold: threshold) {
+            sendNotification(title: "5-hour session reset",
+                             body: "Your session limit just reset — full quota available again.",
+                             isCritical: false)
+        }
+        lastFiveHourReset = snapshot.fiveHourResetAt
+        lastFiveHourUtil = snapshot.fiveHourUtilization
+
+        if enabled, shouldNotifyReset(previousResetAt: lastSevenDayReset,
+                                      newResetAt: snapshot.sevenDayResetAt,
+                                      previousUtilization: lastSevenDayUtil,
+                                      threshold: threshold) {
+            sendNotification(title: "Weekly limit reset",
+                             body: "Your weekly limit just reset — full quota available again.",
+                             isCritical: false)
+        }
+        lastSevenDayReset = snapshot.sevenDayResetAt
+        lastSevenDayUtil = snapshot.sevenDayUtilization
     }
 
     private func checkForNotifications() {
