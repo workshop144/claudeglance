@@ -14,6 +14,21 @@
 
 ## ✅ Shipped
 
+**v1.4.5 — "Dashboard"** (June 2026): one tabbed window (Activity / Cost / Usage)
+built with SwiftUI + Swift Charts, sharing the Settings window shell. **Usage
+tab** — 5h/7d utilization history line chart [7] from the v1.3.4 store. **Cost
+tab** — today/month/projection cards, **per-model breakdown [20]**, and a
+daily-spend chart. **Activity tab** — GitHub-style contribution heatmap [15],
+streak/active-day stats, and daily-token bars. Menu rows **deep-link** to the
+matching tab (a bold-on-hover affordance, no blue highlight), and the menu's
+"Today" block was **slimmed back to a two-line glance** now that the window holds
+the detail. The menu + Settings version signatures darken/bold on hover.
+
+**v1.3.4 — "Memory"** (June 2026): $ cost today/month + monthly projection
+[10][20], "caching saved you $X" [8], in-menu streak + 14-day activity strip
+[15], and a persisted **local history store [9]** of the OAuth 5h/7d % (the
+foundation the v1.4 Dashboard charts).
+
 **v1.2.2 — "Foresight"** (June 2026): pacemaker pace marker on the 5h ring [3],
 reset-countdown notifications with anti-spam [14], and a dev/prod channel marker
 on the menu version row. **Sparkle auto-update [13] deferred** — it pairs with
@@ -85,20 +100,20 @@ this is the "pure coolness" ordering you asked for.
 | 4 | ✅ **`extra_usage` dollars** — `$X / $Y (Z%)` overage line — *shipped v1.1.2* | cfranci, elliot/ClaudeWatch | ★★★ |
 | 5 | ✅ **Burn rate** (as %/hr, not tokens/min) — *shipped v1.1.3* | ccowl, cctray, Sapeet, CCUM | ★★★ |
 | 6 | **Notarize the app** + drop the `xattr` step | saqoosha, hamed, ClaudeMeter | ★★★ table-stakes |
-| 7 | **Sparklines + trend arrows** (↗︎↘︎↔︎) in the dropdown | cctray | ★★★ |
+| 7 | ✅ **Sparklines + utilization history chart** — in-menu trend (1.3.4) + full line chart in the v1.4 Usage tab | cctray | ★★★ |
 | 8 | ✅ **"Caching saved you $X"** — *shipped 1.3.2* | ccstory | ★★★ delightful |
-| 9 | **Local history** persisted lightweight → trends over time | rjmon, hamed, cctray, vibepulse | ★★ |
+| 9 | ✅ **Local history** persisted lightweight → trends over time — *shipped 1.3.4* | rjmon, hamed, cctray, vibepulse | ★★ |
 | 10 | ✅ **$ cost** today/month + monthly projection — *shipped 1.3.0/1.3.1* | many | ★★ |
 | 11 | **Context-window monitor** — last-msg `usage / 200k` per active session, 75/90% alerts | gosparq, leeguo | ★★ differentiated 2nd mode |
 | 12 | **Prompt-cache freshness countdown** (`cache 4m23s` / `COLD`; cold burns quota ~10×) | leeguo | ★★ |
 | 13 | **Sparkle EdDSA auto-update** | ClaudePulse, AgentLimits, vibepulse | ★★ |
 | 14 | ✅ **Reset-countdown notifications** (5h + weekly) with anti-spam — *shipped v1.2.1* | hamed #243, lugia #48/#51 | ★★ |
-| 15 | ✅ **streak + activity strip** (in-menu) — *shipped 1.3.3*; full GitHub-grid → v1.4 Dashboard | cc-wrapped, AgentLimits, 658jjh | ★★ |
+| 15 | ✅ **streak + activity strip** (in-menu, 1.3.3) + **full GitHub-style heatmap grid** in the v1.4 Activity tab | cc-wrapped, AgentLimits, 658jjh | ★★ |
 | 16 | **Session health grade A–F** (errors/abandons/retries/compactions) | agentsview | ★★ novel |
 | 17 | **"Where your tokens go"** — your prompts vs tool-results vs thinking | jack21/ClaudeCodeUsage | ★★ actionable |
 | 18 | **Top tools / MCP usage** ("most-used today: Bash, Edit, …") | par_cc_usage | ★ |
 | 19 | **Used-vs-Remaining toggle** (flip every metric) | joachim, AgentLimits #10 | ★ |
-| 20 | **Per-model cost breakdown** (Opus vs Sonnet; $5/$25 vs legacy $15/$75) | otel, viberank, 658jjh | ★ |
+| 20 | ✅ **Per-model cost breakdown** (Opus vs Sonnet; $5/$25 vs legacy $15/$75) — *shipped 1.4.2* | otel, viberank, 658jjh | ★ |
 | 21 | **Hide-menu-bar-icon option**, configurable poll interval, rotating metric (✅ stale-data dimming shipped v1.1.4) | AgentLimits, ClaudePulse, ac3, cctray | ★ |
 | 22 | **`CLAUDE_CONFIG_DIR` + multiple data-path** support | masorange, CCUM | ★ cheap, expected |
 | 23 | **Real prepaid $ balance** via opt-in Console login | hamed, mnapoli | ★★ but heavy (new auth) |
@@ -134,29 +149,30 @@ an ad-hoc build can't deliver (the downloaded update is still Gatekeeper-
 quarantined). Parked to land together with notarization, so it's set up once
 cleanly. Updates meanwhile: `brew upgrade`.
 
-### v1.3 — "Memory" (local history & money insight, from local jsonl) — shipping
+### ✅ v1.3 — "Memory" — SHIPPED (v1.3.4)
 - ✅ **[10][20] $ cost** today/month + monthly projection — *shipped 1.3.0 / 1.3.1*
 - ✅ **[8] "Caching saved you $X"** (uncached − actual cost) — *shipped 1.3.2*
 - ✅ **[15] streak + 14-day activity strip** (in-menu) — *shipped 1.3.3*
-- **[9] local history store + [7] sparklines** — persist the OAuth 5h/7d % over
-  time and sparkline the gauges in the menu — *1.3.4 (in progress)*. The store is
-  the foundation the v1.4 Dashboard charts.
+- ✅ **[9] local history store + [7] sparklines** — persist the OAuth 5h/7d % over
+  time and sparkline the gauges in the menu — *shipped 1.3.4*. The store is the
+  foundation the v1.4 Dashboard charts.
 
-### v1.4 — "Dashboard" (one tabbed window; the menu goes back to a glance)
+### ✅ v1.4 — "Dashboard" — SHIPPED (v1.4.5)
 A single window (same shell as the Settings window) with **tabs — Activity /
-Cost / Usage**. Relevant menu rows become **clickable and open this one window on
-the matching tab** (deep-link) — no scattered per-feature windows. Built with
-SwiftUI + **Swift Charts** (macOS 13+). Crucially, this lets us **slim the menu
-back toward a true glance** by moving the richer detail into the window (the
-"Today" section has grown several lines deep across v1.3).
-- **Activity tab** — GitHub-style contribution heatmap grid (the full version of
-  the v1.3.3 strip) + streaks/peak stats + daily-token bars [15].
-- **Cost tab** — today/month/projection, **per-model breakdown** [20], a
-  spend-over-time chart, and "caching saved you $X" [8].
-- **Usage tab** — 5h/7d/Sonnet utilization **history sparklines/charts** [7] from
-  the v1.3.4 store, plus reset countdowns and the pace marker.
-- Deep-link: Activity strip → Activity tab, a cost line → Cost tab, the 5h/7d
-  rows → Usage tab.
+Cost / Usage**. Menu rows are **clickable and open this one window on the matching
+tab** (deep-link, bold-on-hover) — no scattered per-feature windows. Built with
+SwiftUI + **Swift Charts** (macOS 13+). This let us **slim the menu back to a true
+glance** by moving the richer detail into the window.
+- ✅ **Usage tab** (1.4.1) — 5h/7d utilization **history line chart** [7] from the
+  v1.3.4 store.
+- ✅ **Cost tab** (1.4.2) — today/month/projection cards, **per-model breakdown**
+  [20], and a daily-spend chart.
+- ✅ **Activity tab** (1.4.3) — GitHub-style contribution **heatmap grid** [15],
+  streak/active-day stats, and daily-token bars.
+- ✅ **Menu slimmed** (1.4.4) — "Today" block collapsed to a two-line glance;
+  every row deep-links (Today/streak → Activity, cost → Cost, 5h/7d → Usage).
+- ✅ **Hover affordances** (1.4.1/1.4.5) — deep-link rows bold on hover; the menu
+  and Settings version signatures darken on hover.
 
 ### v1.5 — "Depth" (power features, all opt-in so the default stays clean)
 - **[11] Context-window monitor** mode + **[12] cache-freshness countdown** — a
