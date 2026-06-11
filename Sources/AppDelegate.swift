@@ -319,14 +319,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// A clickable menu-row view that opens a URL without the standard blue menu
     /// highlight — just a pointer cursor on hover, so the version signature reads
     /// like the link in the Settings footer rather than a normal menu command.
+    /// On hover it darkens `hoverLabel` from `restColor` to `hoverColor` — the same
+    /// subtle "this is a link" affordance the deep-link rows get (here a darken
+    /// rather than a bold, since the footer text is intentionally tiny and washed).
     private final class ClickableMenuRowView: NSView {
         var onClick: (() -> Void)?
+        weak var hoverLabel: NSTextField?
+        var restColor: NSColor = .tertiaryLabelColor
+        var hoverColor: NSColor = .secondaryLabelColor
+        private var tracking: NSTrackingArea?
+
         // Route every click in the row to this view (not the inner label).
         override func hitTest(_ point: NSPoint) -> NSView? {
             bounds.contains(convert(point, from: superview)) ? self : nil
         }
         override func mouseUp(with event: NSEvent) { onClick?() }
         override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+        override func updateTrackingAreas() {
+            super.updateTrackingAreas()
+            if let tracking { removeTrackingArea(tracking) }
+            let t = NSTrackingArea(rect: bounds,
+                                   options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+                                   owner: self)
+            addTrackingArea(t); tracking = t
+        }
+        override func mouseEntered(with event: NSEvent) { hoverLabel?.textColor = hoverColor }
+        override func mouseExited(with event: NSEvent) { hoverLabel?.textColor = restColor }
     }
 
     /// A tiny, washed-out version signature for the foot of the menu —
@@ -349,6 +367,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         label.textColor = .tertiaryLabelColor
         label.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(label)
+        // Darken the signature on hover (tertiary → secondary) so it reads as the
+        // link it is, matching the deep-link rows' bold-on-hover affordance.
+        container.hoverLabel = label
 
         NSLayoutConstraint.activate([
             container.heightAnchor.constraint(equalToConstant: 20),

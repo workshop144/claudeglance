@@ -8,7 +8,7 @@ options:
 
 settings:
   base:
-    MARKETING_VERSION: "1.4.4"
+    MARKETING_VERSION: "1.4.5"
     SWIFT_VERSION: "5.9"
     # Build-time git provenance, surfaced in the Settings footer so it's obvious
     # which build is running while testing. Empty by default (plain Xcode ⌘R
