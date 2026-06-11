@@ -298,6 +298,47 @@ final class StalenessTests: XCTestCase {
     }
 }
 
+// MARK: - Reset notifications
+
+final class ShouldNotifyResetTests: XCTestCase {
+
+    private let now = Date(timeIntervalSince1970: 1_700_000_000)
+    private let threshold = 80
+
+    func testFirstRunDoesNotNotify() {
+        // No previous reset yet (startup) -> never notify.
+        XCTAssertFalse(shouldNotifyReset(previousResetAt: nil, newResetAt: now,
+                                         previousUtilization: 95, threshold: threshold))
+    }
+
+    func testNilNewResetDoesNotNotify() {
+        XCTAssertFalse(shouldNotifyReset(previousResetAt: now, newResetAt: nil,
+                                         previousUtilization: 95, threshold: threshold))
+    }
+
+    func testSameOrEarlierBoundaryDoesNotNotify() {
+        // Same window (reset time unchanged) -> not a reset.
+        XCTAssertFalse(shouldNotifyReset(previousResetAt: now, newResetAt: now,
+                                         previousUtilization: 95, threshold: threshold))
+    }
+
+    func testResetWhileConstrainedNotifies() {
+        let later = now.addingTimeInterval(5 * 60 * 60)
+        XCTAssertTrue(shouldNotifyReset(previousResetAt: now, newResetAt: later,
+                                        previousUtilization: 95, threshold: threshold))
+        // Exactly at threshold counts.
+        XCTAssertTrue(shouldNotifyReset(previousResetAt: now, newResetAt: later,
+                                        previousUtilization: 80, threshold: threshold))
+    }
+
+    func testResetWhileNotConstrainedStaysQuiet() {
+        // Window rolled over but you weren't near the limit -> no noise.
+        let later = now.addingTimeInterval(5 * 60 * 60)
+        XCTAssertFalse(shouldNotifyReset(previousResetAt: now, newResetAt: later,
+                                         previousUtilization: 12, threshold: threshold))
+    }
+}
+
 // MARK: - Burn rate & run-out ETA
 
 final class BurnRateTests: XCTestCase {

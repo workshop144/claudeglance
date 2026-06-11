@@ -4,6 +4,8 @@ struct AppSettings: Codable {
     var warningThreshold: Double = 80.0
     var criticalThreshold: Double = 90.0
     var notificationsEnabled: Bool = true
+    // Notify when a 5h/7d window resets after you were near its limit.
+    var resetNotificationsEnabled: Bool = true
 
     // Dual-ring usage gauge in the menu bar (outer = 5h, inner = 7d). Off by
     // default so the clean text display stays the out-of-box look.
@@ -38,6 +40,7 @@ struct AppSettings: Codable {
         warningThreshold = try c.decodeIfPresent(Double.self, forKey: .warningThreshold) ?? 80.0
         criticalThreshold = try c.decodeIfPresent(Double.self, forKey: .criticalThreshold) ?? 90.0
         notificationsEnabled = try c.decodeIfPresent(Bool.self, forKey: .notificationsEnabled) ?? true
+        resetNotificationsEnabled = try c.decodeIfPresent(Bool.self, forKey: .resetNotificationsEnabled) ?? true
         showRingIcon = try c.decodeIfPresent(Bool.self, forKey: .showRingIcon) ?? false
         showFiveHour = try c.decodeIfPresent(Bool.self, forKey: .showFiveHour) ?? true
         showSevenDay = try c.decodeIfPresent(Bool.self, forKey: .showSevenDay) ?? true

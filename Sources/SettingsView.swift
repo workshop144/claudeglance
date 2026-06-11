@@ -8,6 +8,7 @@ struct SettingsView: View {
     @State private var warningThreshold: Double = 80
     @State private var criticalThreshold: Double = 90
     @State private var notificationsEnabled: Bool = true
+    @State private var resetNotificationsEnabled: Bool = true
 
     @State private var showRingIcon: Bool = false
     @State private var showFiveHour: Bool = true
@@ -79,6 +80,9 @@ struct SettingsView: View {
                     toggleRow(icon: "bell", title: "Enable usage alerts",
                               description: "Notify you when usage crosses your thresholds.",
                               isOn: $notificationsEnabled) { settingsManager.setNotificationsEnabled($0) }
+                    toggleRow(icon: "arrow.clockwise.circle", title: "Reset notifications",
+                              description: "Notify you when a limit resets after you were near it.",
+                              isOn: $resetNotificationsEnabled) { settingsManager.setResetNotificationsEnabled($0) }
 
                     sliderRow(icon: "exclamationmark.triangle", title: "Warning threshold",
                               description: "Warn at \(Int(warningThreshold))% of weekly usage.",
@@ -227,6 +231,7 @@ struct SettingsView: View {
         warningThreshold = settingsManager.settings.warningThreshold
         criticalThreshold = settingsManager.settings.criticalThreshold
         notificationsEnabled = settingsManager.settings.notificationsEnabled
+        resetNotificationsEnabled = settingsManager.settings.resetNotificationsEnabled
         showRingIcon = settingsManager.settings.showRingIcon
         showFiveHour = settingsManager.settings.showFiveHour
         showSevenDay = settingsManager.settings.showSevenDay
