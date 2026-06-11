@@ -269,6 +269,144 @@ final class FormatTimeRemainingTests: XCTestCase {
     }
 }
 
+// MARK: - Streaks & activity strip
+
+final class ActivityTests: XCTestCase {
+
+    private var cal: Calendar {
+        var c = Calendar(identifier: .gregorian)
+        c.timeZone = TimeZone(identifier: "UTC")!
+        return c
+    }
+    private func day(_ y: Int, _ mo: Int, _ d: Int) -> Date {
+        cal.date(from: DateComponents(year: y, month: mo, day: d))!
+    }
+
+    func testCurrentStreakCountsConsecutiveDaysEndingToday() {
+        let today = day(2023, 11, 14)
+        let active: Set<Date> = [day(2023, 11, 14), day(2023, 11, 13), day(2023, 11, 12)]
+        XCTAssertEqual(currentStreak(activeDays: active, today: today, calendar: cal), 3)
+    }
+
+    func testCurrentStreakAllowsTodayInactiveAndCountsFromYesterday() {
+        let today = day(2023, 11, 14)   // no activity today yet
+        let active: Set<Date> = [day(2023, 11, 13), day(2023, 11, 12)]
+        XCTAssertEqual(currentStreak(activeDays: active, today: today, calendar: cal), 2)
+    }
+
+    func testCurrentStreakBreaksOnGap() {
+        let today = day(2023, 11, 14)
+        // Gap: nothing on the 13th, so the streak is broken before today/yesterday.
+        let active: Set<Date> = [day(2023, 11, 12), day(2023, 11, 11)]
+        XCTAssertEqual(currentStreak(activeDays: active, today: today, calendar: cal), 0)
+    }
+
+    func testLongestStreakFindsTheBestRun() {
+        let active: Set<Date> = [
+            day(2023, 11, 1), day(2023, 11, 2),                      // run of 2
+            day(2023, 11, 5), day(2023, 11, 6), day(2023, 11, 7),    // run of 3
+            day(2023, 11, 10),                                       // run of 1
+        ]
+        XCTAssertEqual(longestStreak(activeDays: active, calendar: cal), 3)
+        XCTAssertEqual(longestStreak(activeDays: [], calendar: cal), 0)
+    }
+
+    func testActivityStripScalesToBusiestDayAndMarksIdleDays() {
+        let today = day(2023, 11, 14)
+        let tokens: [Date: Int] = [
+            day(2023, 11, 14): 100,   // busiest → full block
+            day(2023, 11, 13): 0,     // idle → "·"
+            day(2023, 11, 12): 50,    // mid
+        ]
+        let strip = activityStrip(dailyTokens: tokens, days: 3, endingAt: today, calendar: cal)
+        // Order is oldest→newest: 12th, 13th, 14th.
+        XCTAssertEqual(strip.count, 3)
+        XCTAssertEqual(Array(strip)[1], "·")          // idle 13th
+        XCTAssertEqual(Array(strip)[2], "█")          // busiest 14th
+    }
+
+    func testActivityStripAllIdleIsAllDots() {
+        XCTAssertEqual(activityStrip(dailyTokens: [:], days: 5, endingAt: day(2023, 11, 14), calendar: cal), "·····")
+    }
+
+    func testSparklineScalesToMax() {
+        // 0 → lowest block, 50/100 → mid, 100 → full.
+        XCTAssertEqual(sparkline([0, 50, 100], maxValue: 100), "▁▄█")
+        XCTAssertEqual(sparkline([], maxValue: 100), "")
+        // Out-of-range clamps rather than overflowing the level table.
+        XCTAssertEqual(sparkline([150, -10], maxValue: 100), "█▁")
+    }
+}
+
+// MARK: - History store (persisted utilization)
+
+final class HistoryStoreTests: XCTestCase {
+
+    private let now = Date(timeIntervalSince1970: 1_700_000_000)
+
+    func testPruneDropsOldSamples() {
+        let samples = [
+            HistorySample(t: now.addingTimeInterval(-3600), h5: 10, h7: 20),
+            HistorySample(t: now.addingTimeInterval(-60), h5: 30, h7: 40),
+        ]
+        let kept = prunedHistory(samples, since: now.addingTimeInterval(-120))
+        XCTAssertEqual(kept.count, 1)
+        XCTAssertEqual(kept.first?.h5, 30)
+    }
+
+    func testRecentFiveHourReturnsValuesInWindow() {
+        let samples = [
+            HistorySample(t: now.addingTimeInterval(-7200), h5: 5, h7: 0),   // outside 1h window
+            HistorySample(t: now.addingTimeInterval(-1800), h5: 12, h7: 0),
+            HistorySample(t: now.addingTimeInterval(-60), h5: 18, h7: 0),
+        ]
+        XCTAssertEqual(recentFiveHour(samples, within: 3600, now: now), [12, 18])
+    }
+}
+
+// MARK: - Model pricing & cost
+
+final class PricingTests: XCTestCase {
+
+    func testModelRateMatchingBySubstring() {
+        XCTAssertEqual(modelRate(for: "claude-opus-4-8"), ModelRate(input: 5, output: 25))
+        XCTAssertEqual(modelRate(for: "claude-3-opus-20240229"), ModelRate(input: 15, output: 75))
+        XCTAssertEqual(modelRate(for: "claude-sonnet-4-6"), ModelRate(input: 3, output: 15))
+        XCTAssertEqual(modelRate(for: "claude-3-5-haiku-20241022"), ModelRate(input: 0.8, output: 4))
+        XCTAssertEqual(modelRate(for: "claude-haiku-4-5"), ModelRate(input: 1, output: 5))
+        XCTAssertEqual(modelRate(for: "claude-fable-5"), ModelRate(input: 10, output: 50))
+        // Unknown model falls back to Sonnet-class rates.
+        XCTAssertEqual(modelRate(for: "some-future-model"), ModelRate(input: 3, output: 15))
+    }
+
+    func testTokenCostAppliesRatesAndCacheMultipliers() {
+        // Opus 4: $5/1M input, $25/1M output, cache-write 1.25× input, cache-read 0.10× input.
+        XCTAssertEqual(tokenCostUSD(model: "claude-opus-4-8", input: 1_000_000, output: 0, cacheCreation: 0, cacheRead: 0), 5.0, accuracy: 1e-9)
+        XCTAssertEqual(tokenCostUSD(model: "claude-opus-4-8", input: 0, output: 1_000_000, cacheCreation: 0, cacheRead: 0), 25.0, accuracy: 1e-9)
+        XCTAssertEqual(tokenCostUSD(model: "claude-opus-4-8", input: 0, output: 0, cacheCreation: 1_000_000, cacheRead: 0), 6.25, accuracy: 1e-9)
+        XCTAssertEqual(tokenCostUSD(model: "claude-opus-4-8", input: 0, output: 0, cacheCreation: 0, cacheRead: 1_000_000), 0.50, accuracy: 1e-9)
+    }
+
+    func testZeroTokensCostNothing() {
+        XCTAssertEqual(tokenCostUSD(model: "claude-sonnet-4-6", input: 0, output: 0, cacheCreation: 0, cacheRead: 0), 0)
+    }
+
+    func testUncachedCostBillsCacheTokensAsInput() {
+        // Opus 4: 1M cache-read tokens, uncached, = ordinary input = $5
+        // (vs the $0.50 cached cost — a $4.50 saving).
+        XCTAssertEqual(tokenCostUncachedUSD(model: "claude-opus-4-8", input: 0, output: 0, cacheCreation: 0, cacheRead: 1_000_000), 5.0, accuracy: 1e-9)
+        XCTAssertEqual(tokenCostUncachedUSD(model: "claude-opus-4-8", input: 1_000_000, output: 0, cacheCreation: 0, cacheRead: 1_000_000), 10.0, accuracy: 1e-9)
+    }
+
+    func testMonthlyProjection() {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "UTC")!
+        // Day 10 of November (30 days), $100 spent → $10/day × 30 = $300 projected.
+        let day10 = cal.date(from: DateComponents(year: 2023, month: 11, day: 10))!
+        XCTAssertEqual(monthlyProjection(monthCostUSD: 100, now: day10, calendar: cal), 300, accuracy: 1e-6)
+    }
+}
+
 // MARK: - Staleness
 
 final class StalenessTests: XCTestCase {
@@ -738,8 +876,10 @@ final class AggregateMetricsTests: XCTestCase {
     }
 
     private func line(ts: String, id: String? = nil, reqId: String? = nil,
-                      input: Int = 0, output: Int = 0, cacheR: Int = 0, cacheC: Int = 0) -> String {
+                      input: Int = 0, output: Int = 0, cacheR: Int = 0, cacheC: Int = 0,
+                      model: String? = nil) -> String {
         var msg = "\"usage\":{\"input_tokens\":\(input),\"output_tokens\":\(output),\"cache_read_input_tokens\":\(cacheR),\"cache_creation_input_tokens\":\(cacheC)}"
+        if let model { msg = "\"model\":\"\(model)\"," + msg }
         if let id { msg = "\"id\":\"\(id)\"," + msg }
         var fields = ["\"timestamp\":\"\(ts)\"", "\"message\":{\(msg)}"]
         if let reqId { fields.append("\"requestId\":\"\(reqId)\"") }
@@ -764,6 +904,34 @@ final class AggregateMetricsTests: XCTestCase {
         XCTAssertEqual(m.todayTokens, 100 + 50 + 30 + 20 + 10 + 5)
         XCTAssertEqual(m.todayActiveSeconds, 60)
         XCTAssertTrue(m.hasData)
+    }
+
+    func testTodayCostFromModelPricing() {
+        // 1M input + 1M output on Opus 4 = $5 + $25 = $30.
+        let content = line(ts: todayStamp(36_000), id: "a", reqId: "1",
+                           input: 1_000_000, output: 1_000_000, model: "claude-opus-4-8")
+        let m = aggregateMetrics(jsonlContents: [content], now: now)
+        XCTAssertEqual(m.todayCostUSD, 30.0, accuracy: 1e-6)
+    }
+
+    func testMonthCostIncludesEarlierThisMonthNotLastMonth() {
+        let today = line(ts: todayStamp(36_000), id: "t", reqId: "1",
+                         input: 1_000_000, output: 1_000_000, model: "claude-opus-4-8")   // $30
+        let earlier = line(ts: todayStamp(-9 * 86_400), id: "e", reqId: "2",
+                           input: 1_000_000, model: "claude-opus-4-8")                    // $5, earlier this month
+        let lastMonth = line(ts: todayStamp(-25 * 86_400), id: "l", reqId: "3",
+                             input: 1_000_000, model: "claude-opus-4-8")                  // $5, previous month (excluded)
+        let m = aggregateMetrics(jsonlContents: ["\(today)\n\(earlier)\n\(lastMonth)"], now: now)
+        XCTAssertEqual(m.todayCostUSD, 30, accuracy: 1e-6)
+        XCTAssertEqual(m.monthCostUSD, 35, accuracy: 1e-6)
+    }
+
+    func testMonthCacheSavings() {
+        // Today, Opus 4, 1M cache-read tokens: actual $0.50, uncached $5.00,
+        // so caching saved $4.50 (counted into the month).
+        let l = line(ts: todayStamp(36_000), id: "c", reqId: "1", cacheR: 1_000_000, model: "claude-opus-4-8")
+        let m = aggregateMetrics(jsonlContents: [l], now: now)
+        XCTAssertEqual(m.monthSavingsUSD, 4.5, accuracy: 1e-6)
     }
 
     func testCachePercentUsesInputSideOnly() {

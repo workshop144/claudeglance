@@ -67,7 +67,7 @@ The single most-asked-about feature. Status after auditing every repo:
     `/current_spend` (this is how the 2.7k★ leader does it).
   - An Admin API key (`x-api-key`, `sk-ant-admin…`) on the org cost endpoints.
 - So our original instinct was right: **OAuth can't reach it**. It's only doable
-  as an **opt-in "Console mode"** with a one-time login. Parked in **v1.5
+  as an **opt-in "Console mode"** with a one-time login. Parked in **v1.6
   Exploratory** so the default app stays login-free.
 
 ---
@@ -86,14 +86,14 @@ this is the "pure coolness" ordering you asked for.
 | 5 | ✅ **Burn rate** (as %/hr, not tokens/min) — *shipped v1.1.3* | ccowl, cctray, Sapeet, CCUM | ★★★ |
 | 6 | **Notarize the app** + drop the `xattr` step | saqoosha, hamed, ClaudeMeter | ★★★ table-stakes |
 | 7 | **Sparklines + trend arrows** (↗︎↘︎↔︎) in the dropdown | cctray | ★★★ |
-| 8 | **"Caching saved you $X"** + "API-equivalent value $Y" | ccstory | ★★★ delightful |
+| 8 | ✅ **"Caching saved you $X"** — *shipped 1.3.2* | ccstory | ★★★ delightful |
 | 9 | **Local history** persisted lightweight → trends over time | rjmon, hamed, cctray, vibepulse | ★★ |
-| 10 | **$ cost** today/session/month (tokens × price) + monthly projection | many | ★★ |
+| 10 | ✅ **$ cost** today/month + monthly projection — *shipped 1.3.0/1.3.1* | many | ★★ |
 | 11 | **Context-window monitor** — last-msg `usage / 200k` per active session, 75/90% alerts | gosparq, leeguo | ★★ differentiated 2nd mode |
 | 12 | **Prompt-cache freshness countdown** (`cache 4m23s` / `COLD`; cold burns quota ~10×) | leeguo | ★★ |
 | 13 | **Sparkle EdDSA auto-update** | ClaudePulse, AgentLimits, vibepulse | ★★ |
 | 14 | ✅ **Reset-countdown notifications** (5h + weekly) with anti-spam — *shipped v1.2.1* | hamed #243, lugia #48/#51 | ★★ |
-| 15 | **Usage heatmap** (GitHub-style) + **streaks** (current/max) | cc-wrapped, AgentLimits, 658jjh | ★★ |
+| 15 | ✅ **streak + activity strip** (in-menu) — *shipped 1.3.3*; full GitHub-grid → v1.4 Dashboard | cc-wrapped, AgentLimits, 658jjh | ★★ |
 | 16 | **Session health grade A–F** (errors/abandons/retries/compactions) | agentsview | ★★ novel |
 | 17 | **"Where your tokens go"** — your prompts vs tool-results vs thinking | jack21/ClaudeCodeUsage | ★★ actionable |
 | 18 | **Top tools / MCP usage** ("most-used today: Bash, Edit, …") | par_cc_usage | ★ |
@@ -134,19 +134,31 @@ an ad-hoc build can't deliver (the downloaded update is still Gatekeeper-
 quarantined). Parked to land together with notarization, so it's set up once
 cleanly. Updates meanwhile: `brew upgrade`.
 
-### v1.3 — "Memory" (local history & money insight, still from local jsonl)
-- **[9] Lightweight local history** store (snapshots; SQLite or flat file).
-- **[7] Sparklines + trend arrows** in the dropdown.
-- **[15] Usage heatmap + streaks** (opt-in / settings).
-- **[8] "Caching saved you $X" + "API-equivalent value $Y this week"** — reframes
-  cost as value on a flat Max plan; motivating, not anxiety-inducing.
-- **[10][20] $ cost** today/session/month + monthly projection
-  (`dailyAvg × daysInMonth`). Pricing: hardcoded snapshot with a **LiteLLM
-  override fetch**; distinguish **Opus current $5/$25 vs legacy $15/$75** and the
-  **>200k tiered** rate. Dedupe by message id before summing (every serious tool
-  does this).
+### v1.3 — "Memory" (local history & money insight, from local jsonl) — shipping
+- ✅ **[10][20] $ cost** today/month + monthly projection — *shipped 1.3.0 / 1.3.1*
+- ✅ **[8] "Caching saved you $X"** (uncached − actual cost) — *shipped 1.3.2*
+- ✅ **[15] streak + 14-day activity strip** (in-menu) — *shipped 1.3.3*
+- **[9] local history store + [7] sparklines** — persist the OAuth 5h/7d % over
+  time and sparkline the gauges in the menu — *1.3.4 (in progress)*. The store is
+  the foundation the v1.4 Dashboard charts.
 
-### v1.4 — "Depth" (power features, all opt-in so the default stays clean)
+### v1.4 — "Dashboard" (one tabbed window; the menu goes back to a glance)
+A single window (same shell as the Settings window) with **tabs — Activity /
+Cost / Usage**. Relevant menu rows become **clickable and open this one window on
+the matching tab** (deep-link) — no scattered per-feature windows. Built with
+SwiftUI + **Swift Charts** (macOS 13+). Crucially, this lets us **slim the menu
+back toward a true glance** by moving the richer detail into the window (the
+"Today" section has grown several lines deep across v1.3).
+- **Activity tab** — GitHub-style contribution heatmap grid (the full version of
+  the v1.3.3 strip) + streaks/peak stats + daily-token bars [15].
+- **Cost tab** — today/month/projection, **per-model breakdown** [20], a
+  spend-over-time chart, and "caching saved you $X" [8].
+- **Usage tab** — 5h/7d/Sonnet utilization **history sparklines/charts** [7] from
+  the v1.3.4 store, plus reset countdowns and the pace marker.
+- Deep-link: Activity strip → Activity tab, a cost line → Cost tab, the 5h/7d
+  rows → Usage tab.
+
+### v1.5 — "Depth" (power features, all opt-in so the default stays clean)
 - **[11] Context-window monitor** mode + **[12] cache-freshness countdown** — a
   genuinely differentiated second glance, reusing jsonl we already read.
 - **[17] "Where your tokens go"** + **[18] top tools/MCP** mini-breakdown.
@@ -155,7 +167,7 @@ cleanly. Updates meanwhile: `brew upgrade`.
 - **[19][21][22] UX niceties:** used-vs-remaining toggle, hide-icon option,
   configurable interval, `CLAUDE_CONFIG_DIR` + multi-path support.
 
-### v1.5+ — Exploratory (bigger bets; validate demand first)
+### v1.6+ — Exploratory (bigger bets; validate demand first)
 - **[23] Real prepaid $ balance** via opt-in "Console mode" (one-time
   `sessionKey` capture or Admin key). The answer to "$160 left" — but it adds an
   auth surface, so it stays opt-in and off the default path.

@@ -146,6 +146,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 menu.addItem(secondaryItem("Using ~\(Int(burn.percentPerHour.rounded()))%/hr"))
             }
         }
+        // Recent 5h-usage trend from persisted history (survives restarts).
+        let trend = HistoryStore.shared.fiveHourTrend()
+        if trend.count >= 2 {
+            menu.addItem(secondaryItem("Trend: \(sparkline(trend, maxValue: 100))"))
+        }
 
         menu.addItem(infoItem(title: "Week: \(snapshot.sevenDayUtilization)%", symbol: "calendar"))
         if let resetIn = snapshot.sevenDayResetIn {
@@ -165,6 +170,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 var detail = "\(formatDuration(m.todayActiveSeconds)) active · \(m.todayMessages) msgs"
                 if m.todayCachePercent > 0 { detail += " · \(m.todayCachePercent)% cached" }
                 menu.addItem(secondaryItem(detail))
+                if m.todayCostUSD > 0 {
+                    let cost = formatDollars(cents: Int((m.todayCostUSD * 100).rounded()))
+                    menu.addItem(secondaryItem("≈ \(cost) at API rates"))
+                }
+                if m.monthCostUSD > 0 {
+                    let mcost = formatDollars(cents: Int((m.monthCostUSD * 100).rounded()))
+                    let proj = formatDollars(cents: Int((monthlyProjection(monthCostUSD: m.monthCostUSD) * 100).rounded()))
+                    menu.addItem(secondaryItem("Month: \(mcost) · ~\(proj) projected"))
+                }
+                if m.monthSavingsUSD >= 0.01 {
+                    let saved = formatDollars(cents: Int((m.monthSavingsUSD * 100).rounded()))
+                    menu.addItem(secondaryItem("Caching saved ~\(saved) this month"))
+                }
+                if !m.dailyTokens.isEmpty {
+                    let active = Set(m.dailyTokens.filter { $0.value > 0 }.keys)
+                    let now = Date()
+                    let strip = activityStrip(dailyTokens: m.dailyTokens, days: 14, endingAt: now)
+                    menu.addItem(secondaryItem("Streak \(currentStreak(activeDays: active, today: now))d (best \(longestStreak(activeDays: active))) · \(strip)"))
+                }
                 if m.yesterdayTokens > 0 {
                     let delta = m.todayTokens - m.yesterdayTokens
                     let sign = delta >= 0 ? "+" : "\u{2212}"

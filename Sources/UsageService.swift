@@ -228,6 +228,7 @@ final class UsageService: ObservableObject {
                     self.fiveHourSamples = appendingSample(
                         UsageSample(time: Date(), utilization: fiveHourUtil),
                         to: self.fiveHourSamples)
+                    HistoryStore.shared.record(fiveHour: fiveHourUtil, sevenDay: sevenDayUtil)
                     self.currentUsage = snapshot
                     self.error = nil
                     self.isLoading = false
