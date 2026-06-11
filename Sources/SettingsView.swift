@@ -24,6 +24,7 @@ struct SettingsView: View {
     @State private var launchAtLoginError: String? = nil
 
     @State private var resetHovering = false
+    @State private var versionHovering = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -215,12 +216,15 @@ struct SettingsView: View {
             Spacer()
             // Small, unobtrusive build provenance so it's clear which build is
             // running while testing; links to the exact commit/branch on GitHub.
+            // Darkens on hover (secondary → primary) to read as a link — the same
+            // subtle affordance as the version signature in the menu footer.
             Link(destination: BuildInfo.current.url) {
                 Text(BuildInfo.current.label)
                     .font(.system(size: 10))
-                    .foregroundColor(.secondary)
+                    .foregroundColor(versionHovering ? .primary : .secondary)
             }
             .buttonStyle(.plain)
+            .onHover { versionHovering = $0 }
             .help(BuildInfo.current.helpText)
         }
         .padding(.horizontal, 20)
