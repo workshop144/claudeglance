@@ -1202,3 +1202,17 @@ final class AggregateContextWindowsTests: XCTestCase {
         XCTAssertFalse(m.hasData)
     }
 }
+
+// MARK: - parseOAuthExpiry (Keychain epoch → Date, unit-safe)
+
+final class ParseOAuthExpiryTests: XCTestCase {
+    func testMillisecondsEpochInterpretedAsMs() {
+        // Claude Code writes ms: 1_700_000_000_000 ms == 1_700_000_000 s.
+        XCTAssertEqual(parseOAuthExpiry(1_700_000_000_000).timeIntervalSince1970, 1_700_000_000, accuracy: 0.001)
+    }
+
+    func testSecondsEpochInterpretedAsSeconds() {
+        // A seconds-format value must not be divided by 1000 (would land in 1970).
+        XCTAssertEqual(parseOAuthExpiry(1_700_000_000).timeIntervalSince1970, 1_700_000_000, accuracy: 0.001)
+    }
+}

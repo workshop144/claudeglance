@@ -12,7 +12,22 @@ private struct KeychainCredentials: Decodable {
     }
 }
 
-func readOAuthAccessToken() throws -> String {
+/// The Claude Code OAuth credentials we actually use — the bearer token plus when
+/// it expires, so the service can re-read a refreshed token before it goes stale.
+struct OAuthToken {
+    let accessToken: String
+    let expiresAt: Date
+}
+
+/// Claude Code stores `expiresAt` as a Unix epoch. It writes milliseconds, but be
+/// unit-safe: treat large values as ms and smaller ones as seconds, so a future
+/// format change can't silently turn "expires in 8h" into "expired in 1970".
+func parseOAuthExpiry(_ raw: Double) -> Date {
+    let seconds = raw > 1_000_000_000_000 ? raw / 1000 : raw
+    return Date(timeIntervalSince1970: seconds)
+}
+
+func readOAuthToken() throws -> OAuthToken {
     var result: AnyObject?
     let query: [String: Any] = [
         kSecClass as String: kSecClassGenericPassword,
@@ -26,8 +41,11 @@ func readOAuthAccessToken() throws -> String {
                       userInfo: [NSLocalizedDescriptionKey: "Claude Code credentials not found in Keychain. Make sure Claude Code is installed and logged in. (status: \(status))"])
     }
     let creds = try JSONDecoder().decode(KeychainCredentials.self, from: data)
-    return creds.claudeAiOauth.accessToken
+    return OAuthToken(accessToken: creds.claudeAiOauth.accessToken,
+                      expiresAt: parseOAuthExpiry(creds.claudeAiOauth.expiresAt))
 }
+
+func readOAuthAccessToken() throws -> String { try readOAuthToken().accessToken }
 
 // MARK: - API Response Model
 
@@ -164,14 +182,29 @@ final class UsageService: ObservableObject {
     var urlSession: URLSession = .shared
 
     private var cachedToken: String?
+    private var cachedTokenExpiresAt: Date?
 
     private init() {}
 
+    /// Returns the bearer token, re-reading the Keychain when there's no cached
+    /// token or the cached one is within a minute of expiry — so a token Claude
+    /// Code has already refreshed is picked up before we send a dead one.
     private func accessToken() throws -> String {
-        if let token = cachedToken { return token }
-        let token = try readOAuthAccessToken()
-        cachedToken = token
-        return token
+        if let token = cachedToken, let exp = cachedTokenExpiresAt,
+           exp.timeIntervalSinceNow > 60 {
+            return token
+        }
+        let creds = try readOAuthToken()
+        cachedToken = creds.accessToken
+        cachedTokenExpiresAt = creds.expiresAt
+        return creds.accessToken
+    }
+
+    /// Drop the cached token so the next poll re-reads (possibly refreshed)
+    /// credentials from the Keychain.
+    private func invalidateToken() {
+        cachedToken = nil
+        cachedTokenExpiresAt = nil
     }
 
     func startPolling() {
@@ -236,12 +269,19 @@ final class UsageService: ObservableObject {
                 }
             } catch let error as NSError {
                 let isRateLimit = error.code == 429
+                // A 401/403 means the token we sent is stale or was rotated — the
+                // cached copy is now useless, so drop it and re-read next poll.
+                let isAuthError = error.code == 401 || error.code == 403
                 await MainActor.run {
                     if isRateLimit {
                         // Clear token so next attempt re-reads a potentially refreshed token from Keychain
-                        self.cachedToken = nil
+                        self.invalidateToken()
                         self.error = "Rate limited — retrying in 15 min"
                         self.scheduleTimer(interval: self.backoffInterval)
+                    } else if isAuthError {
+                        self.invalidateToken()
+                        self.error = "Auth token expired — retrying (re-login to Claude Code if this persists)"
+                        self.scheduleTimer(interval: self.normalInterval)
                     } else {
                         self.error = error.localizedDescription
                         self.scheduleTimer(interval: self.normalInterval)
