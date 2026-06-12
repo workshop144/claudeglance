@@ -1240,6 +1240,22 @@ final class AggregateContextWindowsTests: XCTestCase {
     }
 }
 
+// MARK: - manual-refresh throttle
+
+final class ManualRefreshThrottleTests: XCTestCase {
+    func testFirstRefreshAlwaysAllowed() {
+        XCTAssertTrue(manualRefreshAllowed(last: nil, now: Date(), minInterval: 10))
+    }
+
+    func testBlockedWithinWindowAllowedAfter() {
+        let last = Date(timeIntervalSince1970: 1_700_000_000)
+        XCTAssertFalse(manualRefreshAllowed(last: last, now: last.addingTimeInterval(3), minInterval: 10))
+        XCTAssertFalse(manualRefreshAllowed(last: last, now: last.addingTimeInterval(9.9), minInterval: 10))
+        XCTAssertTrue(manualRefreshAllowed(last: last, now: last.addingTimeInterval(10), minInterval: 10))
+        XCTAssertTrue(manualRefreshAllowed(last: last, now: last.addingTimeInterval(60), minInterval: 10))
+    }
+}
+
 // MARK: - parseOAuthExpiry (Keychain epoch → Date, unit-safe)
 
 final class ParseOAuthExpiryTests: XCTestCase {
