@@ -21,6 +21,7 @@
 		555CE50366E519569631B64A /* claudeglance-statusline.sh in Resources */ = {isa = PBXBuildFile; fileRef = 43285A0918E2B6249471B9C3 /* claudeglance-statusline.sh */; };
 		641791CDCB279ABBC08D042E /* UsageServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1949DB119DBBF5FE0F65D2A4 /* UsageServiceTests.swift */; };
 		6D214E56F105333C2AA79C24 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73C3777959157876E1139AF1 /* AppDelegate.swift */; };
+		6E7959CD2F34813603847D4E /* WrappedCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD69DF6900409BF9A03F064A /* WrappedCard.swift */; };
 		71334E3131A76CB33D721E33 /* ClaudePaths.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49ACE0A9954AE2900B722F7A /* ClaudePaths.swift */; };
 		71DAB555D0B8F113180BEA2C /* SettingsManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1517703E21CE6FD07CD0FE7 /* SettingsManager.swift */; };
 		7DF83E170CC197AA3BF0BCC8 /* MenuBarIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23F3D9F26ACD335A9867053D /* MenuBarIcon.swift */; };
@@ -36,6 +37,7 @@
 		EE03B28A6FDCF419578F9309 /* HistoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01DF3C6B8EDFEDE6A749C2F0 /* HistoryStore.swift */; };
 		F132079F85A7CCDD36607874 /* ToolUsage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D669BEFDE86EF5611899941 /* ToolUsage.swift */; };
 		F228D6812CD9ABAA0B73B62A /* BurnRate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A990F191E512F052132FC6BF /* BurnRate.swift */; };
+		FB58AC8C346887E986EF1C21 /* WrappedCardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3FF9EBD17B7B96B3A223C27 /* WrappedCardTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -81,7 +83,9 @@
 		A9C92B40480B46451A779F3E /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		B1517703E21CE6FD07CD0FE7 /* SettingsManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsManager.swift; sourceTree = "<group>"; };
 		B7122E4ED4E2E86D4A2CC15E /* StatusLineExportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusLineExportTests.swift; sourceTree = "<group>"; };
+		CD69DF6900409BF9A03F064A /* WrappedCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WrappedCard.swift; sourceTree = "<group>"; };
 		D200048597B4157291EE1A2F /* UsageData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageData.swift; sourceTree = "<group>"; };
+		D3FF9EBD17B7B96B3A223C27 /* WrappedCardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WrappedCardTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -141,6 +145,7 @@
 				7D669BEFDE86EF5611899941 /* ToolUsage.swift */,
 				D200048597B4157291EE1A2F /* UsageData.swift */,
 				389B96510CE84AF4DA0D39BF /* UsageService.swift */,
+				CD69DF6900409BF9A03F064A /* WrappedCard.swift */,
 			);
 			path = Sources;
 			sourceTree = "<group>";
@@ -171,6 +176,7 @@
 				054F822A413107C0E6AE613C /* StatusHistoryTests.swift */,
 				B7122E4ED4E2E86D4A2CC15E /* StatusLineExportTests.swift */,
 				1949DB119DBBF5FE0F65D2A4 /* UsageServiceTests.swift */,
+				D3FF9EBD17B7B96B3A223C27 /* WrappedCardTests.swift */,
 			);
 			path = Tests;
 			sourceTree = "<group>";
@@ -275,6 +281,7 @@
 				08768C509388764D5866CFA3 /* StatusHistoryTests.swift in Sources */,
 				16BF940B052B4A948B9B1147 /* StatusLineExportTests.swift in Sources */,
 				641791CDCB279ABBC08D042E /* UsageServiceTests.swift in Sources */,
+				FB58AC8C346887E986EF1C21 /* WrappedCardTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -303,6 +310,7 @@
 				F132079F85A7CCDD36607874 /* ToolUsage.swift in Sources */,
 				382F373955DE9A5AC38ACC84 /* UsageData.swift in Sources */,
 				D5C6822375FC7952CB358FC6 /* UsageService.swift in Sources */,
+				6E7959CD2F34813603847D4E /* WrappedCard.swift in Sources */,
 				89FFB0D3ED0AF618E8A94836 /* main.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -375,7 +383,7 @@
 				GIT_BRANCH = "";
 				GIT_COMMIT = "";
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
-				MARKETING_VERSION = 1.6.2;
+				MARKETING_VERSION = 1.6.3;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -501,7 +509,7 @@
 				GIT_BRANCH = "";
 				GIT_COMMIT = "";
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
-				MARKETING_VERSION = 1.6.2;
+				MARKETING_VERSION = 1.6.3;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = NO;
