@@ -14,6 +14,14 @@
 
 ## ✅ Shipped
 
+**v1.6.1 — "Reach"** (June 2026): **Nix / home-manager packaging [30]** — a `flake.nix`
+that packages the released app for `aarch64-darwin` / `x86_64-darwin` (fetches the
+release DMG, installs `ClaudeGlance.app` + a `bin/claudeglance` launcher), so Nix
+users can `nix run`/`nix profile install` or add it to a nix-darwin / home-manager
+config. It tracks the latest *public* release; `scripts/update-flake.sh <version>`
+re-pins it from a freshly released DMG, and a CI job `nix build`s the flake on every
+push so the formula can't silently rot. App code is unchanged.
+
 **v1.6.0 — "Reach"** (June 2026): the first of the v1.6 "get our data onto more
 surfaces" pass. **Bundled Claude Code statusline [27]** — ClaudeGlance now writes
 its live numbers to a small JSON sidecar each poll, and ships a shell script that
@@ -148,7 +156,7 @@ this is the "pure coolness" ordering you asked for.
 | 27 | ✅ **Bundled Claude Code statusline script** (reuse our data in the CLI) — *shipped v1.6.0* | AgentLimits, elliot | ★ |
 | 28 | **Plan-recommendation nudge** ("you'd be better on Max 20x") | haasonsaas | ★ |
 | 29 | **Service-status uptime history bar** (30/60/90d) | elliot/ClaudeWatch | ★ |
-| 30 | **Nix / home-manager** formula | hamed | ★ |
+| 30 | ✅ **Nix / home-manager** formula — *shipped v1.6.1* | hamed | ★ |
 | 31 | Copy-usage-to-clipboard | cctray, joachim | ½ |
 | 32 | Per-session status + approve/deny prompts + jump-to-terminal | wangsen, TwilightVoyager, theangeloumali | different product → decline |
 
@@ -219,7 +227,8 @@ first; each ships as its own patch and is reviewed before the next begins. (This
 batch deliberately stops at v1.6.5 — the heavier bets below wait for v1.7+.)
 - ✅ **v1.6.0 — [27] Bundled statusline script** — *shipped*. Sidecar JSON +
   bundled shell script + Settings install/auto-wire.
-- **v1.6.1 — [30] Nix / home-manager formula** — packaging-only, no app code.
+- ✅ **v1.6.1 — [30] Nix / home-manager formula** — *shipped*. `flake.nix` (fetches
+  the release DMG), `update-flake.sh`, and a CI `nix build` check.
 - **v1.6.2 — [29] Service-status uptime history bar** (30/60/90d) — extends the
   health dot we already have.
 - **v1.6.3 — [26] Shareable "Wrapped" PNG card** — reuses Activity/Tokens data,

@@ -130,6 +130,34 @@ window.
 > say it "cannot verify the developer." Right-click the app › **Open** (once), or
 > remove the quarantine flag: `xattr -dr com.apple.quarantine /Applications/ClaudeGlance.app`.
 
+**Nix (flake):** the repo ships a flake that packages the released app
+(`aarch64-darwin` / `x86_64-darwin`). It tracks the latest public release.
+
+```bash
+# Run it once without installing:
+nix run github:broots144/claudeglance
+
+# …or add it to your profile:
+nix profile install github:broots144/claudeglance
+```
+
+For **nix-darwin** or **home-manager**, add the package to your config:
+
+```nix
+{
+  inputs.claudeglance.url = "github:broots144/claudeglance";
+  # then, in your darwin/home modules:
+  #   environment.systemPackages = [ inputs.claudeglance.packages.${system}.default ];   # nix-darwin
+  #   home.packages            = [ inputs.claudeglance.packages.${system}.default ];     # home-manager
+}
+```
+
+The package installs `ClaudeGlance.app` into the store; nix-darwin / home-manager
+link `.app` bundles into `~/Applications` so Spotlight and Finder can launch it
+(e.g. via [`mac-app-util`](https://github.com/hraban/mac-app-util)). As with the
+DMG, the build is ad-hoc signed (not notarized) until an Apple Developer account
+lands.
+
 ## Build from source
 
 ```bash
