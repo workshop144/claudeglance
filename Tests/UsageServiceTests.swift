@@ -1201,6 +1201,43 @@ final class AggregateContextWindowsTests: XCTestCase {
         let m = aggregateContextWindows(jsonlContents: [user], now: now)
         XCTAssertFalse(m.hasData)
     }
+
+    // MARK: cache freshness [#12]
+
+    func testCacheActiveOnlyWhenLatestTurnUsedCache() {
+        let cached = aggregateContextWindows(
+            jsonlContents: [line(session: "s1", ts: ago(60), input: 10, cacheR: 40_000)], now: now).active
+        XCTAssertEqual(cached?.cacheActive, true)
+
+        let uncached = aggregateContextWindows(
+            jsonlContents: [line(session: "s2", ts: ago(60), input: 40_000)], now: now).active
+        XCTAssertEqual(uncached?.cacheActive, false)
+    }
+
+    func testCacheWarmWithinTTL() {
+        // Last turn 60s ago → cache expires at +300s, so 240s of warmth remain.
+        let s = try! XCTUnwrap(aggregateContextWindows(
+            jsonlContents: [line(session: "s1", ts: ago(60), input: 10, cacheR: 40_000)], now: now).active)
+        XCTAssertEqual(s.cacheExpiresAt, s.lastActivity.addingTimeInterval(300))
+        XCTAssertTrue(s.isCacheWarm(now: now))
+        XCTAssertEqual(s.cacheFreshSeconds(now: now), 240)
+    }
+
+    func testCacheColdAfterTTL() {
+        // Last turn 10 min ago → past the 5-min TTL: cold, no warmth left, 600s idle.
+        let s = try! XCTUnwrap(aggregateContextWindows(
+            jsonlContents: [line(session: "s1", ts: ago(600), input: 10, cacheR: 40_000)], now: now).active)
+        XCTAssertFalse(s.isCacheWarm(now: now))
+        XCTAssertEqual(s.cacheFreshSeconds(now: now), 0)
+        XCTAssertEqual(s.idleSeconds(now: now), 600)
+    }
+
+    func testNoCacheTokensIsNeverWarm() {
+        // Within the TTL window, but the turn used no cache → nothing to keep warm.
+        let s = try! XCTUnwrap(aggregateContextWindows(
+            jsonlContents: [line(session: "s1", ts: ago(10), input: 40_000)], now: now).active)
+        XCTAssertFalse(s.isCacheWarm(now: now))
+    }
 }
 
 // MARK: - parseOAuthExpiry (Keychain epoch → Date, unit-safe)

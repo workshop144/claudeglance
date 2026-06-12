@@ -23,6 +23,7 @@ struct ContextSession: Identifiable {
     let contextTokens: Int       // current prompt size sent to the model
     let windowLimit: Int         // 200_000 for standard models
     let lastActivity: Date
+    let cacheActive: Bool        // the latest turn read or wrote a prompt cache
 
     var id: String { sessionId }
 
@@ -43,6 +44,28 @@ let contextHighThreshold = 90
 extension ContextSession {
     var isCaution: Bool { utilization >= contextCautionThreshold && utilization < contextHighThreshold }
     var isHigh: Bool { utilization >= contextHighThreshold }
+}
+
+/// Anthropic's default prompt-cache TTL: 5 minutes, refreshed on every cache read.
+/// Idle longer than this and the next turn re-pays cache-creation (1.25× input)
+/// instead of a cheap cache read (0.1×) — the cost the freshness countdown warns of.
+let cacheTTLSeconds: TimeInterval = 300
+
+extension ContextSession {
+    /// When this session's prompt cache goes cold — `cacheTTLSeconds` after the
+    /// latest turn (which read/refreshed the cache).
+    var cacheExpiresAt: Date { lastActivity.addingTimeInterval(cacheTTLSeconds) }
+
+    /// Whole seconds of warmth left before the cache expires (0 once cold).
+    func cacheFreshSeconds(now: Date) -> Int {
+        max(0, Int(cacheExpiresAt.timeIntervalSince(now).rounded()))
+    }
+
+    /// Warm = the session uses caching and we're still inside the TTL window.
+    func isCacheWarm(now: Date) -> Bool { cacheActive && now < cacheExpiresAt }
+
+    /// Seconds since the last turn — the "idle" figure shown once the cache is cold.
+    func idleSeconds(now: Date) -> Int { max(0, Int(now.timeIntervalSince(lastActivity).rounded())) }
 }
 
 /// The recently-active sessions, most-recent first. `active` is the session you're
@@ -93,7 +116,7 @@ func aggregateContextWindows(jsonlContents: [String], now: Date,
     let decoder = JSONDecoder()
 
     // Per session: the latest assistant-usage line seen so far.
-    struct Latest { var date: Date; var tokens: Int; var model: String; var cwd: String?; var branch: String? }
+    struct Latest { var date: Date; var tokens: Int; var cached: Bool; var model: String; var cwd: String?; var branch: String? }
     var latestBySession: [String: Latest] = [:]
 
     for content in jsonlContents {
@@ -114,16 +137,16 @@ func aggregateContextWindows(jsonlContents: [String], now: Date,
 
             // The prompt size sent to the model = input + both cache sides. Output
             // tokens are the response, not part of the context that was sent.
-            let tokens = (usage.input_tokens ?? 0)
-                + (usage.cache_read_input_tokens ?? 0)
-                + (usage.cache_creation_input_tokens ?? 0)
+            let cacheR = usage.cache_read_input_tokens ?? 0
+            let cacheC = usage.cache_creation_input_tokens ?? 0
+            let tokens = (usage.input_tokens ?? 0) + cacheR + cacheC
             if tokens <= 0 { continue }
 
             // Keep the latest turn by timestamp (ties keep the larger context).
             if let prev = latestBySession[sessionId],
                (prev.date > date || (prev.date == date && prev.tokens >= tokens)) { continue }
-            latestBySession[sessionId] = Latest(date: date, tokens: tokens, model: model,
-                                                cwd: entry.cwd, branch: entry.gitBranch)
+            latestBySession[sessionId] = Latest(date: date, tokens: tokens, cached: cacheR + cacheC > 0,
+                                                model: model, cwd: entry.cwd, branch: entry.gitBranch)
         }
     }
 
@@ -138,7 +161,8 @@ func aggregateContextWindows(jsonlContents: [String], now: Date,
             model: displayModelName(for: l.model),
             contextTokens: l.tokens,
             windowLimit: contextWindowLimit(forModel: l.model),
-            lastActivity: l.date
+            lastActivity: l.date,
+            cacheActive: l.cached
         )
     }
     .sorted { $0.lastActivity > $1.lastActivity }
