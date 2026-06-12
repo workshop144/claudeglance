@@ -1078,3 +1078,127 @@ final class AggregateMetricsTests: XCTestCase {
         XCTAssertEqual(m.dailyCost[olderDay] ?? 0, 5, accuracy: 1e-6)
     }
 }
+
+// MARK: - aggregateContextWindows (jsonl → per-session context fill)
+
+final class AggregateContextWindowsTests: XCTestCase {
+
+    private let now = Date(timeIntervalSince1970: 1_700_000_000)
+
+    private func iso(_ date: Date) -> String {
+        let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime]
+        return f.string(from: date)
+    }
+
+    /// A timestamp `seconds` before `now`.
+    private func ago(_ seconds: TimeInterval) -> String { iso(now.addingTimeInterval(-seconds)) }
+
+    private func line(session: String, ts: String, role: String = "assistant",
+                      model: String? = "claude-opus-4-8",
+                      input: Int = 0, cacheR: Int = 0, cacheC: Int = 0, output: Int = 0,
+                      sidechain: Bool = false, cwd: String? = "/Users/me/dev/proj",
+                      branch: String? = nil) -> String {
+        var msg = "\"role\":\"\(role)\",\"usage\":{\"input_tokens\":\(input),\"output_tokens\":\(output),\"cache_read_input_tokens\":\(cacheR),\"cache_creation_input_tokens\":\(cacheC)}"
+        if let model { msg = "\"model\":\"\(model)\"," + msg }
+        var fields = ["\"sessionId\":\"\(session)\"", "\"timestamp\":\"\(ts)\"",
+                      "\"isSidechain\":\(sidechain)", "\"message\":{\(msg)}"]
+        if let cwd { fields.append("\"cwd\":\"\(cwd)\"") }
+        if let branch { fields.append("\"gitBranch\":\"\(branch)\"") }
+        return "{" + fields.joined(separator: ",") + "}"
+    }
+
+    func testEmptyInputHasNoSessions() {
+        let m = aggregateContextWindows(jsonlContents: [], now: now)
+        XCTAssertFalse(m.hasData)
+        XCTAssertNil(m.active)
+        XCTAssertEqual(m.maxUtilization, 0)
+    }
+
+    func testContextIsLatestTurnPromptSize() {
+        // input + both cache sides = what was sent to the model = the context fill.
+        let l = line(session: "s1", ts: ago(60), input: 2, cacheR: 50_000, cacheC: 8_000, output: 900)
+        let m = aggregateContextWindows(jsonlContents: [l], now: now)
+        let s = try! XCTUnwrap(m.active)
+        XCTAssertEqual(s.contextTokens, 58_002)         // output (900) excluded
+        XCTAssertEqual(s.windowLimit, 200_000)
+        XCTAssertEqual(s.utilization, 29)               // 58002 / 200000 ≈ 29%
+        XCTAssertEqual(s.tokensRemaining, 141_998)
+        XCTAssertEqual(s.model, "Opus 4.8")
+        XCTAssertEqual(s.project, "proj")
+    }
+
+    func testReportsLatestTurnNotPeak() {
+        // An auto-compact shrinks context: a big earlier turn then a small later one
+        // must report the *latest* (current) fill, not the historical maximum.
+        let big = line(session: "s1", ts: ago(600), input: 180_000)
+        let small = line(session: "s1", ts: ago(60), input: 20_000)
+        let m = aggregateContextWindows(jsonlContents: ["\(big)\n\(small)"], now: now)
+        XCTAssertEqual(m.active?.contextTokens, 20_000)
+    }
+
+    func testSidechainTurnsExcluded() {
+        // Subagent sidechains have their own context window — ignore them.
+        let main = line(session: "s1", ts: ago(120), input: 30_000)
+        let side = line(session: "s1", ts: ago(60), input: 150_000, sidechain: true)
+        let m = aggregateContextWindows(jsonlContents: ["\(main)\n\(side)"], now: now)
+        XCTAssertEqual(m.active?.contextTokens, 30_000)
+    }
+
+    func testSyntheticModelExcluded() {
+        let real = line(session: "s1", ts: ago(120), input: 40_000)
+        let synth = line(session: "s1", ts: ago(60), model: "<synthetic>", input: 999_999)
+        let m = aggregateContextWindows(jsonlContents: ["\(real)\n\(synth)"], now: now)
+        XCTAssertEqual(m.active?.contextTokens, 40_000)
+    }
+
+    func testStaleSessionsDropped() {
+        // Two days old, outside the 24h "live" window → not reported.
+        let old = line(session: "s1", ts: ago(48 * 3600), input: 50_000)
+        let m = aggregateContextWindows(jsonlContents: [old], now: now)
+        XCTAssertFalse(m.hasData)
+    }
+
+    func testMultipleSessionsSortedByRecency() {
+        let older = line(session: "s1", ts: ago(600), input: 10_000)   // 5%
+        let newer = line(session: "s2", ts: ago(60), input: 90_000)    // 45%
+        let m = aggregateContextWindows(jsonlContents: ["\(older)\n\(newer)"], now: now)
+        XCTAssertEqual(m.sessions.count, 2)
+        XCTAssertEqual(m.active?.sessionId, "s2")           // most recent is the headline
+        XCTAssertEqual(m.sessions.last?.sessionId, "s1")
+        XCTAssertEqual(m.maxUtilization, 45)
+    }
+
+    func testProjectAndBranchFromTopLevelFields() {
+        let l = line(session: "s1", ts: ago(60), input: 1_000,
+                     cwd: "/Users/me/dev/claudeglance", branch: "feature/x")
+        let s = try! XCTUnwrap(aggregateContextWindows(jsonlContents: [l], now: now).active)
+        XCTAssertEqual(s.project, "claudeglance")
+        XCTAssertEqual(s.gitBranch, "feature/x")
+    }
+
+    func testUtilizationCapsAt100() {
+        let l = line(session: "s1", ts: ago(60), input: 250_000)   // over the window
+        let s = try! XCTUnwrap(aggregateContextWindows(jsonlContents: [l], now: now).active)
+        XCTAssertEqual(s.utilization, 100)
+        XCTAssertEqual(s.tokensRemaining, 0)
+    }
+
+    func testThresholdFlags() {
+        let caution = try! XCTUnwrap(aggregateContextWindows(
+            jsonlContents: [line(session: "s1", ts: ago(60), input: 150_000)], now: now).active)  // 75%
+        XCTAssertTrue(caution.isCaution)
+        XCTAssertFalse(caution.isHigh)
+
+        let high = try! XCTUnwrap(aggregateContextWindows(
+            jsonlContents: [line(session: "s2", ts: ago(60), input: 190_000)], now: now).active)  // 95%
+        XCTAssertTrue(high.isHigh)
+        XCTAssertFalse(high.isCaution)
+    }
+
+    func testUserTurnsIgnored() {
+        // Only assistant turns carry the prompt-size usage we monitor.
+        let user = line(session: "s1", ts: ago(60), role: "user", input: 99_999)
+        let m = aggregateContextWindows(jsonlContents: [user], now: now)
+        XCTAssertFalse(m.hasData)
+    }
+}

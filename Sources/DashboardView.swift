@@ -6,6 +6,7 @@ import Charts
 enum DashboardTab: String, CaseIterable, Identifiable {
     case activity = "Activity"
     case cost = "Cost"
+    case context = "Context"
     case usage = "Usage"
     var id: String { rawValue }
 }
@@ -23,6 +24,7 @@ struct DashboardView: View {
     @ObservedObject var usage: UsageService
     @ObservedObject var history: HistoryStore
     @ObservedObject var metrics: MetricsService
+    @ObservedObject var context: ContextWindowService
 
     var body: some View {
         VStack(spacing: 0) {
@@ -44,6 +46,8 @@ struct DashboardView: View {
                         ActivityTabView(metrics: metrics)
                     case .cost:
                         CostTabView(metrics: metrics)
+                    case .context:
+                        ContextTabView(context: context)
                     case .usage:
                         UsageTabView(usage: usage, history: history)
                     }
@@ -344,6 +348,108 @@ struct ActivityTabView: View {
         VStack(spacing: 8) {
             Text("No coding activity recorded").font(.system(size: 14, weight: .semibold))
             Text("Activity is read from your local Claude Code logs. Use Claude Code and your streaks and heatmap appear here.")
+                .font(.system(size: 11)).foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 56)
+    }
+}
+
+// MARK: - Context tab
+
+/// Per-session context-window fill from the local Claude Code logs: a headline
+/// gauge for the session you're most likely in, plus any other live sessions.
+/// "Current" context = the latest assistant turn's prompt size (input + cache),
+/// which is what was actually sent to the model — so it climbs toward the 200K
+/// window until an auto-compact shrinks it back. Fed by `ContextWindowService`.
+struct ContextTabView: View {
+    @ObservedObject var context: ContextWindowService
+
+    var body: some View {
+        let m = context.metrics
+        if let active = m.active {
+            VStack(alignment: .leading, spacing: 20) {
+                headline(active)
+
+                let others = Array(m.sessions.dropFirst())
+                if !others.isEmpty {
+                    Divider()
+                    Text("Other live sessions · last 24h").font(.system(size: 13, weight: .semibold))
+                    VStack(spacing: 10) {
+                        ForEach(others) { sessionRow($0) }
+                    }
+                }
+            }
+        } else {
+            empty
+        }
+    }
+
+    // MARK: Pieces
+
+    /// The active session as a big gauge: % full, a colored bar, and the headroom
+    /// remaining before auto-compact.
+    private func headline(_ s: ContextSession) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text("\(s.utilization)%").font(.system(size: 40, weight: .semibold)).monospacedDigit()
+                    .foregroundColor(color(s.utilization))
+                Text("of 200K context").font(.system(size: 13)).foregroundColor(.secondary)
+                Spacer()
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(s.project).font(.system(size: 12, weight: .medium))
+                    Text(s.model + (s.gitBranch.map { " · \($0)" } ?? ""))
+                        .font(.system(size: 11)).foregroundColor(.secondary)
+                }
+            }
+
+            bar(s.utilization, height: 12)
+
+            Text("\(formatTokenCount(s.contextTokens)) used · \(formatTokenCount(s.tokensRemaining)) of headroom left")
+                .font(.system(size: 11)).foregroundColor(.secondary)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color(NSColor.controlBackgroundColor)))
+    }
+
+    private func sessionRow(_ s: ContextSession) -> some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(s.project).font(.system(size: 12)).lineLimit(1)
+                Text(s.model).font(.system(size: 10)).foregroundColor(.secondary)
+            }
+            .frame(width: 120, alignment: .leading)
+            bar(s.utilization, height: 10)
+            Text("\(s.utilization)%").font(.system(size: 12)).monospacedDigit()
+                .foregroundColor(color(s.utilization))
+                .frame(width: 40, alignment: .trailing)
+        }
+    }
+
+    private func bar(_ util: Int, height: CGFloat) -> some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color.secondary.opacity(0.12))
+                Capsule().fill(color(util).opacity(0.7))
+                    .frame(width: max(2, geo.size.width * CGFloat(util) / 100))
+            }
+        }
+        .frame(height: height)
+    }
+
+    /// Green when roomy, orange in the caution band, red once an auto-compact is near.
+    private func color(_ util: Int) -> Color {
+        if util >= contextHighThreshold { return .red }
+        if util >= contextCautionThreshold { return .orange }
+        return .green
+    }
+
+    private var empty: some View {
+        VStack(spacing: 8) {
+            Text("No active session").font(.system(size: 14, weight: .semibold))
+            Text("Context fill is read from your local Claude Code logs. Start a session and its context-window usage appears here.")
                 .font(.system(size: 11)).foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
         }
