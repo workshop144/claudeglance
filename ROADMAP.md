@@ -14,6 +14,14 @@
 
 ## ✅ Shipped
 
+**v1.6.3 — "Reach"** (June 2026): **Shareable "Wrapped" card [26]** — a colorful,
+social-friendly PNG of your month with Claude (total tokens, cache efficiency,
+spend & caching savings, streak, top model/tool), rendered with SwiftUI's
+`ImageRenderer` from the local logs. Reachable from a **menu item** and a **Share
+Wrapped** button on the dashboard's Activity tab; the preview window offers Save,
+Copy, and the macOS Share sheet. Computed locally — nothing leaves the machine
+until you share it.
+
 **v1.6.2 — "Reach"** (June 2026): **Service-status uptime history [29]** — an opt-in
 30-day uptime bar under the menu's health row (one colored cell per day: green
 operational → red critical, faint gray = no data), plus a trailing 30-day uptime %.
@@ -160,7 +168,7 @@ this is the "pure coolness" ordering you asked for.
 | 23 | **Real prepaid $ balance** via opt-in Console login | hamed, mnapoli | ★★ but heavy (new auth) |
 | 24 | **Multi-account** + "headroom" score (`100−max(5h%,7d%)`) + sortable table | rjmon, dsado, hamed | ★ scope-expanding |
 | 25 | **WidgetKit / Notification Center widgets** (donut gauges + heatmap) | AgentLimits, theangeloumali | ★ |
-| 26 | **Shareable "Wrapped" PNG card** | cc-wrapped | ★ fun/viral |
+| 26 | ✅ **Shareable "Wrapped" PNG card** — *shipped v1.6.3* | cc-wrapped | ★ fun/viral |
 | 27 | ✅ **Bundled Claude Code statusline script** (reuse our data in the CLI) — *shipped v1.6.0* | AgentLimits, elliot | ★ |
 | 28 | **Plan-recommendation nudge** ("you'd be better on Max 20x") | haasonsaas | ★ |
 | 29 | ✅ **Service-status uptime history bar** — 30-day menu bar — *shipped v1.6.2* | elliot/ClaudeWatch | ★ |
@@ -239,8 +247,8 @@ batch deliberately stops at v1.6.5 — the heavier bets below wait for v1.7+.)
   the release DMG), `update-flake.sh`, and a CI `nix build` check.
 - ✅ **v1.6.2 — [29] Service-status uptime history bar** — *shipped*. Opt-in 30-day
   menu bar (self-recorded + incident-seeded; time-based uptime %).
-- **v1.6.3 — [26] Shareable "Wrapped" PNG card** — reuses Activity/Tokens data,
-  render-to-image.
+- ✅ **v1.6.3 — [26] Shareable "Wrapped" PNG card** — *shipped*. Colorful card via
+  `ImageRenderer`; menu + Activity-tab entry; Save/Copy/Share.
 - **v1.6.4 — [28] Plan-recommendation nudge** ("you'd be better on Max 20x") —
   small logic on existing usage math.
 - **v1.6.5 — [25] WidgetKit / Notification Center widgets** — a new target reusing

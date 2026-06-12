@@ -407,10 +407,29 @@ struct ActivityTabView: View {
 
                 Text("Daily tokens · last 30 days").font(.system(size: 13, weight: .semibold))
                 dailyTokensChart(daily)
+
+                Divider()
+
+                HStack {
+                    Spacer()
+                    shareWrappedButton
+                }
             } else if grade == nil {
                 empty
             }
         }
+    }
+
+    /// Opens the shareable Wrapped card [#26] via a notification AppDelegate observes.
+    private var shareWrappedButton: some View {
+        Button {
+            NotificationCenter.default.post(name: .claudeGlanceShareWrapped, object: nil)
+        } label: {
+            Label("Share Wrapped", systemImage: "sparkles")
+                .font(.system(size: 12, weight: .medium))
+        }
+        .buttonStyle(.borderless)
+        .help("Generate a shareable image of this month's highlights")
     }
 
     // MARK: Pieces

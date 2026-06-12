@@ -72,6 +72,15 @@ Everything in the dashboard is computed locally — the cost/activity/tokens/con
 tabs from your `~/.claude/projects` logs, the usage history from ClaudeGlance's own
 recordings.
 
+## Wrapped card
+
+**Share Wrapped card…** (in the menu, or the **Share Wrapped** button on the
+dashboard's Activity tab) renders a shareable image of your month with Claude —
+total tokens, cache efficiency, spend & caching savings, your streak, and your top
+model/tool — from the same local logs. The preview window offers **Save**, **Copy**,
+and the macOS **Share** sheet. All computed locally; nothing leaves your machine
+until you choose to share it.
+
 ## Claude Code statusline
 
 ClaudeGlance can put its usage numbers right in your Claude Code sessions, as a

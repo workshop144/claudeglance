@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
     private var settingsWindow: NSWindow?
     private var dashboardWindow: NSWindow?
+    private var wrappedWindow: NSWindow?
     private let dashboardModel = DashboardModel()
     private let usageService = UsageService.shared
     private let statusService = StatusService.shared
@@ -63,6 +64,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self,
             selector: #selector(settingsDidChange),
             name: UserDefaults.didChangeNotification,
+            object: nil
+        )
+
+        // The dashboard's "Share Wrapped" button [#26] routes here.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(openWrapped),
+            name: .claudeGlanceShareWrapped,
             object: nil
         )
     }
@@ -240,6 +249,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(actionItem(title: "Dashboard", symbol: "chart.bar",
                                 action: #selector(openDashboard)))
+        menu.addItem(actionItem(title: "Share Wrapped card…", symbol: "sparkles",
+                                action: #selector(openWrapped)))
         menu.addItem(actionItem(title: "Refresh", symbol: "arrow.clockwise",
                                 action: #selector(refreshUsage)))
         let settingsItem = actionItem(title: "Settings", symbol: "gear",
@@ -537,6 +548,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func openDashboard() {
         showDashboard(.activity)
+    }
+
+    /// Build the current month's Wrapped stats and open the share window [#26].
+    @objc private func openWrapped() {
+        let stats = buildWrappedStats(metrics: metricsService.metrics,
+                                      tools: metricsService.tools, now: Date())
+        if wrappedWindow == nil {
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: WrappedCardView.size.width + 48, height: 760),
+                styleMask: [.titled, .closable],
+                backing: .buffered, defer: false)
+            window.titleVisibility = .hidden
+            window.titlebarAppearsTransparent = true
+            window.isReleasedWhenClosed = false
+            window.addTitlebarAccessoryViewController(titleAccessory("Wrapped"))
+            window.addTitlebarAccessoryViewController(closeAccessory(for: window))
+            window.center()
+            wrappedWindow = window
+        }
+        // Rebuild the content each open so the card reflects the latest numbers.
+        wrappedWindow?.contentViewController = NSHostingController(rootView: WrappedView(stats: stats))
+        NSApp.activate(ignoringOtherApps: true)
+        wrappedWindow?.makeKeyAndOrderFront(nil)
     }
 
     /// Open (or focus) the single dashboard window on a specific tab — the
