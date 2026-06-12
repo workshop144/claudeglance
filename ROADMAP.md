@@ -14,6 +14,56 @@
 
 ## ✅ Shipped
 
+**v1.6.5 — "Reach"** (June 2026): **Per-model context window [11 fix]** — the
+context-window monitor (and the session grade's context-headroom factor) hardcoded
+a 200K window, which read ~5× too full for the 1M-context models (Opus 4.x, Sonnet
+4.x, and Fable 5 all ship 1M as *standard* now — only Haiku is 200K). It now derives
+the window from the transcript's model id automatically (no setting): a 600K-token
+Opus session that read as "100% · compact soon" now correctly reads 60%, and the
+inflated context factor no longer drags the session grade down to an F.
+
+**v1.6.4 — "Reach"** (June 2026): **Plan-fit nudge [28]** — a "Plan fit" card on the
+dashboard's Usage tab that reads the utilization history we record to gauge
+limit-pressure and reports it plainly ("often near your limits — a higher tier would
+add headroom" / "comfortable headroom — a lower tier might do" / "good fit"), plus an
+overage callout. Deliberately **plan-agnostic**: the API only exposes utilization %,
+not the tier, so the copy never claims to know your plan — it speaks in headroom and
+observed overage. Stays quiet until there's enough history to say something.
+
+**v1.6.3 — "Reach"** (June 2026): **Shareable "Wrapped" card [26]** — a colorful,
+social-friendly PNG of your month with Claude (total tokens, cache efficiency,
+spend & caching savings, streak, top model/tool), rendered with SwiftUI's
+`ImageRenderer` from the local logs. Reachable from a **menu item** and a **Share
+Wrapped** button on the dashboard's Activity tab; the preview window offers Save,
+Copy, and the macOS Share sheet. Computed locally — nothing leaves the machine
+until you share it.
+
+**v1.6.2 — "Reach"** (June 2026): **Service-status uptime history [29]** — an opt-in
+30-day uptime bar under the menu's health row (one colored cell per day: green
+operational → red critical, faint gray = no data), plus a trailing 30-day uptime %.
+The bar is **self-recorded** (worst status per day, persisted like the usage history
+store, rolling 90-day) and **seeded once from the incident feed** so it isn't empty
+on day one; the % is **time-based from incidents** over the reliable 30-day window.
+Menu-only by choice, to keep the footprint small.
+
+**v1.6.1 — "Reach"** (June 2026): **Nix / home-manager packaging [30]** — a `flake.nix`
+that packages the released app for `aarch64-darwin` / `x86_64-darwin` (fetches the
+release DMG, installs `ClaudeGlance.app` + a `bin/claudeglance` launcher), so Nix
+users can `nix run`/`nix profile install` or add it to a nix-darwin / home-manager
+config. It tracks the latest *public* release; `scripts/update-flake.sh <version>`
+re-pins it from a freshly released DMG, and a CI job `nix build`s the flake on every
+push so the formula can't silently rot. App code is unchanged.
+
+**v1.6.0 — "Reach"** (June 2026): the first of the v1.6 "get our data onto more
+surfaces" pass. **Bundled Claude Code statusline [27]** — ClaudeGlance now writes
+its live numbers to a small JSON sidecar each poll, and ships a shell script that
+reads it to render a Claude Code statusline (`Opus 4.8  5h 35% · 7d 71%`) with no
+extra API calls or log parsing. The default line is usage-only; the sidecar also
+carries cost/tokens, reset countdowns, burn rate, and an on-pace ETA for custom
+lines. **Settings › Claude Code statusline** installs the script and either copies
+the `settings.json` snippet or wires it in for you (backing up `settings.json`
+first).
+
 **v1.5.6 — "Depth"** (June 2026): power features, all opt-in so the default stays
 a glance. **Context-window monitor [11]** — per-active-session `usage / 200k` fill
 with caution/compact alerts, as a menu glance and a dashboard **Context tab**.
@@ -119,7 +169,7 @@ this is the "pure coolness" ordering you asked for.
 | 8 | ✅ **"Caching saved you $X"** — *shipped 1.3.2* | ccstory | ★★★ delightful |
 | 9 | ✅ **Local history** persisted lightweight → trends over time — *shipped 1.3.4* | rjmon, hamed, cctray, vibepulse | ★★ |
 | 10 | ✅ **$ cost** today/month + monthly projection — *shipped 1.3.0/1.3.1* | many | ★★ |
-| 11 | ✅ **Context-window monitor** — last-msg `usage / 200k` per active session, caution/compact alerts — *shipped v1.5.0* | gosparq, leeguo | ★★ differentiated 2nd mode |
+| 11 | ✅ **Context-window monitor** — last-msg `usage / window` per active session (per-model: 1M Opus/Sonnet/Fable, 200K Haiku), caution/compact alerts — *shipped v1.5.0, per-model window v1.6.5* | gosparq, leeguo | ★★ differentiated 2nd mode |
 | 12 | ✅ **Prompt-cache freshness countdown** (`cache warm 4m23s` / cold re-caches; 5-min TTL) — *shipped v1.5.2* | leeguo | ★★ |
 | 13 | **Sparkle EdDSA auto-update** | ClaudePulse, AgentLimits, vibepulse | ★★ |
 | 14 | ✅ **Reset-countdown notifications** (5h + weekly) with anti-spam — *shipped v1.2.1* | hamed #243, lugia #48/#51 | ★★ |
@@ -133,12 +183,12 @@ this is the "pure coolness" ordering you asked for.
 | 22 | ✅ **`CLAUDE_CONFIG_DIR` + multiple data-path** support — *shipped v1.5.6* | masorange, CCUM | ★ cheap, expected |
 | 23 | **Real prepaid $ balance** via opt-in Console login | hamed, mnapoli | ★★ but heavy (new auth) |
 | 24 | **Multi-account** + "headroom" score (`100−max(5h%,7d%)`) + sortable table | rjmon, dsado, hamed | ★ scope-expanding |
-| 25 | **WidgetKit / Notification Center widgets** (donut gauges + heatmap) | AgentLimits, theangeloumali | ★ |
-| 26 | **Shareable "Wrapped" PNG card** | cc-wrapped | ★ fun/viral |
-| 27 | **Bundled Claude Code statusline script** (reuse our data in the CLI) | AgentLimits, elliot | ★ |
-| 28 | **Plan-recommendation nudge** ("you'd be better on Max 20x") | haasonsaas | ★ |
-| 29 | **Service-status uptime history bar** (30/60/90d) | elliot/ClaudeWatch | ★ |
-| 30 | **Nix / home-manager** formula | hamed | ★ |
+| 25 | **WidgetKit / Notification Center widgets** (donut gauges + heatmap) — *deferred to v1.7: sandboxed extension needs an App Group + real code signing* | AgentLimits, theangeloumali | ★ |
+| 26 | ✅ **Shareable "Wrapped" PNG card** — *shipped v1.6.3* | cc-wrapped | ★ fun/viral |
+| 27 | ✅ **Bundled Claude Code statusline script** (reuse our data in the CLI) — *shipped v1.6.0* | AgentLimits, elliot | ★ |
+| 28 | ✅ **Plan-recommendation nudge** ("often near your limits") — plan-agnostic — *shipped v1.6.4* | haasonsaas | ★ |
+| 29 | ✅ **Service-status uptime history bar** — 30-day menu bar — *shipped v1.6.2* | elliot/ClaudeWatch | ★ |
+| 30 | ✅ **Nix / home-manager** formula — *shipped v1.6.1* | hamed | ★ |
 | 31 | Copy-usage-to-clipboard | cctray, joachim | ½ |
 | 32 | Per-session status + approve/deny prompts + jump-to-terminal | wangsen, TwilightVoyager, theangeloumali | different product → decline |
 
@@ -203,16 +253,35 @@ Power features, all opt-in so the default stays a glance.
 - ✅ **Hardening:** OAuth token re-read on 401/expiry (1.5.1) and a manual-Refresh
   throttle (1.5.3) — both surfaced by the live build during the batch.
 
-### v1.6+ — Exploratory (bigger bets; validate demand first)
+### ✅ v1.6 — "Reach" — SHIPPED (v1.6.5)
+Getting our data onto more surfaces and out to more people. Each shipped as its own
+patch, reviewed before the next began.
+- ✅ **v1.6.0 — [27] Bundled statusline script** — Sidecar JSON + bundled shell
+  script + Settings install/auto-wire.
+- ✅ **v1.6.1 — [30] Nix / home-manager formula** — `flake.nix` (fetches the release
+  DMG), `update-flake.sh`, and a CI `nix build` check.
+- ✅ **v1.6.2 — [29] Service-status uptime history bar** — Opt-in 30-day menu bar
+  (self-recorded + incident-seeded; time-based uptime %).
+- ✅ **v1.6.3 — [26] Shareable "Wrapped" PNG card** — Colorful card via
+  `ImageRenderer`; menu + Activity-tab entry; Save/Copy/Share.
+- ✅ **v1.6.4 — [28] Plan-recommendation nudge** — Plan-agnostic "Plan fit" card on
+  the Usage tab (limit-pressure + overage; no tier assumed).
+- **[25] WidgetKit / Notification Center widgets — moved to v1.7.** A widget runs in
+  a mandatorily-sandboxed extension that can't read our logs directly; its only data
+  channel is an App Group, and reliable widget loading/distribution needs proper
+  code signing. So it has a hard dependency on notarization [6] and lands with it.
+
+### v1.7+ — Exploratory (bigger bets; validate demand first)
+- **[6] Notarize + [13] Sparkle auto-update + [25] WidgetKit** — the signing-gated
+  cluster. Notarization unblocks both seamless auto-update *and* widgets (App
+  Groups + extension loading want a real signature), so they land together once the
+  Apple Developer account is in place.
 - **[23] Real prepaid $ balance** via opt-in "Console mode" (one-time
   `sessionKey` capture or Admin key). The answer to "$160 left" — but it adds an
   auth surface, so it stays opt-in and off the default path.
 - **[24] Multi-account** + headroom score + sortable table (store each account's
   creds in their *own* Keychain service so Claude Code's refreshes don't clobber
   them — dsado/rjmon pattern).
-- **[25] WidgetKit widgets**, **[26] shareable Wrapped card**, **[27] bundled
-  statusline script**, **[28] plan-recommendation nudge**, **[29] uptime history
-  bar**, **[30] Nix formula**.
 
 ### Hardening (ongoing, every release)
 Pulled from competitors' recurring bug threads — get these right since we parse

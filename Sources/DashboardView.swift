@@ -110,6 +110,52 @@ struct UsageTabView: View {
             } else {
                 collecting
             }
+
+            // Plan-fit nudge [#28] — only when there's enough signal to say something.
+            if let rec = planRecommendation(samples: history.samples,
+                                            overageEnabled: snap.extraUsageEnabled,
+                                            overageUsedCents: snap.extraUsageUsedCents,
+                                            now: Date()) {
+                Divider()
+                Text("Plan fit").font(.system(size: 13, weight: .semibold))
+                planFitCard(rec)
+            }
+        }
+    }
+
+    private func planFitCard(_ rec: PlanRecommendation) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: planFitIcon(rec.fit))
+                .font(.system(size: 18))
+                .foregroundColor(planFitColor(rec.fit))
+                .frame(width: 24)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(rec.headline).font(.system(size: 12, weight: .semibold))
+                Text(rec.detail).font(.system(size: 11)).foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color(NSColor.controlBackgroundColor)))
+    }
+
+    private func planFitIcon(_ fit: PlanFit) -> String {
+        switch fit {
+        case .overage:     return "creditcard"
+        case .constrained: return "arrow.up.circle"
+        case .balanced:    return "checkmark.circle"
+        case .comfortable: return "arrow.down.circle"
+        }
+    }
+
+    private func planFitColor(_ fit: PlanFit) -> Color {
+        switch fit {
+        case .overage:     return .red
+        case .constrained: return .orange
+        case .balanced:    return .green
+        case .comfortable: return .blue
         }
     }
 
@@ -407,10 +453,29 @@ struct ActivityTabView: View {
 
                 Text("Daily tokens · last 30 days").font(.system(size: 13, weight: .semibold))
                 dailyTokensChart(daily)
+
+                Divider()
+
+                HStack {
+                    Spacer()
+                    shareWrappedButton
+                }
             } else if grade == nil {
                 empty
             }
         }
+    }
+
+    /// Opens the shareable Wrapped card [#26] via a notification AppDelegate observes.
+    private var shareWrappedButton: some View {
+        Button {
+            NotificationCenter.default.post(name: .claudeGlanceShareWrapped, object: nil)
+        } label: {
+            Label("Share Wrapped", systemImage: "sparkles")
+                .font(.system(size: 12, weight: .medium))
+        }
+        .buttonStyle(.borderless)
+        .help("Generate a shareable image of this month's highlights")
     }
 
     // MARK: Pieces
@@ -542,7 +607,7 @@ struct ActivityTabView: View {
 /// Per-session context-window fill from the local Claude Code logs: a headline
 /// gauge for the session you're most likely in, plus any other live sessions.
 /// "Current" context = the latest assistant turn's prompt size (input + cache),
-/// which is what was actually sent to the model — so it climbs toward the 200K
+/// which is what was actually sent to the model — so it climbs toward the model's
 /// window until an auto-compact shrinks it back. Fed by `ContextWindowService`.
 struct ContextTabView: View {
     @ObservedObject var context: ContextWindowService
@@ -576,7 +641,7 @@ struct ContextTabView: View {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text("\(s.utilization)%").font(.system(size: 40, weight: .semibold)).monospacedDigit()
                     .foregroundColor(color(s.utilization))
-                Text("of 200K context").font(.system(size: 13)).foregroundColor(.secondary)
+                Text("of \(s.windowLabel) context").font(.system(size: 13)).foregroundColor(.secondary)
                 Spacer()
                 VStack(alignment: .trailing, spacing: 2) {
                     Text(s.project).font(.system(size: 12, weight: .medium))

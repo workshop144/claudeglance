@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
     private var settingsWindow: NSWindow?
     private var dashboardWindow: NSWindow?
+    private var wrappedWindow: NSWindow?
     private let dashboardModel = DashboardModel()
     private let usageService = UsageService.shared
     private let statusService = StatusService.shared
@@ -45,6 +46,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self?.updateStatusItemAppearance()
                 self?.checkForNotifications()
                 self?.checkForResets()
+                // Keep the statusline sidecar [#27] in step with the menu numbers.
+                StatusLineExporter.shared.export()
             }
             .store(in: &cancellables)
 
@@ -61,6 +64,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self,
             selector: #selector(settingsDidChange),
             name: UserDefaults.didChangeNotification,
+            object: nil
+        )
+
+        // The dashboard's "Share Wrapped" button [#26] routes here.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(openWrapped),
+            name: .claudeGlanceShareWrapped,
             object: nil
         )
     }
@@ -107,6 +118,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(linkItem(title: st.description,
                                   dotColor: healthColor(for: st.indicator),
                                   action: #selector(openStatusPage)))
+            addedStatusRow = true
+        }
+
+        // 30-day uptime bar [#29] — opt-in, sits just under the health row.
+        if settingsManager.settings.showUptimeHistory, let uptimeRow = uptimeRowItem() {
+            menu.addItem(uptimeRow)
             addedStatusRow = true
         }
 
@@ -197,7 +214,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let suffix = s.isHigh ? " · compact soon" : ""
             menu.addItem(linkInfoItem(title: "Context: \(s.utilization)%\(suffix)",
                                       symbol: "memorychip", tab: .context))
-            menu.addItem(linkSecondaryItem("\(formatTokenCount(s.contextTokens)) of 200K · \(s.project)", tab: .context))
+            menu.addItem(linkSecondaryItem("\(formatTokenCount(s.contextTokens)) of \(s.windowLabel) · \(s.project)", tab: .context))
             // Prompt-cache freshness: warm means the next message hits a cheap cache
             // read; cold means it re-pays cache creation. (5-min TTL from the last turn.)
             if s.cacheActive {
@@ -232,6 +249,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(actionItem(title: "Dashboard", symbol: "chart.bar",
                                 action: #selector(openDashboard)))
+        menu.addItem(actionItem(title: "Share Wrapped card…", symbol: "sparkles",
+                                action: #selector(openWrapped)))
         menu.addItem(actionItem(title: "Refresh", symbol: "arrow.clockwise",
                                 action: #selector(refreshUsage)))
         let settingsItem = actionItem(title: "Settings", symbol: "gear",
@@ -519,6 +538,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             // Re-evaluate staleness even when no new data has arrived, so the
             // menu bar dims once refreshes stop landing.
             self?.updateStatusItemAppearance()
+            // Refresh the statusline sidecar [#27] so today's cost/tokens (which
+            // update on the 60s metrics cycle) stay current between usage polls.
+            StatusLineExporter.shared.export()
         }
     }
 
@@ -526,6 +548,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func openDashboard() {
         showDashboard(.activity)
+    }
+
+    /// Build the current month's Wrapped stats and open the share window [#26].
+    @objc private func openWrapped() {
+        let stats = buildWrappedStats(metrics: metricsService.metrics,
+                                      tools: metricsService.tools, now: Date())
+        if wrappedWindow == nil {
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: WrappedCardView.size.width + 48, height: 760),
+                styleMask: [.titled, .closable],
+                backing: .buffered, defer: false)
+            window.titleVisibility = .hidden
+            window.titlebarAppearsTransparent = true
+            window.isReleasedWhenClosed = false
+            window.addTitlebarAccessoryViewController(titleAccessory("Wrapped"))
+            window.addTitlebarAccessoryViewController(closeAccessory(for: window))
+            window.center()
+            wrappedWindow = window
+        }
+        // Rebuild the content each open so the card reflects the latest numbers.
+        wrappedWindow?.contentViewController = NSHostingController(rootView: WrappedView(stats: stats))
+        NSApp.activate(ignoringOtherApps: true)
+        wrappedWindow?.makeKeyAndOrderFront(nil)
     }
 
     /// Open (or focus) the single dashboard window on a specific tab — the
@@ -770,6 +815,85 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .maintenance: return .systemBlue
         case .unknown:     return .systemGray
         }
+    }
+
+    // MARK: - Uptime history bar [#29]
+
+    /// The 30-day uptime row, or nil when there's no recorded/seeded data yet.
+    private func uptimeRowItem() -> NSMenuItem? {
+        let days = StatusHistoryStore.shared.recentDays(count: 30)
+        // Only worth showing once at least one day has real data.
+        guard days.contains(where: { statusSeverity($0.indicator) >= 0 }) else { return nil }
+        let colors = days.map { uptimeColor(for: $0.indicator) }
+        let item = NSMenuItem()
+        item.isEnabled = false
+        item.view = UptimeBarRowView(colors: colors, percent: statusService.uptime30dPercent)
+        return item
+    }
+
+    /// Bar-cell color per day. Like `healthColor`, but "no data" is a faint gray so
+    /// empty days read as absent rather than a real gray status.
+    private func uptimeColor(for indicator: ServiceStatusIndicator) -> NSColor {
+        indicator == .unknown ? .quaternaryLabelColor : healthColor(for: indicator)
+    }
+
+    /// One colored cell per day, oldest → newest, with 1px gaps.
+    private final class UptimeBarView: NSView {
+        private let colors: [NSColor]
+        init(colors: [NSColor]) {
+            self.colors = colors
+            super.init(frame: .zero)
+            translatesAutoresizingMaskIntoConstraints = false
+        }
+        required init?(coder: NSCoder) { fatalError() }
+
+        override func draw(_ dirtyRect: NSRect) {
+            let n = colors.count
+            guard n > 0 else { return }
+            let gap: CGFloat = 1
+            let segW = (bounds.width - gap * CGFloat(n - 1)) / CGFloat(n)
+            for (i, color) in colors.enumerated() {
+                let x = CGFloat(i) * (segW + gap)
+                let rect = NSRect(x: x, y: 0, width: max(0.5, segW), height: bounds.height)
+                color.setFill()
+                NSBezierPath(roundedRect: rect, xRadius: 1, yRadius: 1).fill()
+            }
+        }
+    }
+
+    /// "30d  ▮▮▮▮…  99.2%" — a leading label, the day bar, and the trailing uptime
+    /// %, aligned under the header rows above it.
+    private final class UptimeBarRowView: NSView {
+        init(colors: [NSColor], percent: Double?) {
+            super.init(frame: .zero)
+            translatesAutoresizingMaskIntoConstraints = false
+
+            let lead = NSTextField(labelWithString: "30d")
+            lead.font = .systemFont(ofSize: 11); lead.textColor = .secondaryLabelColor
+            lead.translatesAutoresizingMaskIntoConstraints = false
+
+            let bar = UptimeBarView(colors: colors)
+
+            let pct = NSTextField(labelWithString: percent.map { String(format: "%.1f%%", $0) } ?? "")
+            pct.font = .systemFont(ofSize: 11); pct.textColor = .secondaryLabelColor
+            pct.translatesAutoresizingMaskIntoConstraints = false
+
+            addSubview(lead); addSubview(bar); addSubview(pct)
+            NSLayoutConstraint.activate([
+                heightAnchor.constraint(equalToConstant: 22),
+                // 38 = 14 (inset) + 16 (icon) + 8, so "30d" lines up under titles.
+                lead.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 38),
+                lead.centerYAnchor.constraint(equalTo: centerYAnchor),
+                bar.leadingAnchor.constraint(equalTo: lead.trailingAnchor, constant: 8),
+                bar.centerYAnchor.constraint(equalTo: centerYAnchor),
+                bar.widthAnchor.constraint(equalToConstant: 124),
+                bar.heightAnchor.constraint(equalToConstant: 10),
+                pct.leadingAnchor.constraint(equalTo: bar.trailingAnchor, constant: 8),
+                pct.centerYAnchor.constraint(equalTo: centerYAnchor),
+                trailingAnchor.constraint(equalTo: pct.trailingAnchor, constant: 14)
+            ])
+        }
+        required init?(coder: NSCoder) { fatalError() }
     }
 
     /// Fire a one-shot "reset" notification when a 5h/7d window rolls over after

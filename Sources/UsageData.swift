@@ -35,6 +35,9 @@ struct AppSettings: Codable {
     // Today's composite session-health grade (A–F) in the menu. Opt-in.
     var showSessionGrade: Bool = false
 
+    // [29] 30-day service-status uptime bar under the health row. Opt-in.
+    var showUptimeHistory: Bool = false
+
     // [19] Show remaining headroom ("84% left") instead of used ("16%").
     var showRemaining: Bool = false
     // [21] Show the menu-bar icon/glyph. Off = text-only menu bar.
@@ -66,6 +69,7 @@ struct AppSettings: Codable {
         showUsageCredits = try c.decodeIfPresent(Bool.self, forKey: .showUsageCredits) ?? true
         showContextWindow = try c.decodeIfPresent(Bool.self, forKey: .showContextWindow) ?? false
         showSessionGrade = try c.decodeIfPresent(Bool.self, forKey: .showSessionGrade) ?? false
+        showUptimeHistory = try c.decodeIfPresent(Bool.self, forKey: .showUptimeHistory) ?? false
         showRemaining = try c.decodeIfPresent(Bool.self, forKey: .showRemaining) ?? false
         showMenuBarIcon = try c.decodeIfPresent(Bool.self, forKey: .showMenuBarIcon) ?? true
         usageRefreshMinutes = try c.decodeIfPresent(Int.self, forKey: .usageRefreshMinutes) ?? 5

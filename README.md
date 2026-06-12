@@ -54,7 +54,9 @@ single tabbed window (built with SwiftUI + Swift Charts) that holds the richer
 detail the menu deliberately leaves out:
 
 - **Usage** — a 5h/7d utilization **history chart** recorded over time, plus the
-  current session/weekly/Sonnet cards and reset countdowns.
+  current session/weekly/Sonnet cards and reset countdowns, and a **plan-fit nudge**
+  ("often near your limits" / "comfortable headroom") inferred from your observed
+  limit-pressure and any overage — no plan tier assumed.
 - **Cost** — today / month-to-date / projected **spend cards**, a **per-model
   breakdown** (e.g. Opus 4.8 vs Sonnet), and a daily-spend chart. All
   API-equivalent (tokens × model price; a flat plan isn't billed per token).
@@ -64,13 +66,50 @@ detail the menu deliberately leaves out:
 - **Tokens** — **"where your tokens go"**: month-to-date composition split by type
   (cache read / cache write / input / output), plus a **top tools / MCP** breakdown
   of which tools are driving your sessions.
-- **Context** — per-active-session **context-window fill** (`used / 200K`) with a
+- **Context** — per-active-session **context-window fill** (`used / window`, sized
+  per model — 1M for Opus/Sonnet/Fable, 200K for Haiku) with a
   live **prompt-cache freshness** countdown (warm → the next message hits a cheap
   cache read; cold → it re-pays cache creation), and any other live sessions.
 
 Everything in the dashboard is computed locally — the cost/activity/tokens/context
 tabs from your `~/.claude/projects` logs, the usage history from ClaudeGlance's own
 recordings.
+
+## Wrapped card
+
+**Share Wrapped card…** (in the menu, or the **Share Wrapped** button on the
+dashboard's Activity tab) renders a shareable image of your month with Claude —
+total tokens, cache efficiency, spend & caching savings, your streak, and your top
+model/tool — from the same local logs. The preview window offers **Save**, **Copy**,
+and the macOS **Share** sheet. All computed locally; nothing leaves your machine
+until you choose to share it.
+
+## Claude Code statusline
+
+ClaudeGlance can put its usage numbers right in your Claude Code sessions, as a
+[statusline](https://docs.claude.com/en/docs/claude-code/statusline):
+
+```
+Opus 4.8  5h 35% · 7d 71%
+```
+
+It works by reusing the numbers the app already has: ClaudeGlance writes its
+current usage to a small JSON sidecar each poll, and a bundled shell script reads
+that file. No extra API calls, no log parsing per render — the line just reflects
+whatever the menu bar is showing (so it needs the app running).
+
+**Set it up** from **Settings › Claude Code statusline**:
+
+- **Install script & copy snippet** — copies `claudeglance-statusline.sh` into
+  `~/.claude` and puts the `settings.json` snippet on your clipboard to paste in.
+- **Add to settings.json** — does the wiring for you, after backing up your
+  existing `~/.claude/settings.json` (timestamped). Restart your Claude Code
+  sessions to see it.
+
+The model name comes from Claude Code's own statusline context; the `5h · 7d`
+segment is ClaudeGlance's. Power users can build a custom line from the full
+sidecar at `~/Library/Application Support/ClaudeGlance/status.json` (it also carries
+today's cost/tokens, reset countdowns, burn rate, and an on-pace ETA).
 
 ## Requirements
 
@@ -102,6 +141,34 @@ window.
 > The release build is ad-hoc signed, not notarized — on first launch macOS may
 > say it "cannot verify the developer." Right-click the app › **Open** (once), or
 > remove the quarantine flag: `xattr -dr com.apple.quarantine /Applications/ClaudeGlance.app`.
+
+**Nix (flake):** the repo ships a flake that packages the released app
+(`aarch64-darwin` / `x86_64-darwin`). It tracks the latest public release.
+
+```bash
+# Run it once without installing:
+nix run github:broots144/claudeglance
+
+# …or add it to your profile:
+nix profile install github:broots144/claudeglance
+```
+
+For **nix-darwin** or **home-manager**, add the package to your config:
+
+```nix
+{
+  inputs.claudeglance.url = "github:broots144/claudeglance";
+  # then, in your darwin/home modules:
+  #   environment.systemPackages = [ inputs.claudeglance.packages.${system}.default ];   # nix-darwin
+  #   home.packages            = [ inputs.claudeglance.packages.${system}.default ];     # home-manager
+}
+```
+
+The package installs `ClaudeGlance.app` into the store; nix-darwin / home-manager
+link `.app` bundles into `~/Applications` so Spotlight and Finder can launch it
+(e.g. via [`mac-app-util`](https://github.com/hraban/mac-app-util)). As with the
+DMG, the build is ad-hoc signed (not notarized) until an Apple Developer account
+lands.
 
 ## Build from source
 
@@ -142,6 +209,7 @@ show just a countdown, just percentages, or any mix.
 | Show usage credits | On | Pay-as-you-go credit state, with a link to manage it |
 | Show context window | Off | Active session's context-window fill + cache freshness |
 | Show session grade | Off | Today's composite health grade (A–F) |
+| Show uptime history | Off | 30-day Claude service-status uptime bar under the health row |
 | Refresh interval | 5 min | How often to poll usage (1–30 min) |
 | Warning threshold | 80% | Usage % that triggers a warning notification |
 | Critical threshold | 90% | Usage % that triggers a critical notification |
