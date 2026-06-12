@@ -14,6 +14,21 @@
 
 ## ✅ Shipped
 
+**v1.5.6 — "Depth"** (June 2026): power features, all opt-in so the default stays
+a glance. **Context-window monitor [11]** — per-active-session `usage / 200k` fill
+with caution/compact alerts, as a menu glance and a dashboard **Context tab**.
+**Prompt-cache freshness countdown [12]** — a live "cache warm 4m 23s / cold"
+readout (5-min TTL) so you know if the next message hits a cheap cache read.
+**"Where your tokens go" [17] + top tools / MCP [18]** — a new **Tokens tab**:
+month-to-date token composition by type (cache-read/write, input, output) plus
+tool and MCP-server call counts. **Session health grade A–F [16]** ("Today: B+")
+from cache efficiency, limit headroom, and context headroom — shown transparently
+with its contributing factors, not as a black box. **UX niceties [19][21][22]** —
+used-vs-remaining toggle, hide-menu-bar-icon option, a configurable 1–30 min poll
+interval, and `CLAUDE_CONFIG_DIR` + multi-path jsonl discovery. Plus two
+**hardening** fixes the live build surfaced: OAuth token re-read on 401/expiry (no
+more sticky auth errors) and a manual-Refresh throttle (no self-inflicted 429s).
+
 **v1.4.5 — "Dashboard"** (June 2026): one tabbed window (Activity / Cost / Usage)
 built with SwiftUI + Swift Charts, sharing the Settings window shell. **Usage
 tab** — 5h/7d utilization history line chart [7] from the v1.3.4 store. **Cost
@@ -104,18 +119,18 @@ this is the "pure coolness" ordering you asked for.
 | 8 | ✅ **"Caching saved you $X"** — *shipped 1.3.2* | ccstory | ★★★ delightful |
 | 9 | ✅ **Local history** persisted lightweight → trends over time — *shipped 1.3.4* | rjmon, hamed, cctray, vibepulse | ★★ |
 | 10 | ✅ **$ cost** today/month + monthly projection — *shipped 1.3.0/1.3.1* | many | ★★ |
-| 11 | **Context-window monitor** — last-msg `usage / 200k` per active session, 75/90% alerts | gosparq, leeguo | ★★ differentiated 2nd mode |
-| 12 | **Prompt-cache freshness countdown** (`cache 4m23s` / `COLD`; cold burns quota ~10×) | leeguo | ★★ |
+| 11 | ✅ **Context-window monitor** — last-msg `usage / 200k` per active session, caution/compact alerts — *shipped v1.5.0* | gosparq, leeguo | ★★ differentiated 2nd mode |
+| 12 | ✅ **Prompt-cache freshness countdown** (`cache warm 4m23s` / cold re-caches; 5-min TTL) — *shipped v1.5.2* | leeguo | ★★ |
 | 13 | **Sparkle EdDSA auto-update** | ClaudePulse, AgentLimits, vibepulse | ★★ |
 | 14 | ✅ **Reset-countdown notifications** (5h + weekly) with anti-spam — *shipped v1.2.1* | hamed #243, lugia #48/#51 | ★★ |
 | 15 | ✅ **streak + activity strip** (in-menu, 1.3.3) + **full GitHub-style heatmap grid** in the v1.4 Activity tab | cc-wrapped, AgentLimits, 658jjh | ★★ |
-| 16 | **Session health grade A–F** (errors/abandons/retries/compactions) | agentsview | ★★ novel |
-| 17 | **"Where your tokens go"** — your prompts vs tool-results vs thinking | jack21/ClaudeCodeUsage | ★★ actionable |
-| 18 | **Top tools / MCP usage** ("most-used today: Bash, Edit, …") | par_cc_usage | ★ |
-| 19 | **Used-vs-Remaining toggle** (flip every metric) | joachim, AgentLimits #10 | ★ |
+| 16 | ✅ **Session health grade A–F** ("Today: B+" from cache efficiency, limit & context headroom) — *shipped v1.5.5* | agentsview | ★★ novel |
+| 17 | ✅ **"Where your tokens go"** — month-to-date split by type (cache-read/write, input, output) — *shipped v1.5.4* | jack21/ClaudeCodeUsage | ★★ actionable |
+| 18 | ✅ **Top tools / MCP usage** ("most-used: Bash, Edit, …" + MCP servers) — *shipped v1.5.4* | par_cc_usage | ★ |
+| 19 | ✅ **Used-vs-Remaining toggle** (menu bar + rows) — *shipped v1.5.6* | joachim, AgentLimits #10 | ★ |
 | 20 | ✅ **Per-model cost breakdown** (Opus vs Sonnet; $5/$25 vs legacy $15/$75) — *shipped 1.4.2* | otel, viberank, 658jjh | ★ |
-| 21 | **Hide-menu-bar-icon option**, configurable poll interval, rotating metric (✅ stale-data dimming shipped v1.1.4) | AgentLimits, ClaudePulse, ac3, cctray | ★ |
-| 22 | **`CLAUDE_CONFIG_DIR` + multiple data-path** support | masorange, CCUM | ★ cheap, expected |
+| 21 | ✅ **Hide-menu-bar-icon option** + **configurable poll interval** — *shipped v1.5.6* (✅ stale-data dimming v1.1.4); rotating metric skipped | AgentLimits, ClaudePulse, ac3, cctray | ★ |
+| 22 | ✅ **`CLAUDE_CONFIG_DIR` + multiple data-path** support — *shipped v1.5.6* | masorange, CCUM | ★ cheap, expected |
 | 23 | **Real prepaid $ balance** via opt-in Console login | hamed, mnapoli | ★★ but heavy (new auth) |
 | 24 | **Multi-account** + "headroom" score (`100−max(5h%,7d%)`) + sortable table | rjmon, dsado, hamed | ★ scope-expanding |
 | 25 | **WidgetKit / Notification Center widgets** (donut gauges + heatmap) | AgentLimits, theangeloumali | ★ |
@@ -174,14 +189,19 @@ glance** by moving the richer detail into the window.
 - ✅ **Hover affordances** (1.4.1/1.4.5) — deep-link rows bold on hover; the menu
   and Settings version signatures darken on hover.
 
-### v1.5 — "Depth" (power features, all opt-in so the default stays clean)
-- **[11] Context-window monitor** mode + **[12] cache-freshness countdown** — a
-  genuinely differentiated second glance, reusing jsonl we already read.
-- **[17] "Where your tokens go"** + **[18] top tools/MCP** mini-breakdown.
-- **[16] Session health grade A–F** ("Today: B+") — nobody in the menu-bar space
-  has this.
-- **[19][21][22] UX niceties:** used-vs-remaining toggle, hide-icon option,
-  configurable interval, `CLAUDE_CONFIG_DIR` + multi-path support.
+### ✅ v1.5 — "Depth" — SHIPPED (v1.5.6)
+Power features, all opt-in so the default stays a glance.
+- ✅ **[11] Context-window monitor** + **[12] cache-freshness countdown** — a
+  genuinely differentiated second glance, reusing jsonl we already read. Menu
+  glance + a dashboard **Context tab** — *shipped 1.5.0 / 1.5.2*.
+- ✅ **[17] "Where your tokens go"** + **[18] top tools/MCP** mini-breakdown — a new
+  **Tokens tab** (token composition by type + tool/MCP counts) — *shipped 1.5.4*.
+- ✅ **[16] Session health grade A–F** ("Today: B+"), from cache efficiency, limit
+  headroom, and context headroom, shown with its factors — *shipped 1.5.5*.
+- ✅ **[19][21][22] UX niceties:** used-vs-remaining toggle, hide-icon option,
+  configurable 1–30 min interval, `CLAUDE_CONFIG_DIR` + multi-path — *shipped 1.5.6*.
+- ✅ **Hardening:** OAuth token re-read on 401/expiry (1.5.1) and a manual-Refresh
+  throttle (1.5.3) — both surfaced by the live build during the batch.
 
 ### v1.6+ — Exploratory (bigger bets; validate demand first)
 - **[23] Real prepaid $ balance** via opt-in "Console mode" (one-time

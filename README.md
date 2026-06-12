@@ -38,6 +38,12 @@ Open the menu for the glance:
 - **A two-line "Today" glance** from local Claude Code logs — `Today: 1.2M tokens
   · 5d streak` and `≈ $3.40 today · $42 this month`. Each row (and the 5h/7d rows)
   **deep-links into the dashboard** on the matching tab — they bold on hover.
+- **Opt-in second glance** (off by default, to keep the menu minimal): your active
+  session's **context-window fill** with a **prompt-cache freshness** line, and a
+  composite **session health grade** (`Today's health: B+`).
+
+Percentages can show **remaining headroom** (`84% left`) instead of used (`16%`),
+and the menu-bar icon can be hidden for a text-only bar — both in Settings.
 
 Mirrors the data on `claude.ai/settings/usage`.
 
@@ -53,10 +59,18 @@ detail the menu deliberately leaves out:
   breakdown** (e.g. Opus 4.8 vs Sonnet), and a daily-spend chart. All
   API-equivalent (tokens × model price; a flat plan isn't billed per token).
 - **Activity** — a **GitHub-style contribution heatmap**, current/longest streak
-  and active-day stats, and a daily-token chart.
+  and active-day stats, a daily-token chart, and (opt-in) today's **session health
+  grade** card with its contributing factors.
+- **Tokens** — **"where your tokens go"**: month-to-date composition split by type
+  (cache read / cache write / input / output), plus a **top tools / MCP** breakdown
+  of which tools are driving your sessions.
+- **Context** — per-active-session **context-window fill** (`used / 200K`) with a
+  live **prompt-cache freshness** countdown (warm → the next message hits a cheap
+  cache read; cold → it re-pays cache creation), and any other live sessions.
 
-Everything in the dashboard is computed locally — the cost/activity tabs from your
-`~/.claude/projects` logs, the usage history from ClaudeGlance's own recordings.
+Everything in the dashboard is computed locally — the cost/activity/tokens/context
+tabs from your `~/.claude/projects` logs, the usage history from ClaudeGlance's own
+recordings.
 
 ## Requirements
 
@@ -115,6 +129,8 @@ show just a countdown, just percentages, or any mix.
 | Setting | Default | Description |
 |---------|---------|-------------|
 | Launch at login | Off | Start the app automatically when you log in |
+| Show menu-bar icon | On | Show the icon/gauge; off = a text-only menu bar |
+| Show remaining, not used | Off | Display headroom (`84% left`) instead of utilization (`16%`) |
 | Show ring gauge | Off | Dual-ring usage gauge (outer 5h, inner 7d) in the menu bar |
 | Show 5h % | On | Session usage in the menu bar |
 | Show 7d % | On | Weekly usage in the menu bar |
@@ -123,6 +139,10 @@ show just a countdown, just percentages, or any mix.
 | Show 7d reset countdown | Off | Time until the weekly limit resets |
 | Show service health | On | Colored Claude service-status dot in the menu bar |
 | Show today's activity | On | Today's tokens, active time & messages (from local logs) |
+| Show usage credits | On | Pay-as-you-go credit state, with a link to manage it |
+| Show context window | Off | Active session's context-window fill + cache freshness |
+| Show session grade | Off | Today's composite health grade (A–F) |
+| Refresh interval | 5 min | How often to poll usage (1–30 min) |
 | Warning threshold | 80% | Usage % that triggers a warning notification |
 | Critical threshold | 90% | Usage % that triggers a critical notification |
 | Usage alerts | On | macOS notification when a threshold is crossed |
@@ -143,9 +163,15 @@ Authorization: Bearer <oauth_token>
 anthropic-beta: oauth-2025-04-20
 ```
 
-The token is read once at startup and cached in memory. It refreshes
-automatically when you restart the app (Claude Code keeps it current in the
-Keychain).
+The token is cached in memory and re-read from the Keychain automatically before
+it expires — and again whenever a request comes back `401` — so a token Claude
+Code has rotated is picked up without restarting the app. Usage is polled on a
+configurable interval (1–30 min, default 5), and manual **Refresh** is throttled
+so rapid taps can't trip the endpoint's rate limit.
+
+Local logs are read from `~/.claude/projects` by default; set `CLAUDE_CONFIG_DIR`
+(a single path, or several separated by `:` or `,`) to scan additional Claude
+config directories.
 
 > **Note:** This endpoint is undocumented and may change. It requires Claude
 > Code to be installed and logged in.
@@ -163,9 +189,12 @@ This fork diverges from [adntgv/claude-usage-systray](https://github.com/adntgv/
 
 - **Today's activity + dashboard** — a two-line "Today" glance in the menu
   (tokens · streak; cost today · this month), backed by a full **dashboard window**
-  (Activity / Cost / Usage tabs with charts, a heatmap, and a per-model cost
-  breakdown), all parsed from the local Claude Code session logs
+  (Activity / Cost / Tokens / Context / Usage tabs with charts, a heatmap, a
+  per-model cost breakdown, token composition, tool/MCP usage, and per-session
+  context-window monitoring), all parsed from the local Claude Code session logs
   (`~/.claude/projects`). No auth, no Keychain, no network.
+- **Power "second glance" (opt-in)** — context-window fill + prompt-cache freshness
+  countdown, a composite session health grade (A–F), and a used-vs-remaining toggle.
 - **Service-health badge** — a colored dot from the public Claude status page
   (`status.claude.com`), in the menu bar and menu. No auth, no Keychain.
 - **Launch at login** toggle in Settings, using the modern `SMAppService` API
