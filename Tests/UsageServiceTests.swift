@@ -1269,3 +1269,90 @@ final class ParseOAuthExpiryTests: XCTestCase {
         XCTAssertEqual(parseOAuthExpiry(1_700_000_000).timeIntervalSince1970, 1_700_000_000, accuracy: 0.001)
     }
 }
+
+// MARK: - mcpServerName ([#18])
+
+final class McpServerNameTests: XCTestCase {
+    func testExtractsServerSegment() {
+        XCTAssertEqual(mcpServerName(from: "mcp__Gmail__search_threads"), "Gmail")
+    }
+    func testUnderscoresInServerBecomeSpaces() {
+        XCTAssertEqual(mcpServerName(from: "mcp__Google_Calendar__list_events"), "Google Calendar")
+    }
+    func testBuiltinToolIsNotMcp() {
+        XCTAssertNil(mcpServerName(from: "Bash"))
+    }
+    func testEmptyServerIsNil() {
+        XCTAssertNil(mcpServerName(from: "mcp__"))
+    }
+}
+
+// MARK: - aggregateToolUsage ([#18]) + month token splits ([#17])
+
+final class AggregateToolUsageTests: XCTestCase {
+    private let now = Date(timeIntervalSince1970: 1_700_000_000)  // 2023-11-14
+
+    private func iso(_ d: Date) -> String {
+        let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime]; return f.string(from: d)
+    }
+    private func daysAgo(_ n: Int) -> String {
+        iso(Calendar.current.date(byAdding: .day, value: -n, to: now)!)
+    }
+    private func assistant(ts: String, blocks: String) -> String {
+        "{\"timestamp\":\"\(ts)\",\"message\":{\"role\":\"assistant\",\"content\":[\(blocks)]}}"
+    }
+    private func tool(_ name: String) -> String { "{\"type\":\"tool_use\",\"name\":\"\(name)\"}" }
+
+    func testCountsToolUseByName() {
+        let line = assistant(ts: daysAgo(1), blocks: [tool("Bash"), tool("Bash"), tool("Edit")].joined(separator: ","))
+        let b = aggregateToolUsage(jsonlContents: [line], now: now)
+        XCTAssertEqual(b.toolCounts["Bash"], 2)
+        XCTAssertEqual(b.toolCounts["Edit"], 1)
+        XCTAssertEqual(b.totalCalls, 3)
+    }
+
+    func testSeparatesMcpFromBuiltins() {
+        let line = assistant(ts: daysAgo(1), blocks: [tool("Bash"), tool("mcp__Gmail__search_threads")].joined(separator: ","))
+        let b = aggregateToolUsage(jsonlContents: [line], now: now)
+        XCTAssertEqual(b.toolCounts["Bash"], 1)
+        XCTAssertNil(b.toolCounts["mcp__Gmail__search_threads"])
+        XCTAssertEqual(b.mcpServerCounts["Gmail"], 1)
+        XCTAssertEqual(b.totalCalls, 2)
+    }
+
+    func testNonToolUseBlocksAndUserTextIgnored() {
+        // A text block, plus a user turn whose content is a plain string (must not
+        // fail the line). Only the one tool_use counts.
+        let assistantLine = assistant(ts: daysAgo(1),
+            blocks: ["{\"type\":\"text\",\"text\":\"hi\"}", tool("Read")].joined(separator: ","))
+        let userLine = "{\"timestamp\":\"\(daysAgo(1))\",\"message\":{\"role\":\"user\",\"content\":\"just a string\"}}"
+        let b = aggregateToolUsage(jsonlContents: ["\(assistantLine)\n\(userLine)"], now: now)
+        XCTAssertEqual(b.toolCounts["Read"], 1)
+        XCTAssertEqual(b.totalCalls, 1)
+    }
+
+    func testExcludesPriorMonth() {
+        let lastMonth = assistant(ts: daysAgo(25), blocks: tool("Bash"))  // ~Oct 20, before Nov 1
+        let b = aggregateToolUsage(jsonlContents: [lastMonth], now: now)
+        XCTAssertEqual(b.totalCalls, 0)
+        XCTAssertFalse(b.hasData)
+    }
+}
+
+final class MonthTokenSplitTests: XCTestCase {
+    private let now = Date(timeIntervalSince1970: 1_700_000_000)
+    private func todayStamp(_ offset: TimeInterval) -> String {
+        let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime]
+        return f.string(from: Calendar.current.startOfDay(for: now).addingTimeInterval(offset))
+    }
+
+    func testMonthSplitsByType() {
+        let l = "{\"timestamp\":\"\(todayStamp(36_000))\",\"message\":{\"id\":\"a\",\"model\":\"claude-opus-4-8\",\"usage\":{\"input_tokens\":100,\"output_tokens\":50,\"cache_read_input_tokens\":30,\"cache_creation_input_tokens\":20}}}"
+        let m = aggregateMetrics(jsonlContents: [l], now: now)
+        XCTAssertEqual(m.monthInputTokens, 100)
+        XCTAssertEqual(m.monthOutputTokens, 50)
+        XCTAssertEqual(m.monthCacheReadTokens, 30)
+        XCTAssertEqual(m.monthCacheCreationTokens, 20)
+        XCTAssertEqual(m.monthTotalTokens, 200)
+    }
+}

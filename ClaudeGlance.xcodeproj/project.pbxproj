@@ -26,6 +26,7 @@
 		D5901D4A120D88360A14272E /* AppIcon.icns in Resources */ = {isa = PBXBuildFile; fileRef = 41DBB8C43A660F12A6C09B8C /* AppIcon.icns */; };
 		D5C6822375FC7952CB358FC6 /* UsageService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 389B96510CE84AF4DA0D39BF /* UsageService.swift */; };
 		EE03B28A6FDCF419578F9309 /* HistoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01DF3C6B8EDFEDE6A749C2F0 /* HistoryStore.swift */; };
+		F132079F85A7CCDD36607874 /* ToolUsage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D669BEFDE86EF5611899941 /* ToolUsage.swift */; };
 		F228D6812CD9ABAA0B73B62A /* BurnRate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A990F191E512F052132FC6BF /* BurnRate.swift */; };
 /* End PBXBuildFile section */
 
@@ -55,6 +56,7 @@
 		73C3777959157876E1139AF1 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		7774E9F94623765B11979F07 /* ClaudeGlance.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ClaudeGlance.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		7CDA3E43B0AD4B7359CF6C39 /* StatusService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusService.swift; sourceTree = "<group>"; };
+		7D669BEFDE86EF5611899941 /* ToolUsage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolUsage.swift; sourceTree = "<group>"; };
 		852DDB101F006E8024AAD959 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		8A6BE5A441FF744627D3337B /* ClaudeGlance.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ClaudeGlance.entitlements; sourceTree = "<group>"; };
 		902E74C4D3D8F218834C393B /* ClaudeGlanceTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ClaudeGlanceTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -115,6 +117,7 @@
 				B1517703E21CE6FD07CD0FE7 /* SettingsManager.swift */,
 				852DDB101F006E8024AAD959 /* SettingsView.swift */,
 				7CDA3E43B0AD4B7359CF6C39 /* StatusService.swift */,
+				7D669BEFDE86EF5611899941 /* ToolUsage.swift */,
 				D200048597B4157291EE1A2F /* UsageData.swift */,
 				389B96510CE84AF4DA0D39BF /* UsageService.swift */,
 			);
@@ -265,6 +268,7 @@
 				71DAB555D0B8F113180BEA2C /* SettingsManager.swift in Sources */,
 				0396481B1D8F58F6985B5412 /* SettingsView.swift in Sources */,
 				88B574542640CD9982279FE6 /* StatusService.swift in Sources */,
+				F132079F85A7CCDD36607874 /* ToolUsage.swift in Sources */,
 				382F373955DE9A5AC38ACC84 /* UsageData.swift in Sources */,
 				D5C6822375FC7952CB358FC6 /* UsageService.swift in Sources */,
 				89FFB0D3ED0AF618E8A94836 /* main.swift in Sources */,
@@ -339,7 +343,7 @@
 				GIT_BRANCH = "";
 				GIT_COMMIT = "";
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
-				MARKETING_VERSION = 1.5.3;
+				MARKETING_VERSION = 1.5.4;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -465,7 +469,7 @@
 				GIT_BRANCH = "";
 				GIT_COMMIT = "";
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
-				MARKETING_VERSION = 1.5.3;
+				MARKETING_VERSION = 1.5.4;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = NO;
