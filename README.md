@@ -66,7 +66,8 @@ detail the menu deliberately leaves out:
 - **Tokens** — **"where your tokens go"**: month-to-date composition split by type
   (cache read / cache write / input / output), plus a **top tools / MCP** breakdown
   of which tools are driving your sessions.
-- **Context** — per-active-session **context-window fill** (`used / 200K`) with a
+- **Context** — per-active-session **context-window fill** (`used / window`, sized
+  per model — 1M for Opus/Sonnet/Fable, 200K for Haiku) with a
   live **prompt-cache freshness** countdown (warm → the next message hits a cheap
   cache read; cold → it re-pays cache creation), and any other live sessions.
 

@@ -607,7 +607,7 @@ struct ActivityTabView: View {
 /// Per-session context-window fill from the local Claude Code logs: a headline
 /// gauge for the session you're most likely in, plus any other live sessions.
 /// "Current" context = the latest assistant turn's prompt size (input + cache),
-/// which is what was actually sent to the model — so it climbs toward the 200K
+/// which is what was actually sent to the model — so it climbs toward the model's
 /// window until an auto-compact shrinks it back. Fed by `ContextWindowService`.
 struct ContextTabView: View {
     @ObservedObject var context: ContextWindowService
@@ -641,7 +641,7 @@ struct ContextTabView: View {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text("\(s.utilization)%").font(.system(size: 40, weight: .semibold)).monospacedDigit()
                     .foregroundColor(color(s.utilization))
-                Text("of 200K context").font(.system(size: 13)).foregroundColor(.secondary)
+                Text("of \(s.windowLabel) context").font(.system(size: 13)).foregroundColor(.secondary)
                 Spacer()
                 VStack(alignment: .trailing, spacing: 2) {
                     Text(s.project).font(.system(size: 12, weight: .medium))

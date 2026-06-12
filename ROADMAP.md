@@ -14,6 +14,14 @@
 
 ## ✅ Shipped
 
+**v1.6.5 — "Reach"** (June 2026): **Per-model context window [11 fix]** — the
+context-window monitor (and the session grade's context-headroom factor) hardcoded
+a 200K window, which read ~5× too full for the 1M-context models (Opus 4.x, Sonnet
+4.x, and Fable 5 all ship 1M as *standard* now — only Haiku is 200K). It now derives
+the window from the transcript's model id automatically (no setting): a 600K-token
+Opus session that read as "100% · compact soon" now correctly reads 60%, and the
+inflated context factor no longer drags the session grade down to an F.
+
 **v1.6.4 — "Reach"** (June 2026): **Plan-fit nudge [28]** — a "Plan fit" card on the
 dashboard's Usage tab that reads the utilization history we record to gauge
 limit-pressure and reports it plainly ("often near your limits — a higher tier would
@@ -161,7 +169,7 @@ this is the "pure coolness" ordering you asked for.
 | 8 | ✅ **"Caching saved you $X"** — *shipped 1.3.2* | ccstory | ★★★ delightful |
 | 9 | ✅ **Local history** persisted lightweight → trends over time — *shipped 1.3.4* | rjmon, hamed, cctray, vibepulse | ★★ |
 | 10 | ✅ **$ cost** today/month + monthly projection — *shipped 1.3.0/1.3.1* | many | ★★ |
-| 11 | ✅ **Context-window monitor** — last-msg `usage / 200k` per active session, caution/compact alerts — *shipped v1.5.0* | gosparq, leeguo | ★★ differentiated 2nd mode |
+| 11 | ✅ **Context-window monitor** — last-msg `usage / window` per active session (per-model: 1M Opus/Sonnet/Fable, 200K Haiku), caution/compact alerts — *shipped v1.5.0, per-model window v1.6.5* | gosparq, leeguo | ★★ differentiated 2nd mode |
 | 12 | ✅ **Prompt-cache freshness countdown** (`cache warm 4m23s` / cold re-caches; 5-min TTL) — *shipped v1.5.2* | leeguo | ★★ |
 | 13 | **Sparkle EdDSA auto-update** | ClaudePulse, AgentLimits, vibepulse | ★★ |
 | 14 | ✅ **Reset-countdown notifications** (5h + weekly) with anti-spam — *shipped v1.2.1* | hamed #243, lugia #48/#51 | ★★ |
@@ -245,7 +253,7 @@ Power features, all opt-in so the default stays a glance.
 - ✅ **Hardening:** OAuth token re-read on 401/expiry (1.5.1) and a manual-Refresh
   throttle (1.5.3) — both surfaced by the live build during the batch.
 
-### ✅ v1.6 — "Reach" — SHIPPED (v1.6.4)
+### ✅ v1.6 — "Reach" — SHIPPED (v1.6.5)
 Getting our data onto more surfaces and out to more people. Each shipped as its own
 patch, reviewed before the next began.
 - ✅ **v1.6.0 — [27] Bundled statusline script** — Sidecar JSON + bundled shell

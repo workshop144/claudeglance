@@ -2,14 +2,24 @@ import Foundation
 
 // MARK: - Context-window monitor (per-session, from Claude Code session logs)
 
-/// The usable context window for a standard Claude model. The 1M-token beta isn't
-/// distinguishable from the transcript (the model string carries no `[1m]` marker),
-/// so we report against the default 200K window every subscription session uses.
+/// The 200K window — Haiku, and the conservative fallback for anything we don't
+/// recognize (so we never overstate headroom).
 let standardContextWindow = 200_000
+/// The 1M window the current Opus/Sonnet/Fable models ship as standard.
+let largeContextWindow = 1_000_000
 
-/// Tokens that make up the current context for `model`. A hook for the day the
-/// 1M-context beta becomes detectable; today everything is the 200K window.
-func contextWindowLimit(forModel model: String) -> Int { standardContextWindow }
+/// The usable context window for a session, from its transcript model id. The
+/// current Claude models (Opus 4.x, Sonnet 4.x, Fable 5) ship a 1M-token window as
+/// *standard* — it's no longer a beta we'd have to detect from a `[1m]` marker — so
+/// we map the model directly. Haiku is 200K; unknown ids fall back to 200K. [#11]
+func contextWindowLimit(forModel model: String) -> Int {
+    let id = model.lowercased()
+    if id.contains("haiku") { return standardContextWindow }
+    if id.contains("opus") || id.contains("sonnet-4") || id.contains("fable") {
+        return largeContextWindow
+    }
+    return standardContextWindow
+}
 
 /// A single Claude Code session and how full its context window currently is.
 /// "Current" = the most recent assistant turn's prompt size (input + both cache
@@ -21,7 +31,7 @@ struct ContextSession: Identifiable {
     let gitBranch: String?
     let model: String            // display name, e.g. "Opus 4.8"
     let contextTokens: Int       // current prompt size sent to the model
-    let windowLimit: Int         // 200_000 for standard models
+    let windowLimit: Int         // per-model: 1M for Opus/Sonnet/Fable, 200K for Haiku
     let lastActivity: Date
     let cacheActive: Bool        // the latest turn read or wrote a prompt cache
 
@@ -34,6 +44,11 @@ struct ContextSession: Identifiable {
     }
 
     var tokensRemaining: Int { max(0, windowLimit - contextTokens) }
+
+    /// Compact window label for display, e.g. "1M" or "200K".
+    var windowLabel: String {
+        windowLimit >= 1_000_000 ? "\(windowLimit / 1_000_000)M" : "\(windowLimit / 1_000)K"
+    }
 }
 
 /// Caution / high thresholds for the context gauge. High (90%) is the
