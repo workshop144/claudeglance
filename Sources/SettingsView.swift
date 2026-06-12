@@ -20,6 +20,7 @@ struct SettingsView: View {
     @State private var showActivity: Bool = true
     @State private var showUsageCredits: Bool = true
     @State private var showContextWindow: Bool = false
+    @State private var showSessionGrade: Bool = false
 
     @State private var launchAtLogin: Bool = false
     @State private var launchAtLoginError: String? = nil
@@ -80,6 +81,9 @@ struct SettingsView: View {
                     toggleRow(icon: "memorychip", title: "Show context window",
                               description: "Show how full your active Claude Code session's context window is (of 200K).",
                               isOn: $showContextWindow) { settingsManager.setShowContextWindow($0) }
+                    toggleRow(icon: "checkmark.seal", title: "Show session grade",
+                              description: "Show today's composite health grade (A–F) from cache efficiency, limit headroom, and context.",
+                              isOn: $showSessionGrade) { settingsManager.setShowSessionGrade($0) }
                     rowDivider
 
                     toggleRow(icon: "bell", title: "Enable usage alerts",
@@ -250,6 +254,7 @@ struct SettingsView: View {
         showActivity = settingsManager.settings.showActivity
         showUsageCredits = settingsManager.settings.showUsageCredits
         showContextWindow = settingsManager.settings.showContextWindow
+        showSessionGrade = settingsManager.settings.showSessionGrade
         launchAtLogin = settingsManager.isLaunchAtLoginEnabled
     }
 
