@@ -14,6 +14,14 @@
 
 ## ✅ Shipped
 
+**v1.6.2 — "Reach"** (June 2026): **Service-status uptime history [29]** — an opt-in
+30-day uptime bar under the menu's health row (one colored cell per day: green
+operational → red critical, faint gray = no data), plus a trailing 30-day uptime %.
+The bar is **self-recorded** (worst status per day, persisted like the usage history
+store, rolling 90-day) and **seeded once from the incident feed** so it isn't empty
+on day one; the % is **time-based from incidents** over the reliable 30-day window.
+Menu-only by choice, to keep the footprint small.
+
 **v1.6.1 — "Reach"** (June 2026): **Nix / home-manager packaging [30]** — a `flake.nix`
 that packages the released app for `aarch64-darwin` / `x86_64-darwin` (fetches the
 release DMG, installs `ClaudeGlance.app` + a `bin/claudeglance` launcher), so Nix
@@ -155,7 +163,7 @@ this is the "pure coolness" ordering you asked for.
 | 26 | **Shareable "Wrapped" PNG card** | cc-wrapped | ★ fun/viral |
 | 27 | ✅ **Bundled Claude Code statusline script** (reuse our data in the CLI) — *shipped v1.6.0* | AgentLimits, elliot | ★ |
 | 28 | **Plan-recommendation nudge** ("you'd be better on Max 20x") | haasonsaas | ★ |
-| 29 | **Service-status uptime history bar** (30/60/90d) | elliot/ClaudeWatch | ★ |
+| 29 | ✅ **Service-status uptime history bar** — 30-day menu bar — *shipped v1.6.2* | elliot/ClaudeWatch | ★ |
 | 30 | ✅ **Nix / home-manager** formula — *shipped v1.6.1* | hamed | ★ |
 | 31 | Copy-usage-to-clipboard | cctray, joachim | ½ |
 | 32 | Per-session status + approve/deny prompts + jump-to-terminal | wangsen, TwilightVoyager, theangeloumali | different product → decline |
@@ -229,8 +237,8 @@ batch deliberately stops at v1.6.5 — the heavier bets below wait for v1.7+.)
   bundled shell script + Settings install/auto-wire.
 - ✅ **v1.6.1 — [30] Nix / home-manager formula** — *shipped*. `flake.nix` (fetches
   the release DMG), `update-flake.sh`, and a CI `nix build` check.
-- **v1.6.2 — [29] Service-status uptime history bar** (30/60/90d) — extends the
-  health dot we already have.
+- ✅ **v1.6.2 — [29] Service-status uptime history bar** — *shipped*. Opt-in 30-day
+  menu bar (self-recorded + incident-seeded; time-based uptime %).
 - **v1.6.3 — [26] Shareable "Wrapped" PNG card** — reuses Activity/Tokens data,
   render-to-image.
 - **v1.6.4 — [28] Plan-recommendation nudge** ("you'd be better on Max 20x") —

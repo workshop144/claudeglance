@@ -21,6 +21,7 @@ struct SettingsView: View {
     @State private var showUsageCredits: Bool = true
     @State private var showContextWindow: Bool = false
     @State private var showSessionGrade: Bool = false
+    @State private var showUptimeHistory: Bool = false
     @State private var showRemaining: Bool = false
     @State private var showMenuBarIcon: Bool = true
     @State private var usageRefreshMinutes: Int = 5
@@ -98,6 +99,9 @@ struct SettingsView: View {
                     toggleRow(icon: "checkmark.seal", title: "Show session grade",
                               description: "Show today's composite health grade (A–F) from cache efficiency, limit headroom, and context.",
                               isOn: $showSessionGrade) { settingsManager.setShowSessionGrade($0) }
+                    toggleRow(icon: "chart.bar.xaxis", title: "Show uptime history",
+                              description: "Show a 30-day Claude service-status uptime bar under the health row.",
+                              isOn: $showUptimeHistory) { settingsManager.setShowUptimeHistory($0) }
                     rowDivider
 
                     toggleRow(icon: "bell", title: "Enable usage alerts",
@@ -401,6 +405,7 @@ struct SettingsView: View {
         showUsageCredits = settingsManager.settings.showUsageCredits
         showContextWindow = settingsManager.settings.showContextWindow
         showSessionGrade = settingsManager.settings.showSessionGrade
+        showUptimeHistory = settingsManager.settings.showUptimeHistory
         showRemaining = settingsManager.settings.showRemaining
         showMenuBarIcon = settingsManager.settings.showMenuBarIcon
         usageRefreshMinutes = settingsManager.settings.usageRefreshMinutes
