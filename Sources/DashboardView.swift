@@ -6,6 +6,7 @@ import Charts
 enum DashboardTab: String, CaseIterable, Identifiable {
     case activity = "Activity"
     case cost = "Cost"
+    case tokens = "Tokens"
     case context = "Context"
     case usage = "Usage"
     var id: String { rawValue }
@@ -46,6 +47,8 @@ struct DashboardView: View {
                         ActivityTabView(metrics: metrics)
                     case .cost:
                         CostTabView(metrics: metrics)
+                    case .tokens:
+                        TokensTabView(metrics: metrics)
                     case .context:
                         ContextTabView(context: context)
                     case .usage:
@@ -235,6 +238,123 @@ struct CostTabView: View {
 
     private func usd(_ amount: Double) -> String {
         formatDollars(cents: Int((amount * 100).rounded()))
+    }
+}
+
+// MARK: - Tokens tab
+
+/// "Where your tokens go" [#17] + top tools / MCP breakdown [#18], month to date.
+/// Composition reveals how much of your volume is cheap cache reads (0.1×) vs the
+/// 1.25× cache writes and full-price input; the tool list shows what's driving it.
+/// Fed by `MetricsService.metrics` (token splits) and `.tools` (tool_use counts).
+struct TokensTabView: View {
+    @ObservedObject var metrics: MetricsService
+
+    // Token-type display: label, value selector, color, and a billing note.
+    private struct TokenType { let label: String; let value: Int; let color: Color; let note: String }
+
+    var body: some View {
+        let m = metrics.metrics
+        let tools = metrics.tools
+        if m.monthTotalTokens == 0 && !tools.hasData {
+            empty
+        } else {
+            VStack(alignment: .leading, spacing: 20) {
+                Text("Where your tokens go · month to date").font(.system(size: 13, weight: .semibold))
+                composition(m)
+
+                Divider()
+
+                Text("Top tools · month to date").font(.system(size: 13, weight: .semibold))
+                if tools.hasData {
+                    breakdown(tools.toolCounts, total: tools.totalCalls, tint: .blue, unit: "calls")
+                } else {
+                    Text("No tool calls recorded yet.").font(.system(size: 11)).foregroundColor(.secondary)
+                }
+
+                if !tools.mcpServerCounts.isEmpty {
+                    Divider()
+                    Text("MCP servers · month to date").font(.system(size: 13, weight: .semibold))
+                    breakdown(tools.mcpServerCounts, total: tools.totalCalls, tint: .purple, unit: "calls")
+                }
+            }
+        }
+    }
+
+    // MARK: Pieces
+
+    @ViewBuilder
+    private func composition(_ m: UsageMetrics) -> some View {
+        let types = [
+            TokenType(label: "Cache read",  value: m.monthCacheReadTokens,     color: .green,  note: "0.1× — cheap"),
+            TokenType(label: "Cache write", value: m.monthCacheCreationTokens, color: .orange, note: "1.25×"),
+            TokenType(label: "Input",       value: m.monthInputTokens,         color: .blue,   note: "1×"),
+            TokenType(label: "Output",      value: m.monthOutputTokens,        color: .purple, note: "billed at output rate"),
+        ].sorted { $0.value > $1.value }
+        let total = max(1, m.monthTotalTokens)
+
+        VStack(spacing: 10) {
+            // One stacked bar of the whole month's volume.
+            GeometryReader { geo in
+                HStack(spacing: 0) {
+                    ForEach(types, id: \.label) { t in
+                        Rectangle().fill(t.color.opacity(0.75))
+                            .frame(width: geo.size.width * CGFloat(t.value) / CGFloat(total))
+                    }
+                }
+            }
+            .frame(height: 14)
+            .clipShape(RoundedRectangle(cornerRadius: 4))
+
+            ForEach(types, id: \.label) { t in
+                HStack(spacing: 10) {
+                    Circle().fill(t.color.opacity(0.75)).frame(width: 9, height: 9)
+                    Text(t.label).font(.system(size: 12)).frame(width: 90, alignment: .leading)
+                    Text(t.note).font(.system(size: 10)).foregroundColor(.secondary)
+                    Spacer()
+                    Text("\(formatTokenCount(t.value)) · \(pct(t.value, total))%")
+                        .font(.system(size: 12)).monospacedDigit().foregroundColor(.secondary)
+                }
+            }
+        }
+    }
+
+    /// Sorted horizontal-bar list (tools or MCP servers), top 8 by count.
+    @ViewBuilder
+    private func breakdown(_ counts: [String: Int], total: Int, tint: Color, unit: String) -> some View {
+        let rows = counts.sorted { $0.value > $1.value }.prefix(8)
+        let maxCount = rows.map(\.value).max() ?? 1
+        VStack(spacing: 8) {
+            ForEach(Array(rows), id: \.key) { name, count in
+                HStack(spacing: 10) {
+                    Text(name).font(.system(size: 12)).lineLimit(1).frame(width: 120, alignment: .leading)
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(Color.secondary.opacity(0.12))
+                            Capsule().fill(tint.opacity(0.55))
+                                .frame(width: max(2, geo.size.width * CGFloat(count) / CGFloat(maxCount)))
+                        }
+                    }
+                    .frame(height: 14)
+                    Text("\(count)").font(.system(size: 12)).monospacedDigit().frame(width: 48, alignment: .trailing)
+                }
+            }
+        }
+    }
+
+    private func pct(_ value: Int, _ total: Int) -> Int {
+        total > 0 ? Int((Double(value) / Double(total) * 100).rounded()) : 0
+    }
+
+    private var empty: some View {
+        VStack(spacing: 8) {
+            Text("No token activity this month").font(.system(size: 14, weight: .semibold))
+            Text("Token composition and tool usage are read from your local Claude Code logs. Use Claude Code and the breakdown appears here.")
+                .font(.system(size: 11)).foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 56)
     }
 }
 
