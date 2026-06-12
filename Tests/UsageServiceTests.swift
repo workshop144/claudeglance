@@ -1120,9 +1120,9 @@ final class AggregateContextWindowsTests: XCTestCase {
         let m = aggregateContextWindows(jsonlContents: [l], now: now)
         let s = try! XCTUnwrap(m.active)
         XCTAssertEqual(s.contextTokens, 58_002)         // output (900) excluded
-        XCTAssertEqual(s.windowLimit, 200_000)
-        XCTAssertEqual(s.utilization, 29)               // 58002 / 200000 ≈ 29%
-        XCTAssertEqual(s.tokensRemaining, 141_998)
+        XCTAssertEqual(s.windowLimit, 1_000_000)        // Opus ships a 1M window [#11]
+        XCTAssertEqual(s.utilization, 6)                // 58002 / 1_000_000 ≈ 6%
+        XCTAssertEqual(s.tokensRemaining, 941_998)
         XCTAssertEqual(s.model, "Opus 4.8")
         XCTAssertEqual(s.project, "proj")
     }
@@ -1159,13 +1159,13 @@ final class AggregateContextWindowsTests: XCTestCase {
     }
 
     func testMultipleSessionsSortedByRecency() {
-        let older = line(session: "s1", ts: ago(600), input: 10_000)   // 5%
-        let newer = line(session: "s2", ts: ago(60), input: 90_000)    // 45%
+        let older = line(session: "s1", ts: ago(600), input: 10_000)   // 1% of 1M
+        let newer = line(session: "s2", ts: ago(60), input: 90_000)    // 9% of 1M
         let m = aggregateContextWindows(jsonlContents: ["\(older)\n\(newer)"], now: now)
         XCTAssertEqual(m.sessions.count, 2)
         XCTAssertEqual(m.active?.sessionId, "s2")           // most recent is the headline
         XCTAssertEqual(m.sessions.last?.sessionId, "s1")
-        XCTAssertEqual(m.maxUtilization, 45)
+        XCTAssertEqual(m.maxUtilization, 9)
     }
 
     func testProjectAndBranchFromTopLevelFields() {
@@ -1177,22 +1177,35 @@ final class AggregateContextWindowsTests: XCTestCase {
     }
 
     func testUtilizationCapsAt100() {
-        let l = line(session: "s1", ts: ago(60), input: 250_000)   // over the window
+        // Haiku's 200K window keeps the numbers small; 250K is over it → caps at 100.
+        let l = line(session: "s1", ts: ago(60), model: "claude-haiku-4-5", input: 250_000)
         let s = try! XCTUnwrap(aggregateContextWindows(jsonlContents: [l], now: now).active)
+        XCTAssertEqual(s.windowLimit, 200_000)
         XCTAssertEqual(s.utilization, 100)
         XCTAssertEqual(s.tokensRemaining, 0)
     }
 
     func testThresholdFlags() {
+        // Exercised against Haiku's 200K window so the thresholds map to small inputs.
         let caution = try! XCTUnwrap(aggregateContextWindows(
-            jsonlContents: [line(session: "s1", ts: ago(60), input: 150_000)], now: now).active)  // 75%
+            jsonlContents: [line(session: "s1", ts: ago(60), model: "claude-haiku-4-5", input: 150_000)], now: now).active)  // 75%
         XCTAssertTrue(caution.isCaution)
         XCTAssertFalse(caution.isHigh)
 
         let high = try! XCTUnwrap(aggregateContextWindows(
-            jsonlContents: [line(session: "s2", ts: ago(60), input: 190_000)], now: now).active)  // 95%
+            jsonlContents: [line(session: "s2", ts: ago(60), model: "claude-haiku-4-5", input: 190_000)], now: now).active)  // 95%
         XCTAssertTrue(high.isHigh)
         XCTAssertFalse(high.isCaution)
+    }
+
+    func testContextWindowByModel() {
+        // The headline fix [#11]: current Opus/Sonnet/Fable ship a 1M window as
+        // standard; only Haiku is 200K; unknown ids fall back to 200K.
+        XCTAssertEqual(contextWindowLimit(forModel: "claude-opus-4-8"), 1_000_000)
+        XCTAssertEqual(contextWindowLimit(forModel: "claude-sonnet-4-6"), 1_000_000)
+        XCTAssertEqual(contextWindowLimit(forModel: "claude-fable-5"), 1_000_000)
+        XCTAssertEqual(contextWindowLimit(forModel: "claude-haiku-4-5-20251001"), 200_000)
+        XCTAssertEqual(contextWindowLimit(forModel: "some-future-model"), 200_000)
     }
 
     func testUserTurnsIgnored() {
