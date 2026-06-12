@@ -46,3 +46,25 @@ jobs:
           path: TestResults.xcresult
           if-no-files-found: ignore
           retention-days: 7
+
+  nix:
+    # Build the Nix flake (a darwin-only package that fetches the released DMG and
+    # installs the .app) so the formula is verified on every push — we can't
+    # `nix build` on the dev box, so CI is the safety net. Independent of the test
+    # job; a broken flake shows up as its own red check.
+    name: Nix flake build
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Build the package
+        run: nix build --print-build-logs .#claudeglance
+
+      - name: Sanity-check the result
+        run: |
+          test -d result/Applications/ClaudeGlance.app
+          test -x result/bin/claudeglance
+          echo "✓ flake produced ClaudeGlance.app and a bin/claudeglance launcher"
