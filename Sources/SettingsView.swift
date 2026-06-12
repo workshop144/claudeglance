@@ -19,6 +19,11 @@ struct SettingsView: View {
     @State private var showHealth: Bool = true
     @State private var showActivity: Bool = true
     @State private var showUsageCredits: Bool = true
+    @State private var showContextWindow: Bool = false
+    @State private var showSessionGrade: Bool = false
+    @State private var showRemaining: Bool = false
+    @State private var showMenuBarIcon: Bool = true
+    @State private var usageRefreshMinutes: Int = 5
 
     @State private var launchAtLogin: Bool = false
     @State private var launchAtLoginError: String? = nil
@@ -49,6 +54,12 @@ struct SettingsView: View {
                     }
                     rowDivider
 
+                    toggleRow(icon: "menubar.rectangle", title: "Show menu-bar icon",
+                              description: "Show the icon/gauge in the menu bar. Off = a text-only menu bar.",
+                              isOn: $showMenuBarIcon) { settingsManager.setShowMenuBarIcon($0) }
+                    toggleRow(icon: "arrow.left.arrow.right", title: "Show remaining, not used",
+                              description: "Display headroom (\"84% left\") instead of utilization (\"16%\").",
+                              isOn: $showRemaining) { settingsManager.setShowRemaining($0) }
                     toggleRow(icon: "circle.circle", title: "Show ring gauge",
                               description: "Show a dual-ring usage gauge (outer 5h, inner 7d) in the menu bar.",
                               isOn: $showRingIcon) { settingsManager.setShowRingIcon($0) }
@@ -76,6 +87,12 @@ struct SettingsView: View {
                     toggleRow(icon: "creditcard", title: "Show usage credits",
                               description: "Show whether usage credits are on, with a link to manage them.",
                               isOn: $showUsageCredits) { settingsManager.setShowUsageCredits($0) }
+                    toggleRow(icon: "memorychip", title: "Show context window",
+                              description: "Show how full your active Claude Code session's context window is (of 200K).",
+                              isOn: $showContextWindow) { settingsManager.setShowContextWindow($0) }
+                    toggleRow(icon: "checkmark.seal", title: "Show session grade",
+                              description: "Show today's composite health grade (A–F) from cache efficiency, limit headroom, and context.",
+                              isOn: $showSessionGrade) { settingsManager.setShowSessionGrade($0) }
                     rowDivider
 
                     toggleRow(icon: "bell", title: "Enable usage alerts",
@@ -91,6 +108,10 @@ struct SettingsView: View {
                     sliderRow(icon: "exclamationmark.octagon", title: "Critical threshold",
                               description: "Alert at \(Int(criticalThreshold))% of weekly usage.",
                               value: $criticalThreshold) { settingsManager.setCriticalThreshold($0) }
+
+                    stepperRow(icon: "timer", title: "Refresh interval",
+                               description: "Poll usage every \(usageRefreshMinutes) min (1–30).",
+                               value: $usageRefreshMinutes, range: 1...30) { settingsManager.setUsageRefreshMinutes($0) }
 
                     HStack {
                         Spacer()
@@ -197,6 +218,23 @@ struct SettingsView: View {
         .padding(.vertical, 8)
     }
 
+    private func stepperRow(icon: String, title: String, description: String,
+                            value: Binding<Int>, range: ClosedRange<Int>,
+                            onChange: @escaping (Int) -> Void) -> some View {
+        HStack(spacing: 14) {
+            rowIcon(icon)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.system(size: 13, weight: .medium))
+                Text(description).font(.system(size: 11)).foregroundColor(.secondary)
+            }
+            Spacer()
+            Stepper("", value: value, in: range)
+                .labelsHidden()
+                .onChange(of: value.wrappedValue) { onChange($0) }
+        }
+        .padding(.vertical, 8)
+    }
+
     private func rowIcon(_ name: String, color: Color = .secondary) -> some View {
         Image(systemName: name)
             .font(.system(size: 16))
@@ -245,6 +283,11 @@ struct SettingsView: View {
         showHealth = settingsManager.settings.showHealth
         showActivity = settingsManager.settings.showActivity
         showUsageCredits = settingsManager.settings.showUsageCredits
+        showContextWindow = settingsManager.settings.showContextWindow
+        showSessionGrade = settingsManager.settings.showSessionGrade
+        showRemaining = settingsManager.settings.showRemaining
+        showMenuBarIcon = settingsManager.settings.showMenuBarIcon
+        usageRefreshMinutes = settingsManager.settings.usageRefreshMinutes
         launchAtLogin = settingsManager.isLaunchAtLoginEnabled
     }
 

@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let usageService = UsageService.shared
     private let statusService = StatusService.shared
     private let metricsService = MetricsService.shared
+    private let contextService = ContextWindowService.shared
     private let settingsManager = SettingsManager.shared
 
     private var lastWarningNotified: Int = 0
@@ -68,6 +69,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         usageService.stopPolling()
         statusService.stopPolling()
         metricsService.stopPolling()
+        contextService.stopPolling()
     }
 
     private func setupStatusItem() {
@@ -136,7 +138,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         // The OAuth usage rows deep-link to the dashboard's Usage tab (they dim
         // slightly and brighten on hover — no blue highlight).
-        menu.addItem(linkInfoItem(title: "5hr: \(snapshot.fiveHourUtilization)%",
+        menu.addItem(linkInfoItem(title: usageLabel("5hr", snapshot.fiveHourUtilization),
                                   symbol: usageSymbolName(for: snapshot.fiveHourUtilization), tab: .usage))
         if let resetIn = snapshot.fiveHourResetIn {
             menu.addItem(linkSecondaryItem("Resets in: \(resetIn)", tab: .usage))
@@ -156,13 +158,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(linkSecondaryItem("Trend: \(sparkline(trend, maxValue: 100))", tab: .usage))
         }
 
-        menu.addItem(linkInfoItem(title: "Week: \(snapshot.sevenDayUtilization)%", symbol: "calendar", tab: .usage))
+        menu.addItem(linkInfoItem(title: usageLabel("Week", snapshot.sevenDayUtilization), symbol: "calendar", tab: .usage))
         if let resetIn = snapshot.sevenDayResetIn {
             menu.addItem(linkSecondaryItem("Resets in: \(resetIn)", tab: .usage))
         }
 
         if let sonnet = snapshot.sevenDaySonnetUtilization {
-            menu.addItem(linkInfoItem(title: "Sonnet: \(sonnet)%", symbol: "cpu", tab: .usage))
+            menu.addItem(linkInfoItem(title: usageLabel("Sonnet", sonnet), symbol: "cpu", tab: .usage))
         }
 
         // "Today" glance from the local Claude Code logs (no Keychain / network).
@@ -186,6 +188,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     menu.addItem(linkSecondaryItem("≈ \(today) today · \(month) this month", tab: .cost))
                 }
             }
+        }
+
+        // Context-window glance for the session you're most likely in, from the
+        // local logs. Off by default (opt-in) so the menu stays a quick glance.
+        if settingsManager.settings.showContextWindow, let s = contextService.metrics.active {
+            menu.addItem(.separator())
+            let suffix = s.isHigh ? " · compact soon" : ""
+            menu.addItem(linkInfoItem(title: "Context: \(s.utilization)%\(suffix)",
+                                      symbol: "memorychip", tab: .context))
+            menu.addItem(linkSecondaryItem("\(formatTokenCount(s.contextTokens)) of 200K · \(s.project)", tab: .context))
+            // Prompt-cache freshness: warm means the next message hits a cheap cache
+            // read; cold means it re-pays cache creation. (5-min TTL from the last turn.)
+            if s.cacheActive {
+                let now = Date()
+                if s.isCacheWarm(now: now) {
+                    menu.addItem(linkSecondaryItem("Cache warm · \(formatDuration(s.cacheFreshSeconds(now: now))) left", tab: .context))
+                } else {
+                    menu.addItem(linkSecondaryItem("Cache cold · next message re-caches", tab: .context))
+                }
+            }
+        }
+
+        // Today's composite health grade (opt-in). Deep-links to the Activity tab,
+        // which shows the contributing factors.
+        if settingsManager.settings.showSessionGrade, let grade = currentSessionGrade() {
+            menu.addItem(.separator())
+            menu.addItem(linkInfoItem(title: "Today's health: \(grade.letter)",
+                                      symbol: "checkmark.seal", tab: .activity))
         }
 
         if let error = usageService.error {
@@ -482,7 +512,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         statusService.startPolling()
         metricsService.startPolling()
-        
+        contextService.startPolling()
+
         Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             self?.checkForNotifications()
             // Re-evaluate staleness even when no new data has arrived, so the
@@ -513,7 +544,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             window.isReleasedWhenClosed = false
             window.contentViewController = NSHostingController(
                 rootView: DashboardView(model: dashboardModel, usage: usageService,
-                                        history: HistoryStore.shared, metrics: metricsService))
+                                        history: HistoryStore.shared, metrics: metricsService,
+                                        context: contextService))
             window.addTitlebarAccessoryViewController(titleAccessory("Dashboard"))
             window.addTitlebarAccessoryViewController(closeAccessory(for: window))
             window.setFrameAutosaveName("ClaudeGlanceDashboard")
@@ -524,8 +556,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         dashboardWindow?.makeKeyAndOrderFront(nil)
     }
 
+    /// A usage menu-row label honoring the used-vs-remaining preference [#19],
+    /// e.g. "5hr: 16%" or "5hr: 84% left".
+    private func usageLabel(_ prefix: String, _ utilization: Int) -> String {
+        let remaining = settingsManager.settings.showRemaining
+        let value = displayedUsagePercent(utilization: utilization, showRemaining: remaining)
+        return remaining ? "\(prefix): \(value)% left" : "\(prefix): \(value)%"
+    }
+
+    /// Today's session grade from the signals we currently have — cache efficiency
+    /// (local), 5h limit headroom (OAuth, once loaded), and active-session context
+    /// headroom (local). nil when none are available yet.
+    private func currentSessionGrade() -> SessionGrade? {
+        let m = metricsService.metrics
+        return gradeSession(
+            cachePercent: m.hasData ? m.todayCachePercent : nil,
+            limitUtilization: usageService.hasLoaded ? usageService.currentUsage.fiveHourUtilization : nil,
+            contextUtilization: contextService.metrics.active?.utilization
+        )
+    }
+
     @objc private func refreshUsage() {
-        usageService.fetchUsage()
+        // Manual refresh is throttled in the service so rapid taps can't trip the
+        // usage endpoint's rate limit; a too-soon tap is simply ignored.
+        usageService.fetchUsage(manual: true)
     }
 
     @objc private func openStatusPage() {
@@ -621,14 +675,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // 5h%, 7d%, sonnet%, 5h reset, 7d reset.
         var segments: [String] = []
 
+        // [19] Each percent honors the used-vs-remaining preference.
+        func pct(_ util: Int) -> String {
+            "\(displayedUsagePercent(utilization: util, showRemaining: settings.showRemaining))%"
+        }
         if settings.showFiveHour {
-            segments.append("\(snapshot.fiveHourUtilization)%")
+            segments.append(pct(snapshot.fiveHourUtilization))
         }
         if settings.showSevenDay {
-            segments.append("\(snapshot.sevenDayUtilization)%")
+            segments.append(pct(snapshot.sevenDayUtilization))
         }
         if settings.showSonnet, let sonnet = snapshot.sevenDaySonnetUtilization {
-            segments.append("\(sonnet)%")
+            segments.append(pct(sonnet))
         }
         if settings.showFiveHourReset, let resetAt = snapshot.fiveHourResetAt {
             segments.append(formatTimeRemainingCompact(until: resetAt))
@@ -658,7 +716,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let pace = snapshot.fiveHourResetAt.map {
             elapsedFraction(resetAt: $0, windowLength: 5 * 60 * 60)
         }
-        let ringImage: NSImage? = settings.showRingIcon
+        // [21] The ring is an icon, so it's also suppressed when the icon is hidden.
+        let ringImage: NSImage? = (settings.showRingIcon && settings.showMenuBarIcon)
             ? menuBarRingImage(fiveHourPercent: snapshot.fiveHourUtilization,
                                sevenDayPercent: snapshot.sevenDayUtilization,
                                fiveHourPaceFraction: pace)
@@ -670,6 +729,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             button.image = ringImage
             button.imagePosition = title.length > 0 ? .imageLeading : .imageOnly
             button.attributedTitle = title
+            return
+        }
+
+        // [21] Icon hidden by preference: text only, never empty — if nothing else
+        // is enabled, fall back to the 5h percent so the item stays visible/clickable.
+        if !settings.showMenuBarIcon {
+            button.image = nil
+            if title.length > 0 {
+                button.attributedTitle = title
+            } else {
+                button.attributedTitle = NSAttributedString(
+                    string: pct(snapshot.fiveHourUtilization),
+                    attributes: [.font: font, .foregroundColor: NSColor.labelColor])
+            }
             return
         }
 

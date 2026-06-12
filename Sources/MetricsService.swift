@@ -21,13 +21,22 @@ struct UsageMetrics {
     let costByModel: [String: Double]
     // API-equivalent spend per day over the recent window (Cost tab chart).
     let dailyCost: [Date: Double]
+    // Month-to-date token volume by type, for the "where your tokens go" breakdown.
+    let monthInputTokens: Int
+    let monthOutputTokens: Int
+    let monthCacheReadTokens: Int
+    let monthCacheCreationTokens: Int
 
     static let empty = UsageMetrics(todayTokens: 0, todayCachePercent: 0,
                                     todayActiveSeconds: 0, todayMessages: 0, yesterdayTokens: 0,
                                     todayCostUSD: 0, monthCostUSD: 0, monthSavingsUSD: 0,
-                                    dailyTokens: [:], costByModel: [:], dailyCost: [:])
+                                    dailyTokens: [:], costByModel: [:], dailyCost: [:],
+                                    monthInputTokens: 0, monthOutputTokens: 0,
+                                    monthCacheReadTokens: 0, monthCacheCreationTokens: 0)
 
     var hasData: Bool { todayMessages > 0 }
+    /// Total month-to-date tokens across all types — the denominator for the split.
+    var monthTotalTokens: Int { monthInputTokens + monthOutputTokens + monthCacheReadTokens + monthCacheCreationTokens }
 }
 
 // MARK: - Formatting helpers (pure, testable)
@@ -104,6 +113,7 @@ func aggregateMetrics(jsonlContents: [String], now: Date) -> UsageMetrics {
 
     var seen = Set<String>()
     var tIn = 0, tOut = 0, tCacheR = 0, tCacheC = 0, tMsgs = 0
+    var mIn = 0, mOut = 0, mCacheR = 0, mCacheC = 0   // month-to-date, by type
     var todayCost = 0.0, monthCost = 0.0, monthSavings = 0.0
     var todayTimes: [Date] = []
     var yesterdayTokens = 0
@@ -147,6 +157,7 @@ func aggregateMetrics(jsonlContents: [String], now: Date) -> UsageMetrics {
                 let cost = tokenCostUSD(model: model, input: input, output: output,
                                         cacheCreation: cacheC, cacheRead: cacheR)
                 monthCost += cost
+                mIn += input; mOut += output; mCacheR += cacheR; mCacheC += cacheC
                 costByModel[displayModelName(for: model), default: 0] += cost
                 monthSavings += tokenCostUncachedUSD(model: model, input: input, output: output,
                     cacheCreation: cacheC, cacheRead: cacheR) - cost
@@ -180,7 +191,11 @@ func aggregateMetrics(jsonlContents: [String], now: Date) -> UsageMetrics {
         monthSavingsUSD: monthSavings,
         dailyTokens: dailyTokens,
         costByModel: costByModel,
-        dailyCost: dailyCost
+        dailyCost: dailyCost,
+        monthInputTokens: mIn,
+        monthOutputTokens: mOut,
+        monthCacheReadTokens: mCacheR,
+        monthCacheCreationTokens: mCacheC
     )
 }
 
@@ -190,6 +205,8 @@ final class MetricsService: ObservableObject {
     static let shared = MetricsService()
 
     @Published private(set) var metrics: UsageMetrics = .empty
+    /// Tool / MCP call breakdown, month to date — computed from the same transcripts.
+    @Published private(set) var tools: ToolBreakdown = .empty
 
     private var timer: Timer?
     private let interval: TimeInterval = 60
@@ -213,40 +230,46 @@ final class MetricsService: ObservableObject {
     func refresh() {
         queue.async { [weak self] in
             guard let self else { return }
-            let result = self.computeMetrics()
-            DispatchQueue.main.async { self.metrics = result }
+            let (metrics, tools) = self.computeMetrics()
+            DispatchQueue.main.async {
+                self.metrics = metrics
+                self.tools = tools
+            }
         }
     }
 
     /// Gathers the relevant transcript file contents (the only I/O), then defers
     /// all parsing/aggregation to the pure `aggregateMetrics`.
-    private func computeMetrics() -> UsageMetrics {
+    private func computeMetrics() -> (UsageMetrics, ToolBreakdown) {
         let now = Date()
         let fm = FileManager.default
-        let projects = fm.homeDirectoryForCurrentUser.appendingPathComponent(".claude/projects")
-        guard let enumerator = fm.enumerator(
-            at: projects,
-            includingPropertiesForKeys: [.contentModificationDateKey],
-            options: [.skipsHiddenFiles]
-        ) else { return .empty }
 
         let cal = Calendar.current
         let startToday = cal.startOfDay(for: now)
-        guard let startYesterday = cal.date(byAdding: .day, value: -1, to: startToday) else { return .empty }
+        guard let startYesterday = cal.date(byAdding: .day, value: -1, to: startToday) else { return (.empty, .empty) }
         let startMonth = cal.date(from: cal.dateComponents([.year, .month], from: now)) ?? startToday
         let lookbackStart = cal.date(byAdding: .day, value: -29, to: startToday) ?? startToday
         // Read files touched since the earliest window we report on (30-day strip,
         // month-to-date, or yesterday) so every figure is complete.
         let cutoff = min(startMonth, startYesterday, lookbackStart)
 
+        // Scan every configured Claude config dir [#22], not just ~/.claude.
         var contents: [String] = []
-        for case let url as URL in enumerator where url.pathExtension == "jsonl" {
-            let mod = (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-            if mod < cutoff { continue }
-            guard let content = try? String(contentsOf: url, encoding: .utf8) else { continue }
-            contents.append(content)
+        for projects in claudeProjectsDirectories() {
+            guard let enumerator = fm.enumerator(
+                at: projects,
+                includingPropertiesForKeys: [.contentModificationDateKey],
+                options: [.skipsHiddenFiles]
+            ) else { continue }
+            for case let url as URL in enumerator where url.pathExtension == "jsonl" {
+                let mod = (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                if mod < cutoff { continue }
+                guard let content = try? String(contentsOf: url, encoding: .utf8) else { continue }
+                contents.append(content)
+            }
         }
 
-        return aggregateMetrics(jsonlContents: contents, now: now)
+        return (aggregateMetrics(jsonlContents: contents, now: now),
+                aggregateToolUsage(jsonlContents: contents, now: now))
     }
 }

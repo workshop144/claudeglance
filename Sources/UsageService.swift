@@ -12,7 +12,22 @@ private struct KeychainCredentials: Decodable {
     }
 }
 
-func readOAuthAccessToken() throws -> String {
+/// The Claude Code OAuth credentials we actually use — the bearer token plus when
+/// it expires, so the service can re-read a refreshed token before it goes stale.
+struct OAuthToken {
+    let accessToken: String
+    let expiresAt: Date
+}
+
+/// Claude Code stores `expiresAt` as a Unix epoch. It writes milliseconds, but be
+/// unit-safe: treat large values as ms and smaller ones as seconds, so a future
+/// format change can't silently turn "expires in 8h" into "expired in 1970".
+func parseOAuthExpiry(_ raw: Double) -> Date {
+    let seconds = raw > 1_000_000_000_000 ? raw / 1000 : raw
+    return Date(timeIntervalSince1970: seconds)
+}
+
+func readOAuthToken() throws -> OAuthToken {
     var result: AnyObject?
     let query: [String: Any] = [
         kSecClass as String: kSecClassGenericPassword,
@@ -26,7 +41,17 @@ func readOAuthAccessToken() throws -> String {
                       userInfo: [NSLocalizedDescriptionKey: "Claude Code credentials not found in Keychain. Make sure Claude Code is installed and logged in. (status: \(status))"])
     }
     let creds = try JSONDecoder().decode(KeychainCredentials.self, from: data)
-    return creds.claudeAiOauth.accessToken
+    return OAuthToken(accessToken: creds.claudeAiOauth.accessToken,
+                      expiresAt: parseOAuthExpiry(creds.claudeAiOauth.expiresAt))
+}
+
+func readOAuthAccessToken() throws -> String { try readOAuthToken().accessToken }
+
+/// Pure throttle decision for a user-initiated refresh: allowed if none has run
+/// yet, or the last one was at least `minInterval` ago.
+func manualRefreshAllowed(last: Date?, now: Date, minInterval: TimeInterval) -> Bool {
+    guard let last else { return true }
+    return now.timeIntervalSince(last) >= minInterval
 }
 
 // MARK: - API Response Model
@@ -147,6 +172,9 @@ final class UsageService: ObservableObject {
     @Published private(set) var currentUsage: UsageSnapshot = .placeholder
     @Published private(set) var error: String?
     @Published private(set) var isLoading: Bool = false
+    /// True once a real usage snapshot has landed — so consumers (e.g. the session
+    /// grade) can tell a fetched 0% from the initial placeholder.
+    @Published private(set) var hasLoaded: Bool = false
     @Published private(set) var weeklySessions: Int = 0
     @Published private(set) var weeklyMessages: Int = 0
     @Published private(set) var weeklyTokens: Int = 0
@@ -157,21 +185,53 @@ final class UsageService: ObservableObject {
     var fiveHourBurn: BurnEstimate? { estimateBurn(from: fiveHourSamples) }
 
     private var refreshTimer: Timer?
-    private let normalInterval: TimeInterval = 5 * 60   // 5 minutes
+    // User-configurable poll cadence [#22], clamped to 1–30 min; re-read on each
+    // (re)schedule so a settings change takes effect from the next cycle.
+    private var normalInterval: TimeInterval {
+        TimeInterval(clampedRefreshMinutes(SettingsManager.shared.settings.usageRefreshMinutes) * 60)
+    }
     private let backoffInterval: TimeInterval = 15 * 60 // 15 minutes after 429
 
     // Injectable for testing
     var urlSession: URLSession = .shared
 
     private var cachedToken: String?
+    private var cachedTokenExpiresAt: Date?
 
     private init() {}
 
+    /// Returns the bearer token, re-reading the Keychain when there's no cached
+    /// token or the cached one is within a minute of expiry — so a token Claude
+    /// Code has already refreshed is picked up before we send a dead one.
     private func accessToken() throws -> String {
-        if let token = cachedToken { return token }
-        let token = try readOAuthAccessToken()
-        cachedToken = token
-        return token
+        if let token = cachedToken, let exp = cachedTokenExpiresAt,
+           exp.timeIntervalSinceNow > 60 {
+            return token
+        }
+        let creds = try readOAuthToken()
+        cachedToken = creds.accessToken
+        cachedTokenExpiresAt = creds.expiresAt
+        return creds.accessToken
+    }
+
+    /// Drop the cached token so the next poll re-reads (possibly refreshed)
+    /// credentials from the Keychain.
+    private func invalidateToken() {
+        cachedToken = nil
+        cachedTokenExpiresAt = nil
+    }
+
+    // Manual-refresh throttle. The OAuth usage endpoint rate-limits, so rapidly
+    // tapping Refresh (e.g. to watch context fill) used to fire a request per tap
+    // and trip a 429 → 15-min backoff. We let a manual refresh through at most once
+    // every `minManualRefresh` seconds; auto-polling is unaffected.
+    private var lastManualRefresh: Date?
+    private let minManualRefresh: TimeInterval = 10
+
+    /// Whether a manual refresh would be allowed right now (false if one ran within
+    /// the throttle window).
+    func canRefreshNow(_ now: Date = Date()) -> Bool {
+        manualRefreshAllowed(last: lastManualRefresh, now: now, minInterval: minManualRefresh)
     }
 
     func startPolling() {
@@ -191,7 +251,15 @@ final class UsageService: ObservableObject {
         }
     }
 
-    func fetchUsage() {
+    /// Fetch current usage. `manual` marks a user-initiated Refresh, which is
+    /// throttled to `minManualRefresh`; the returned Bool says whether the request
+    /// was actually started (false = ignored as a too-soon repeat tap).
+    @discardableResult
+    func fetchUsage(manual: Bool = false) -> Bool {
+        if manual {
+            guard canRefreshNow() else { return false }
+            lastManualRefresh = Date()
+        }
         DispatchQueue.main.async { self.isLoading = true }
 
         Task {
@@ -230,18 +298,26 @@ final class UsageService: ObservableObject {
                         to: self.fiveHourSamples)
                     HistoryStore.shared.record(fiveHour: fiveHourUtil, sevenDay: sevenDayUtil, sonnet: sonnetUtil)
                     self.currentUsage = snapshot
+                    self.hasLoaded = true
                     self.error = nil
                     self.isLoading = false
                     self.scheduleTimer(interval: self.normalInterval)
                 }
             } catch let error as NSError {
                 let isRateLimit = error.code == 429
+                // A 401/403 means the token we sent is stale or was rotated — the
+                // cached copy is now useless, so drop it and re-read next poll.
+                let isAuthError = error.code == 401 || error.code == 403
                 await MainActor.run {
                     if isRateLimit {
                         // Clear token so next attempt re-reads a potentially refreshed token from Keychain
-                        self.cachedToken = nil
+                        self.invalidateToken()
                         self.error = "Rate limited — retrying in 15 min"
                         self.scheduleTimer(interval: self.backoffInterval)
+                    } else if isAuthError {
+                        self.invalidateToken()
+                        self.error = "Auth token expired — retrying (re-login to Claude Code if this persists)"
+                        self.scheduleTimer(interval: self.normalInterval)
                     } else {
                         self.error = error.localizedDescription
                         self.scheduleTimer(interval: self.normalInterval)
@@ -250,6 +326,7 @@ final class UsageService: ObservableObject {
                 }
             }
         }
+        return true
     }
 
     func fetchOAuthUsage(accessToken: String) async throws -> OAuthUsageResponse {

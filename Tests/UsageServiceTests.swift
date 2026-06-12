@@ -1078,3 +1078,373 @@ final class AggregateMetricsTests: XCTestCase {
         XCTAssertEqual(m.dailyCost[olderDay] ?? 0, 5, accuracy: 1e-6)
     }
 }
+
+// MARK: - aggregateContextWindows (jsonl → per-session context fill)
+
+final class AggregateContextWindowsTests: XCTestCase {
+
+    private let now = Date(timeIntervalSince1970: 1_700_000_000)
+
+    private func iso(_ date: Date) -> String {
+        let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime]
+        return f.string(from: date)
+    }
+
+    /// A timestamp `seconds` before `now`.
+    private func ago(_ seconds: TimeInterval) -> String { iso(now.addingTimeInterval(-seconds)) }
+
+    private func line(session: String, ts: String, role: String = "assistant",
+                      model: String? = "claude-opus-4-8",
+                      input: Int = 0, cacheR: Int = 0, cacheC: Int = 0, output: Int = 0,
+                      sidechain: Bool = false, cwd: String? = "/Users/me/dev/proj",
+                      branch: String? = nil) -> String {
+        var msg = "\"role\":\"\(role)\",\"usage\":{\"input_tokens\":\(input),\"output_tokens\":\(output),\"cache_read_input_tokens\":\(cacheR),\"cache_creation_input_tokens\":\(cacheC)}"
+        if let model { msg = "\"model\":\"\(model)\"," + msg }
+        var fields = ["\"sessionId\":\"\(session)\"", "\"timestamp\":\"\(ts)\"",
+                      "\"isSidechain\":\(sidechain)", "\"message\":{\(msg)}"]
+        if let cwd { fields.append("\"cwd\":\"\(cwd)\"") }
+        if let branch { fields.append("\"gitBranch\":\"\(branch)\"") }
+        return "{" + fields.joined(separator: ",") + "}"
+    }
+
+    func testEmptyInputHasNoSessions() {
+        let m = aggregateContextWindows(jsonlContents: [], now: now)
+        XCTAssertFalse(m.hasData)
+        XCTAssertNil(m.active)
+        XCTAssertEqual(m.maxUtilization, 0)
+    }
+
+    func testContextIsLatestTurnPromptSize() {
+        // input + both cache sides = what was sent to the model = the context fill.
+        let l = line(session: "s1", ts: ago(60), input: 2, cacheR: 50_000, cacheC: 8_000, output: 900)
+        let m = aggregateContextWindows(jsonlContents: [l], now: now)
+        let s = try! XCTUnwrap(m.active)
+        XCTAssertEqual(s.contextTokens, 58_002)         // output (900) excluded
+        XCTAssertEqual(s.windowLimit, 200_000)
+        XCTAssertEqual(s.utilization, 29)               // 58002 / 200000 ≈ 29%
+        XCTAssertEqual(s.tokensRemaining, 141_998)
+        XCTAssertEqual(s.model, "Opus 4.8")
+        XCTAssertEqual(s.project, "proj")
+    }
+
+    func testReportsLatestTurnNotPeak() {
+        // An auto-compact shrinks context: a big earlier turn then a small later one
+        // must report the *latest* (current) fill, not the historical maximum.
+        let big = line(session: "s1", ts: ago(600), input: 180_000)
+        let small = line(session: "s1", ts: ago(60), input: 20_000)
+        let m = aggregateContextWindows(jsonlContents: ["\(big)\n\(small)"], now: now)
+        XCTAssertEqual(m.active?.contextTokens, 20_000)
+    }
+
+    func testSidechainTurnsExcluded() {
+        // Subagent sidechains have their own context window — ignore them.
+        let main = line(session: "s1", ts: ago(120), input: 30_000)
+        let side = line(session: "s1", ts: ago(60), input: 150_000, sidechain: true)
+        let m = aggregateContextWindows(jsonlContents: ["\(main)\n\(side)"], now: now)
+        XCTAssertEqual(m.active?.contextTokens, 30_000)
+    }
+
+    func testSyntheticModelExcluded() {
+        let real = line(session: "s1", ts: ago(120), input: 40_000)
+        let synth = line(session: "s1", ts: ago(60), model: "<synthetic>", input: 999_999)
+        let m = aggregateContextWindows(jsonlContents: ["\(real)\n\(synth)"], now: now)
+        XCTAssertEqual(m.active?.contextTokens, 40_000)
+    }
+
+    func testStaleSessionsDropped() {
+        // Two days old, outside the 24h "live" window → not reported.
+        let old = line(session: "s1", ts: ago(48 * 3600), input: 50_000)
+        let m = aggregateContextWindows(jsonlContents: [old], now: now)
+        XCTAssertFalse(m.hasData)
+    }
+
+    func testMultipleSessionsSortedByRecency() {
+        let older = line(session: "s1", ts: ago(600), input: 10_000)   // 5%
+        let newer = line(session: "s2", ts: ago(60), input: 90_000)    // 45%
+        let m = aggregateContextWindows(jsonlContents: ["\(older)\n\(newer)"], now: now)
+        XCTAssertEqual(m.sessions.count, 2)
+        XCTAssertEqual(m.active?.sessionId, "s2")           // most recent is the headline
+        XCTAssertEqual(m.sessions.last?.sessionId, "s1")
+        XCTAssertEqual(m.maxUtilization, 45)
+    }
+
+    func testProjectAndBranchFromTopLevelFields() {
+        let l = line(session: "s1", ts: ago(60), input: 1_000,
+                     cwd: "/Users/me/dev/claudeglance", branch: "feature/x")
+        let s = try! XCTUnwrap(aggregateContextWindows(jsonlContents: [l], now: now).active)
+        XCTAssertEqual(s.project, "claudeglance")
+        XCTAssertEqual(s.gitBranch, "feature/x")
+    }
+
+    func testUtilizationCapsAt100() {
+        let l = line(session: "s1", ts: ago(60), input: 250_000)   // over the window
+        let s = try! XCTUnwrap(aggregateContextWindows(jsonlContents: [l], now: now).active)
+        XCTAssertEqual(s.utilization, 100)
+        XCTAssertEqual(s.tokensRemaining, 0)
+    }
+
+    func testThresholdFlags() {
+        let caution = try! XCTUnwrap(aggregateContextWindows(
+            jsonlContents: [line(session: "s1", ts: ago(60), input: 150_000)], now: now).active)  // 75%
+        XCTAssertTrue(caution.isCaution)
+        XCTAssertFalse(caution.isHigh)
+
+        let high = try! XCTUnwrap(aggregateContextWindows(
+            jsonlContents: [line(session: "s2", ts: ago(60), input: 190_000)], now: now).active)  // 95%
+        XCTAssertTrue(high.isHigh)
+        XCTAssertFalse(high.isCaution)
+    }
+
+    func testUserTurnsIgnored() {
+        // Only assistant turns carry the prompt-size usage we monitor.
+        let user = line(session: "s1", ts: ago(60), role: "user", input: 99_999)
+        let m = aggregateContextWindows(jsonlContents: [user], now: now)
+        XCTAssertFalse(m.hasData)
+    }
+
+    // MARK: cache freshness [#12]
+
+    func testCacheActiveOnlyWhenLatestTurnUsedCache() {
+        let cached = aggregateContextWindows(
+            jsonlContents: [line(session: "s1", ts: ago(60), input: 10, cacheR: 40_000)], now: now).active
+        XCTAssertEqual(cached?.cacheActive, true)
+
+        let uncached = aggregateContextWindows(
+            jsonlContents: [line(session: "s2", ts: ago(60), input: 40_000)], now: now).active
+        XCTAssertEqual(uncached?.cacheActive, false)
+    }
+
+    func testCacheWarmWithinTTL() {
+        // Last turn 60s ago → cache expires at +300s, so 240s of warmth remain.
+        let s = try! XCTUnwrap(aggregateContextWindows(
+            jsonlContents: [line(session: "s1", ts: ago(60), input: 10, cacheR: 40_000)], now: now).active)
+        XCTAssertEqual(s.cacheExpiresAt, s.lastActivity.addingTimeInterval(300))
+        XCTAssertTrue(s.isCacheWarm(now: now))
+        XCTAssertEqual(s.cacheFreshSeconds(now: now), 240)
+    }
+
+    func testCacheColdAfterTTL() {
+        // Last turn 10 min ago → past the 5-min TTL: cold, no warmth left, 600s idle.
+        let s = try! XCTUnwrap(aggregateContextWindows(
+            jsonlContents: [line(session: "s1", ts: ago(600), input: 10, cacheR: 40_000)], now: now).active)
+        XCTAssertFalse(s.isCacheWarm(now: now))
+        XCTAssertEqual(s.cacheFreshSeconds(now: now), 0)
+        XCTAssertEqual(s.idleSeconds(now: now), 600)
+    }
+
+    func testNoCacheTokensIsNeverWarm() {
+        // Within the TTL window, but the turn used no cache → nothing to keep warm.
+        let s = try! XCTUnwrap(aggregateContextWindows(
+            jsonlContents: [line(session: "s1", ts: ago(10), input: 40_000)], now: now).active)
+        XCTAssertFalse(s.isCacheWarm(now: now))
+    }
+}
+
+// MARK: - manual-refresh throttle
+
+final class ManualRefreshThrottleTests: XCTestCase {
+    func testFirstRefreshAlwaysAllowed() {
+        XCTAssertTrue(manualRefreshAllowed(last: nil, now: Date(), minInterval: 10))
+    }
+
+    func testBlockedWithinWindowAllowedAfter() {
+        let last = Date(timeIntervalSince1970: 1_700_000_000)
+        XCTAssertFalse(manualRefreshAllowed(last: last, now: last.addingTimeInterval(3), minInterval: 10))
+        XCTAssertFalse(manualRefreshAllowed(last: last, now: last.addingTimeInterval(9.9), minInterval: 10))
+        XCTAssertTrue(manualRefreshAllowed(last: last, now: last.addingTimeInterval(10), minInterval: 10))
+        XCTAssertTrue(manualRefreshAllowed(last: last, now: last.addingTimeInterval(60), minInterval: 10))
+    }
+}
+
+// MARK: - parseOAuthExpiry (Keychain epoch → Date, unit-safe)
+
+final class ParseOAuthExpiryTests: XCTestCase {
+    func testMillisecondsEpochInterpretedAsMs() {
+        // Claude Code writes ms: 1_700_000_000_000 ms == 1_700_000_000 s.
+        XCTAssertEqual(parseOAuthExpiry(1_700_000_000_000).timeIntervalSince1970, 1_700_000_000, accuracy: 0.001)
+    }
+
+    func testSecondsEpochInterpretedAsSeconds() {
+        // A seconds-format value must not be divided by 1000 (would land in 1970).
+        XCTAssertEqual(parseOAuthExpiry(1_700_000_000).timeIntervalSince1970, 1_700_000_000, accuracy: 0.001)
+    }
+}
+
+// MARK: - session grade ([#16])
+
+final class SessionGradeTests: XCTestCase {
+    func testLetterBands() {
+        XCTAssertEqual(letterGrade(for: 100), "A+")
+        XCTAssertEqual(letterGrade(for: 93), "A")
+        XCTAssertEqual(letterGrade(for: 90), "A-")
+        XCTAssertEqual(letterGrade(for: 85), "B")
+        XCTAssertEqual(letterGrade(for: 70), "C-")
+        XCTAssertEqual(letterGrade(for: 60), "D-")
+        XCTAssertEqual(letterGrade(for: 59), "F")
+        XCTAssertEqual(letterGrade(for: 0), "F")
+    }
+
+    func testNilWhenNoSignals() {
+        XCTAssertNil(gradeSession(cachePercent: nil, limitUtilization: nil, contextUtilization: nil))
+    }
+
+    func testSingleFactorRenormalizes() {
+        // Cache alone (weight 0.4) → composite is just the cache score.
+        let g = gradeSession(cachePercent: 88, limitUtilization: nil, contextUtilization: nil)
+        XCTAssertEqual(g?.score, 88)
+        XCTAssertEqual(g?.letter, "B+")
+        XCTAssertEqual(g?.factors.count, 1)
+    }
+
+    func testWeightedCompositeAcrossFactors() {
+        // cache 100 (.4) + limit-headroom 100 (.3, from 0% used) + context-headroom 50 (.3, from 50% used)
+        // = (40 + 30 + 15) / 1.0 = 85 → B.
+        let g = gradeSession(cachePercent: 100, limitUtilization: 0, contextUtilization: 50)
+        XCTAssertEqual(g?.score, 85)
+        XCTAssertEqual(g?.letter, "B")
+        XCTAssertEqual(g?.factors.count, 3)
+    }
+
+    func testHeadroomFactorsInvertUtilization() {
+        // High limit + context utilization → low headroom scores → poor grade.
+        let g = gradeSession(cachePercent: 0, limitUtilization: 100, contextUtilization: 100)
+        XCTAssertEqual(g?.score, 0)
+        XCTAssertEqual(g?.letter, "F")
+    }
+}
+
+// MARK: - UX niceties ([#19] used-vs-remaining, [#22] interval + config dirs)
+
+final class DisplayedUsagePercentTests: XCTestCase {
+    func testUsedShowsUtilization() {
+        XCTAssertEqual(displayedUsagePercent(utilization: 16, showRemaining: false), 16)
+    }
+    func testRemainingIsComplement() {
+        XCTAssertEqual(displayedUsagePercent(utilization: 16, showRemaining: true), 84)
+        XCTAssertEqual(displayedUsagePercent(utilization: 0, showRemaining: true), 100)
+    }
+    func testRemainingClampsAtZero() {
+        XCTAssertEqual(displayedUsagePercent(utilization: 120, showRemaining: true), 0)
+    }
+}
+
+final class ClampedRefreshMinutesTests: XCTestCase {
+    func testClampsToOneToThirty() {
+        XCTAssertEqual(clampedRefreshMinutes(0), 1)
+        XCTAssertEqual(clampedRefreshMinutes(-5), 1)
+        XCTAssertEqual(clampedRefreshMinutes(5), 5)
+        XCTAssertEqual(clampedRefreshMinutes(99), 30)
+    }
+}
+
+final class ClaudeProjectsDirectoriesTests: XCTestCase {
+    private let home = URL(fileURLWithPath: "/Users/test")
+
+    func testDefaultOnlyWhenNoEnv() {
+        let dirs = claudeProjectsDirectories(env: [:], home: home)
+        XCTAssertEqual(dirs.map(\.path), ["/Users/test/.claude/projects"])
+    }
+
+    func testConfiguredPathThenDefault() {
+        let dirs = claudeProjectsDirectories(env: ["CLAUDE_CONFIG_DIR": "/custom/cfg"], home: home)
+        XCTAssertEqual(dirs.map(\.path), ["/custom/cfg/projects", "/Users/test/.claude/projects"])
+    }
+
+    func testMultiplePathsColonAndCommaSeparated() {
+        let dirs = claudeProjectsDirectories(env: ["CLAUDE_CONFIG_DIR": "/a:/b,/c"], home: home)
+        XCTAssertEqual(dirs.map(\.path),
+                       ["/a/projects", "/b/projects", "/c/projects", "/Users/test/.claude/projects"])
+    }
+
+    func testDefaultNotDuplicatedWhenConfigured() {
+        let dirs = claudeProjectsDirectories(env: ["CLAUDE_CONFIG_DIR": "/Users/test/.claude"], home: home)
+        XCTAssertEqual(dirs.map(\.path), ["/Users/test/.claude/projects"])
+    }
+}
+
+// MARK: - mcpServerName ([#18])
+
+final class McpServerNameTests: XCTestCase {
+    func testExtractsServerSegment() {
+        XCTAssertEqual(mcpServerName(from: "mcp__Gmail__search_threads"), "Gmail")
+    }
+    func testUnderscoresInServerBecomeSpaces() {
+        XCTAssertEqual(mcpServerName(from: "mcp__Google_Calendar__list_events"), "Google Calendar")
+    }
+    func testBuiltinToolIsNotMcp() {
+        XCTAssertNil(mcpServerName(from: "Bash"))
+    }
+    func testEmptyServerIsNil() {
+        XCTAssertNil(mcpServerName(from: "mcp__"))
+    }
+}
+
+// MARK: - aggregateToolUsage ([#18]) + month token splits ([#17])
+
+final class AggregateToolUsageTests: XCTestCase {
+    private let now = Date(timeIntervalSince1970: 1_700_000_000)  // 2023-11-14
+
+    private func iso(_ d: Date) -> String {
+        let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime]; return f.string(from: d)
+    }
+    private func daysAgo(_ n: Int) -> String {
+        iso(Calendar.current.date(byAdding: .day, value: -n, to: now)!)
+    }
+    private func assistant(ts: String, blocks: String) -> String {
+        "{\"timestamp\":\"\(ts)\",\"message\":{\"role\":\"assistant\",\"content\":[\(blocks)]}}"
+    }
+    private func tool(_ name: String) -> String { "{\"type\":\"tool_use\",\"name\":\"\(name)\"}" }
+
+    func testCountsToolUseByName() {
+        let line = assistant(ts: daysAgo(1), blocks: [tool("Bash"), tool("Bash"), tool("Edit")].joined(separator: ","))
+        let b = aggregateToolUsage(jsonlContents: [line], now: now)
+        XCTAssertEqual(b.toolCounts["Bash"], 2)
+        XCTAssertEqual(b.toolCounts["Edit"], 1)
+        XCTAssertEqual(b.totalCalls, 3)
+    }
+
+    func testSeparatesMcpFromBuiltins() {
+        let line = assistant(ts: daysAgo(1), blocks: [tool("Bash"), tool("mcp__Gmail__search_threads")].joined(separator: ","))
+        let b = aggregateToolUsage(jsonlContents: [line], now: now)
+        XCTAssertEqual(b.toolCounts["Bash"], 1)
+        XCTAssertNil(b.toolCounts["mcp__Gmail__search_threads"])
+        XCTAssertEqual(b.mcpServerCounts["Gmail"], 1)
+        XCTAssertEqual(b.totalCalls, 2)
+    }
+
+    func testNonToolUseBlocksAndUserTextIgnored() {
+        // A text block, plus a user turn whose content is a plain string (must not
+        // fail the line). Only the one tool_use counts.
+        let assistantLine = assistant(ts: daysAgo(1),
+            blocks: ["{\"type\":\"text\",\"text\":\"hi\"}", tool("Read")].joined(separator: ","))
+        let userLine = "{\"timestamp\":\"\(daysAgo(1))\",\"message\":{\"role\":\"user\",\"content\":\"just a string\"}}"
+        let b = aggregateToolUsage(jsonlContents: ["\(assistantLine)\n\(userLine)"], now: now)
+        XCTAssertEqual(b.toolCounts["Read"], 1)
+        XCTAssertEqual(b.totalCalls, 1)
+    }
+
+    func testExcludesPriorMonth() {
+        let lastMonth = assistant(ts: daysAgo(25), blocks: tool("Bash"))  // ~Oct 20, before Nov 1
+        let b = aggregateToolUsage(jsonlContents: [lastMonth], now: now)
+        XCTAssertEqual(b.totalCalls, 0)
+        XCTAssertFalse(b.hasData)
+    }
+}
+
+final class MonthTokenSplitTests: XCTestCase {
+    private let now = Date(timeIntervalSince1970: 1_700_000_000)
+    private func todayStamp(_ offset: TimeInterval) -> String {
+        let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime]
+        return f.string(from: Calendar.current.startOfDay(for: now).addingTimeInterval(offset))
+    }
+
+    func testMonthSplitsByType() {
+        let l = "{\"timestamp\":\"\(todayStamp(36_000))\",\"message\":{\"id\":\"a\",\"model\":\"claude-opus-4-8\",\"usage\":{\"input_tokens\":100,\"output_tokens\":50,\"cache_read_input_tokens\":30,\"cache_creation_input_tokens\":20}}}"
+        let m = aggregateMetrics(jsonlContents: [l], now: now)
+        XCTAssertEqual(m.monthInputTokens, 100)
+        XCTAssertEqual(m.monthOutputTokens, 50)
+        XCTAssertEqual(m.monthCacheReadTokens, 30)
+        XCTAssertEqual(m.monthCacheCreationTokens, 20)
+        XCTAssertEqual(m.monthTotalTokens, 200)
+    }
+}
