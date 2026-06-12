@@ -175,7 +175,7 @@ this is the "pure coolness" ordering you asked for.
 | 22 | ✅ **`CLAUDE_CONFIG_DIR` + multiple data-path** support — *shipped v1.5.6* | masorange, CCUM | ★ cheap, expected |
 | 23 | **Real prepaid $ balance** via opt-in Console login | hamed, mnapoli | ★★ but heavy (new auth) |
 | 24 | **Multi-account** + "headroom" score (`100−max(5h%,7d%)`) + sortable table | rjmon, dsado, hamed | ★ scope-expanding |
-| 25 | **WidgetKit / Notification Center widgets** (donut gauges + heatmap) | AgentLimits, theangeloumali | ★ |
+| 25 | **WidgetKit / Notification Center widgets** (donut gauges + heatmap) — *deferred to v1.7: sandboxed extension needs an App Group + real code signing* | AgentLimits, theangeloumali | ★ |
 | 26 | ✅ **Shareable "Wrapped" PNG card** — *shipped v1.6.3* | cc-wrapped | ★ fun/viral |
 | 27 | ✅ **Bundled Claude Code statusline script** (reuse our data in the CLI) — *shipped v1.6.0* | AgentLimits, elliot | ★ |
 | 28 | ✅ **Plan-recommendation nudge** ("often near your limits") — plan-agnostic — *shipped v1.6.4* | haasonsaas | ★ |
@@ -245,33 +245,35 @@ Power features, all opt-in so the default stays a glance.
 - ✅ **Hardening:** OAuth token re-read on 401/expiry (1.5.1) and a manual-Refresh
   throttle (1.5.3) — both surfaced by the live build during the batch.
 
-### v1.6 — "Reach" (in progress)
-Getting our data onto more surfaces and out to more people. The cheap/light items
-first; each ships as its own patch and is reviewed before the next begins. (This
-batch deliberately stops at v1.6.5 — the heavier bets below wait for v1.7+.)
-- ✅ **v1.6.0 — [27] Bundled statusline script** — *shipped*. Sidecar JSON +
-  bundled shell script + Settings install/auto-wire.
-- ✅ **v1.6.1 — [30] Nix / home-manager formula** — *shipped*. `flake.nix` (fetches
-  the release DMG), `update-flake.sh`, and a CI `nix build` check.
-- ✅ **v1.6.2 — [29] Service-status uptime history bar** — *shipped*. Opt-in 30-day
-  menu bar (self-recorded + incident-seeded; time-based uptime %).
-- ✅ **v1.6.3 — [26] Shareable "Wrapped" PNG card** — *shipped*. Colorful card via
+### ✅ v1.6 — "Reach" — SHIPPED (v1.6.4)
+Getting our data onto more surfaces and out to more people. Each shipped as its own
+patch, reviewed before the next began.
+- ✅ **v1.6.0 — [27] Bundled statusline script** — Sidecar JSON + bundled shell
+  script + Settings install/auto-wire.
+- ✅ **v1.6.1 — [30] Nix / home-manager formula** — `flake.nix` (fetches the release
+  DMG), `update-flake.sh`, and a CI `nix build` check.
+- ✅ **v1.6.2 — [29] Service-status uptime history bar** — Opt-in 30-day menu bar
+  (self-recorded + incident-seeded; time-based uptime %).
+- ✅ **v1.6.3 — [26] Shareable "Wrapped" PNG card** — Colorful card via
   `ImageRenderer`; menu + Activity-tab entry; Save/Copy/Share.
-- ✅ **v1.6.4 — [28] Plan-recommendation nudge** — *shipped*. Plan-agnostic "Plan
-  fit" card on the Usage tab (limit-pressure + overage; no tier assumed).
-- **v1.6.5 — [25] WidgetKit / Notification Center widgets** — a new target reusing
-  the history store (donut gauges + heatmap).
+- ✅ **v1.6.4 — [28] Plan-recommendation nudge** — Plan-agnostic "Plan fit" card on
+  the Usage tab (limit-pressure + overage; no tier assumed).
+- **[25] WidgetKit / Notification Center widgets — moved to v1.7.** A widget runs in
+  a mandatorily-sandboxed extension that can't read our logs directly; its only data
+  channel is an App Group, and reliable widget loading/distribution needs proper
+  code signing. So it has a hard dependency on notarization [6] and lands with it.
 
 ### v1.7+ — Exploratory (bigger bets; validate demand first)
+- **[6] Notarize + [13] Sparkle auto-update + [25] WidgetKit** — the signing-gated
+  cluster. Notarization unblocks both seamless auto-update *and* widgets (App
+  Groups + extension loading want a real signature), so they land together once the
+  Apple Developer account is in place.
 - **[23] Real prepaid $ balance** via opt-in "Console mode" (one-time
   `sessionKey` capture or Admin key). The answer to "$160 left" — but it adds an
   auth surface, so it stays opt-in and off the default path.
 - **[24] Multi-account** + headroom score + sortable table (store each account's
   creds in their *own* Keychain service so Claude Code's refreshes don't clobber
   them — dsado/rjmon pattern).
-- **[6] Notarize + [13] Sparkle auto-update** — the deferred pair, gated on the
-  Apple Developer account and designed to land together; moved to the tail so the
-  rest of v1.6 ships regardless of when the account arrives.
 
 ### Hardening (ongoing, every release)
 Pulled from competitors' recurring bug threads — get these right since we parse
