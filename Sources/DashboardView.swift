@@ -110,6 +110,52 @@ struct UsageTabView: View {
             } else {
                 collecting
             }
+
+            // Plan-fit nudge [#28] — only when there's enough signal to say something.
+            if let rec = planRecommendation(samples: history.samples,
+                                            overageEnabled: snap.extraUsageEnabled,
+                                            overageUsedCents: snap.extraUsageUsedCents,
+                                            now: Date()) {
+                Divider()
+                Text("Plan fit").font(.system(size: 13, weight: .semibold))
+                planFitCard(rec)
+            }
+        }
+    }
+
+    private func planFitCard(_ rec: PlanRecommendation) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: planFitIcon(rec.fit))
+                .font(.system(size: 18))
+                .foregroundColor(planFitColor(rec.fit))
+                .frame(width: 24)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(rec.headline).font(.system(size: 12, weight: .semibold))
+                Text(rec.detail).font(.system(size: 11)).foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color(NSColor.controlBackgroundColor)))
+    }
+
+    private func planFitIcon(_ fit: PlanFit) -> String {
+        switch fit {
+        case .overage:     return "creditcard"
+        case .constrained: return "arrow.up.circle"
+        case .balanced:    return "checkmark.circle"
+        case .comfortable: return "arrow.down.circle"
+        }
+    }
+
+    private func planFitColor(_ fit: PlanFit) -> Color {
+        switch fit {
+        case .overage:     return .red
+        case .constrained: return .orange
+        case .balanced:    return .green
+        case .comfortable: return .blue
         }
     }
 

@@ -12,6 +12,7 @@
 		08768C509388764D5866CFA3 /* StatusHistoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 054F822A413107C0E6AE613C /* StatusHistoryTests.swift */; };
 		0A5539902838346BC1CC4924 /* MetricsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58363E6825D4E0B111A03DFD /* MetricsService.swift */; };
 		16BF940B052B4A948B9B1147 /* StatusLineExportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7122E4ED4E2E86D4A2CC15E /* StatusLineExportTests.swift */; };
+		24CEB0FE4706A24ACBB1EDF5 /* PlanFit.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FF3FB76AE9DEBA8DBC22A3F /* PlanFit.swift */; };
 		2D03BEEECC338E3613DAC90F /* StatusLineSetup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 170AE89169EADCDEBB16662E /* StatusLineSetup.swift */; };
 		382F373955DE9A5AC38ACC84 /* UsageData.swift in Sources */ = {isa = PBXBuildFile; fileRef = D200048597B4157291EE1A2F /* UsageData.swift */; };
 		3D2E45E18392A07DCD9CA1C3 /* Activity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 235D97063A45F0B54F4B17FF /* Activity.swift */; };
@@ -31,6 +32,7 @@
 		A0A38307B0E52D5BAA352F5C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A9C92B40480B46451A779F3E /* Assets.xcassets */; };
 		A8F5786D359DC59F12661A93 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15B60109596823E8B3049AE5 /* DashboardView.swift */; };
 		AE544F59981EFC7528DB706E /* BuildInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F3A98B4FB00A61798935BF6 /* BuildInfo.swift */; };
+		CE3D6DABD601B48FB4D64469 /* PlanFitTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4F0004C2C97093175FCCF74 /* PlanFitTests.swift */; };
 		D5901D4A120D88360A14272E /* AppIcon.icns in Resources */ = {isa = PBXBuildFile; fileRef = 41DBB8C43A660F12A6C09B8C /* AppIcon.icns */; };
 		D5C6822375FC7952CB358FC6 /* UsageService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 389B96510CE84AF4DA0D39BF /* UsageService.swift */; };
 		DD75D1F2509353074C95CE82 /* StatusLineExport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57AA60810E166F2247382514 /* StatusLineExport.swift */; };
@@ -74,6 +76,7 @@
 		7774E9F94623765B11979F07 /* ClaudeGlance.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ClaudeGlance.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		7CDA3E43B0AD4B7359CF6C39 /* StatusService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusService.swift; sourceTree = "<group>"; };
 		7D669BEFDE86EF5611899941 /* ToolUsage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolUsage.swift; sourceTree = "<group>"; };
+		7FF3FB76AE9DEBA8DBC22A3F /* PlanFit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanFit.swift; sourceTree = "<group>"; };
 		852DDB101F006E8024AAD959 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		8A6BE5A441FF744627D3337B /* ClaudeGlance.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ClaudeGlance.entitlements; sourceTree = "<group>"; };
 		902E74C4D3D8F218834C393B /* ClaudeGlanceTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ClaudeGlanceTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -86,6 +89,7 @@
 		CD69DF6900409BF9A03F064A /* WrappedCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WrappedCard.swift; sourceTree = "<group>"; };
 		D200048597B4157291EE1A2F /* UsageData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageData.swift; sourceTree = "<group>"; };
 		D3FF9EBD17B7B96B3A223C27 /* WrappedCardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WrappedCardTests.swift; sourceTree = "<group>"; };
+		F4F0004C2C97093175FCCF74 /* PlanFitTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanFitTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -134,6 +138,7 @@
 				53CFE271FC0ED6CCD0C70D05 /* main.swift */,
 				23F3D9F26ACD335A9867053D /* MenuBarIcon.swift */,
 				58363E6825D4E0B111A03DFD /* MetricsService.swift */,
+				7FF3FB76AE9DEBA8DBC22A3F /* PlanFit.swift */,
 				2C7E88928AD7998BA6955269 /* Pricing.swift */,
 				5F94FF2A4B0577DE427D40BD /* SessionGrade.swift */,
 				B1517703E21CE6FD07CD0FE7 /* SettingsManager.swift */,
@@ -173,6 +178,7 @@
 		E6DB70BE103B4934B0ABABD9 /* Tests */ = {
 			isa = PBXGroup;
 			children = (
+				F4F0004C2C97093175FCCF74 /* PlanFitTests.swift */,
 				054F822A413107C0E6AE613C /* StatusHistoryTests.swift */,
 				B7122E4ED4E2E86D4A2CC15E /* StatusLineExportTests.swift */,
 				1949DB119DBBF5FE0F65D2A4 /* UsageServiceTests.swift */,
@@ -278,6 +284,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				CE3D6DABD601B48FB4D64469 /* PlanFitTests.swift in Sources */,
 				08768C509388764D5866CFA3 /* StatusHistoryTests.swift in Sources */,
 				16BF940B052B4A948B9B1147 /* StatusLineExportTests.swift in Sources */,
 				641791CDCB279ABBC08D042E /* UsageServiceTests.swift in Sources */,
@@ -299,6 +306,7 @@
 				EE03B28A6FDCF419578F9309 /* HistoryStore.swift in Sources */,
 				7DF83E170CC197AA3BF0BCC8 /* MenuBarIcon.swift in Sources */,
 				0A5539902838346BC1CC4924 /* MetricsService.swift in Sources */,
+				24CEB0FE4706A24ACBB1EDF5 /* PlanFit.swift in Sources */,
 				8DB4C6CC3966426FB55BE3B9 /* Pricing.swift in Sources */,
 				513B1D3A50992861B757990A /* SessionGrade.swift in Sources */,
 				71DAB555D0B8F113180BEA2C /* SettingsManager.swift in Sources */,
@@ -383,7 +391,7 @@
 				GIT_BRANCH = "";
 				GIT_COMMIT = "";
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
-				MARKETING_VERSION = 1.6.3;
+				MARKETING_VERSION = 1.6.4;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -509,7 +517,7 @@
 				GIT_BRANCH = "";
 				GIT_COMMIT = "";
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
-				MARKETING_VERSION = 1.6.3;
+				MARKETING_VERSION = 1.6.4;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = NO;

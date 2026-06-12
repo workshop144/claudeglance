@@ -14,6 +14,14 @@
 
 ## ✅ Shipped
 
+**v1.6.4 — "Reach"** (June 2026): **Plan-fit nudge [28]** — a "Plan fit" card on the
+dashboard's Usage tab that reads the utilization history we record to gauge
+limit-pressure and reports it plainly ("often near your limits — a higher tier would
+add headroom" / "comfortable headroom — a lower tier might do" / "good fit"), plus an
+overage callout. Deliberately **plan-agnostic**: the API only exposes utilization %,
+not the tier, so the copy never claims to know your plan — it speaks in headroom and
+observed overage. Stays quiet until there's enough history to say something.
+
 **v1.6.3 — "Reach"** (June 2026): **Shareable "Wrapped" card [26]** — a colorful,
 social-friendly PNG of your month with Claude (total tokens, cache efficiency,
 spend & caching savings, streak, top model/tool), rendered with SwiftUI's
@@ -170,7 +178,7 @@ this is the "pure coolness" ordering you asked for.
 | 25 | **WidgetKit / Notification Center widgets** (donut gauges + heatmap) | AgentLimits, theangeloumali | ★ |
 | 26 | ✅ **Shareable "Wrapped" PNG card** — *shipped v1.6.3* | cc-wrapped | ★ fun/viral |
 | 27 | ✅ **Bundled Claude Code statusline script** (reuse our data in the CLI) — *shipped v1.6.0* | AgentLimits, elliot | ★ |
-| 28 | **Plan-recommendation nudge** ("you'd be better on Max 20x") | haasonsaas | ★ |
+| 28 | ✅ **Plan-recommendation nudge** ("often near your limits") — plan-agnostic — *shipped v1.6.4* | haasonsaas | ★ |
 | 29 | ✅ **Service-status uptime history bar** — 30-day menu bar — *shipped v1.6.2* | elliot/ClaudeWatch | ★ |
 | 30 | ✅ **Nix / home-manager** formula — *shipped v1.6.1* | hamed | ★ |
 | 31 | Copy-usage-to-clipboard | cctray, joachim | ½ |
@@ -249,8 +257,8 @@ batch deliberately stops at v1.6.5 — the heavier bets below wait for v1.7+.)
   menu bar (self-recorded + incident-seeded; time-based uptime %).
 - ✅ **v1.6.3 — [26] Shareable "Wrapped" PNG card** — *shipped*. Colorful card via
   `ImageRenderer`; menu + Activity-tab entry; Save/Copy/Share.
-- **v1.6.4 — [28] Plan-recommendation nudge** ("you'd be better on Max 20x") —
-  small logic on existing usage math.
+- ✅ **v1.6.4 — [28] Plan-recommendation nudge** — *shipped*. Plan-agnostic "Plan
+  fit" card on the Usage tab (limit-pressure + overage; no tier assumed).
 - **v1.6.5 — [25] WidgetKit / Notification Center widgets** — a new target reusing
   the history store (donut gauges + heatmap).
 
