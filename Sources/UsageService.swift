@@ -172,6 +172,9 @@ final class UsageService: ObservableObject {
     @Published private(set) var currentUsage: UsageSnapshot = .placeholder
     @Published private(set) var error: String?
     @Published private(set) var isLoading: Bool = false
+    /// True once a real usage snapshot has landed — so consumers (e.g. the session
+    /// grade) can tell a fetched 0% from the initial placeholder.
+    @Published private(set) var hasLoaded: Bool = false
     @Published private(set) var weeklySessions: Int = 0
     @Published private(set) var weeklyMessages: Int = 0
     @Published private(set) var weeklyTokens: Int = 0
@@ -291,6 +294,7 @@ final class UsageService: ObservableObject {
                         to: self.fiveHourSamples)
                     HistoryStore.shared.record(fiveHour: fiveHourUtil, sevenDay: sevenDayUtil, sonnet: sonnetUtil)
                     self.currentUsage = snapshot
+                    self.hasLoaded = true
                     self.error = nil
                     self.isLoading = false
                     self.scheduleTimer(interval: self.normalInterval)

@@ -210,6 +210,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
         }
 
+        // Today's composite health grade (opt-in). Deep-links to the Activity tab,
+        // which shows the contributing factors.
+        if settingsManager.settings.showSessionGrade, let grade = currentSessionGrade() {
+            menu.addItem(.separator())
+            menu.addItem(linkInfoItem(title: "Today's health: \(grade.letter)",
+                                      symbol: "checkmark.seal", tab: .activity))
+        }
+
         if let error = usageService.error {
             menu.addItem(secondaryItem(error))
         }
@@ -546,6 +554,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         NSApp.activate(ignoringOtherApps: true)
         dashboardWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    /// Today's session grade from the signals we currently have — cache efficiency
+    /// (local), 5h limit headroom (OAuth, once loaded), and active-session context
+    /// headroom (local). nil when none are available yet.
+    private func currentSessionGrade() -> SessionGrade? {
+        let m = metricsService.metrics
+        return gradeSession(
+            cachePercent: m.hasData ? m.todayCachePercent : nil,
+            limitUtilization: usageService.hasLoaded ? usageService.currentUsage.fiveHourUtilization : nil,
+            contextUtilization: contextService.metrics.active?.utilization
+        )
     }
 
     @objc private func refreshUsage() {

@@ -1270,6 +1270,49 @@ final class ParseOAuthExpiryTests: XCTestCase {
     }
 }
 
+// MARK: - session grade ([#16])
+
+final class SessionGradeTests: XCTestCase {
+    func testLetterBands() {
+        XCTAssertEqual(letterGrade(for: 100), "A+")
+        XCTAssertEqual(letterGrade(for: 93), "A")
+        XCTAssertEqual(letterGrade(for: 90), "A-")
+        XCTAssertEqual(letterGrade(for: 85), "B")
+        XCTAssertEqual(letterGrade(for: 70), "C-")
+        XCTAssertEqual(letterGrade(for: 60), "D-")
+        XCTAssertEqual(letterGrade(for: 59), "F")
+        XCTAssertEqual(letterGrade(for: 0), "F")
+    }
+
+    func testNilWhenNoSignals() {
+        XCTAssertNil(gradeSession(cachePercent: nil, limitUtilization: nil, contextUtilization: nil))
+    }
+
+    func testSingleFactorRenormalizes() {
+        // Cache alone (weight 0.4) → composite is just the cache score.
+        let g = gradeSession(cachePercent: 88, limitUtilization: nil, contextUtilization: nil)
+        XCTAssertEqual(g?.score, 88)
+        XCTAssertEqual(g?.letter, "B+")
+        XCTAssertEqual(g?.factors.count, 1)
+    }
+
+    func testWeightedCompositeAcrossFactors() {
+        // cache 100 (.4) + limit-headroom 100 (.3, from 0% used) + context-headroom 50 (.3, from 50% used)
+        // = (40 + 30 + 15) / 1.0 = 85 → B.
+        let g = gradeSession(cachePercent: 100, limitUtilization: 0, contextUtilization: 50)
+        XCTAssertEqual(g?.score, 85)
+        XCTAssertEqual(g?.letter, "B")
+        XCTAssertEqual(g?.factors.count, 3)
+    }
+
+    func testHeadroomFactorsInvertUtilization() {
+        // High limit + context utilization → low headroom scores → poor grade.
+        let g = gradeSession(cachePercent: 0, limitUtilization: 100, contextUtilization: 100)
+        XCTAssertEqual(g?.score, 0)
+        XCTAssertEqual(g?.letter, "F")
+    }
+}
+
 // MARK: - mcpServerName ([#18])
 
 final class McpServerNameTests: XCTestCase {

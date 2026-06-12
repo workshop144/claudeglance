@@ -27,6 +27,14 @@ struct DashboardView: View {
     @ObservedObject var metrics: MetricsService
     @ObservedObject var context: ContextWindowService
 
+    /// Today's grade, recomputed from the three live services for the Activity tab.
+    private var sessionGrade: SessionGrade? {
+        gradeSession(
+            cachePercent: metrics.metrics.hasData ? metrics.metrics.todayCachePercent : nil,
+            limitUtilization: usage.hasLoaded ? usage.currentUsage.fiveHourUtilization : nil,
+            contextUtilization: context.metrics.active?.utilization)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             Picker("", selection: $model.selectedTab) {
@@ -44,7 +52,7 @@ struct DashboardView: View {
                 Group {
                     switch model.selectedTab {
                     case .activity:
-                        ActivityTabView(metrics: metrics)
+                        ActivityTabView(metrics: metrics, grade: sessionGrade)
                     case .cost:
                         CostTabView(metrics: metrics)
                     case .tokens:
@@ -365,18 +373,25 @@ struct TokensTabView: View {
 /// `MetricsService.metrics.dailyTokens` (a rolling 30-day window).
 struct ActivityTabView: View {
     @ObservedObject var metrics: MetricsService
+    /// Today's composite health grade [#16], computed by the dashboard. nil → hidden.
+    var grade: SessionGrade? = nil
 
     private let weeks = 5   // ~35 days, matching the 30-day metrics window
 
     var body: some View {
         let m = metrics.metrics
         let daily = m.dailyTokens
-        if daily.allSatisfy({ $0.value == 0 }) {
-            empty
-        } else {
-            let active = Set(daily.filter { $0.value > 0 }.keys)
-            let today = Date()
-            VStack(alignment: .leading, spacing: 20) {
+        let hasActivity = !daily.allSatisfy { $0.value == 0 }
+        let active = Set(daily.filter { $0.value > 0 }.keys)
+        let today = Date()
+
+        VStack(alignment: .leading, spacing: 20) {
+            if let grade {
+                gradeCard(grade)
+                if hasActivity { Divider() }
+            }
+
+            if hasActivity {
                 HStack(spacing: 12) {
                     statCard("Current streak", "\(currentStreak(activeDays: active, today: today))d")
                     statCard("Longest streak", "\(longestStreak(activeDays: active))d")
@@ -392,11 +407,57 @@ struct ActivityTabView: View {
 
                 Text("Daily tokens · last 30 days").font(.system(size: 13, weight: .semibold))
                 dailyTokensChart(daily)
+            } else if grade == nil {
+                empty
             }
         }
     }
 
     // MARK: Pieces
+
+    /// "Today" grade: a large letter colored by health, plus the transparent
+    /// factor breakdown so the grade is explainable.
+    private func gradeCard(_ grade: SessionGrade) -> some View {
+        HStack(alignment: .top, spacing: 16) {
+            VStack(spacing: 2) {
+                Text(grade.letter).font(.system(size: 40, weight: .bold)).monospacedDigit()
+                    .foregroundColor(gradeColor(grade.score))
+                Text("Today").font(.system(size: 11)).foregroundColor(.secondary)
+            }
+            .frame(width: 86)
+
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(grade.factors, id: \.label) { f in
+                    HStack(spacing: 10) {
+                        Text(f.label).font(.system(size: 11)).frame(width: 110, alignment: .leading)
+                        GeometryReader { geo in
+                            ZStack(alignment: .leading) {
+                                Capsule().fill(Color.secondary.opacity(0.12))
+                                Capsule().fill(gradeColor(f.score).opacity(0.6))
+                                    .frame(width: max(2, geo.size.width * CGFloat(f.score) / 100))
+                            }
+                        }
+                        .frame(height: 8)
+                        Text(f.detail).font(.system(size: 10)).foregroundColor(.secondary)
+                            .frame(width: 150, alignment: .leading)
+                    }
+                }
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color(NSColor.controlBackgroundColor)))
+    }
+
+    private func gradeColor(_ score: Int) -> Color {
+        switch score {
+        case 90...: return .green
+        case 80...: return .blue
+        case 70...: return .yellow
+        case 60...: return .orange
+        default:    return .red
+        }
+    }
 
     private func statCard(_ title: String, _ value: String, caption: String = " ") -> some View {
         VStack(alignment: .leading, spacing: 4) {

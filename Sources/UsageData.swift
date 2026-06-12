@@ -32,6 +32,9 @@ struct AppSettings: Codable {
     // Off by default — a power-user "second glance" that keeps the default clean.
     var showContextWindow: Bool = false
 
+    // Today's composite session-health grade (A–F) in the menu. Opt-in.
+    var showSessionGrade: Bool = false
+
     var isConfigured: Bool { true }
 
     init() {}
@@ -55,6 +58,7 @@ struct AppSettings: Codable {
         showActivity = try c.decodeIfPresent(Bool.self, forKey: .showActivity) ?? true
         showUsageCredits = try c.decodeIfPresent(Bool.self, forKey: .showUsageCredits) ?? true
         showContextWindow = try c.decodeIfPresent(Bool.self, forKey: .showContextWindow) ?? false
+        showSessionGrade = try c.decodeIfPresent(Bool.self, forKey: .showSessionGrade) ?? false
     }
 }
 
