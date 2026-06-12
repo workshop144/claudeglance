@@ -14,6 +14,16 @@
 
 ## ✅ Shipped
 
+**v1.6.0 — "Reach"** (June 2026): the first of the v1.6 "get our data onto more
+surfaces" pass. **Bundled Claude Code statusline [27]** — ClaudeGlance now writes
+its live numbers to a small JSON sidecar each poll, and ships a shell script that
+reads it to render a Claude Code statusline (`Opus 4.8  5h 35% · 7d 71%`) with no
+extra API calls or log parsing. The default line is usage-only; the sidecar also
+carries cost/tokens, reset countdowns, burn rate, and an on-pace ETA for custom
+lines. **Settings › Claude Code statusline** installs the script and either copies
+the `settings.json` snippet or wires it in for you (backing up `settings.json`
+first).
+
 **v1.5.6 — "Depth"** (June 2026): power features, all opt-in so the default stays
 a glance. **Context-window monitor [11]** — per-active-session `usage / 200k` fill
 with caution/compact alerts, as a menu glance and a dashboard **Context tab**.
@@ -135,7 +145,7 @@ this is the "pure coolness" ordering you asked for.
 | 24 | **Multi-account** + "headroom" score (`100−max(5h%,7d%)`) + sortable table | rjmon, dsado, hamed | ★ scope-expanding |
 | 25 | **WidgetKit / Notification Center widgets** (donut gauges + heatmap) | AgentLimits, theangeloumali | ★ |
 | 26 | **Shareable "Wrapped" PNG card** | cc-wrapped | ★ fun/viral |
-| 27 | **Bundled Claude Code statusline script** (reuse our data in the CLI) | AgentLimits, elliot | ★ |
+| 27 | ✅ **Bundled Claude Code statusline script** (reuse our data in the CLI) — *shipped v1.6.0* | AgentLimits, elliot | ★ |
 | 28 | **Plan-recommendation nudge** ("you'd be better on Max 20x") | haasonsaas | ★ |
 | 29 | **Service-status uptime history bar** (30/60/90d) | elliot/ClaudeWatch | ★ |
 | 30 | **Nix / home-manager** formula | hamed | ★ |
@@ -203,16 +213,32 @@ Power features, all opt-in so the default stays a glance.
 - ✅ **Hardening:** OAuth token re-read on 401/expiry (1.5.1) and a manual-Refresh
   throttle (1.5.3) — both surfaced by the live build during the batch.
 
-### v1.6+ — Exploratory (bigger bets; validate demand first)
+### v1.6 — "Reach" (in progress)
+Getting our data onto more surfaces and out to more people. The cheap/light items
+first; each ships as its own patch and is reviewed before the next begins. (This
+batch deliberately stops at v1.6.5 — the heavier bets below wait for v1.7+.)
+- ✅ **v1.6.0 — [27] Bundled statusline script** — *shipped*. Sidecar JSON +
+  bundled shell script + Settings install/auto-wire.
+- **v1.6.1 — [30] Nix / home-manager formula** — packaging-only, no app code.
+- **v1.6.2 — [29] Service-status uptime history bar** (30/60/90d) — extends the
+  health dot we already have.
+- **v1.6.3 — [26] Shareable "Wrapped" PNG card** — reuses Activity/Tokens data,
+  render-to-image.
+- **v1.6.4 — [28] Plan-recommendation nudge** ("you'd be better on Max 20x") —
+  small logic on existing usage math.
+- **v1.6.5 — [25] WidgetKit / Notification Center widgets** — a new target reusing
+  the history store (donut gauges + heatmap).
+
+### v1.7+ — Exploratory (bigger bets; validate demand first)
 - **[23] Real prepaid $ balance** via opt-in "Console mode" (one-time
   `sessionKey` capture or Admin key). The answer to "$160 left" — but it adds an
   auth surface, so it stays opt-in and off the default path.
 - **[24] Multi-account** + headroom score + sortable table (store each account's
   creds in their *own* Keychain service so Claude Code's refreshes don't clobber
   them — dsado/rjmon pattern).
-- **[25] WidgetKit widgets**, **[26] shareable Wrapped card**, **[27] bundled
-  statusline script**, **[28] plan-recommendation nudge**, **[29] uptime history
-  bar**, **[30] Nix formula**.
+- **[6] Notarize + [13] Sparkle auto-update** — the deferred pair, gated on the
+  Apple Developer account and designed to land together; moved to the tail so the
+  rest of v1.6 ships regardless of when the account arrives.
 
 ### Hardening (ongoing, every release)
 Pulled from competitors' recurring bug threads — get these right since we parse

@@ -31,6 +31,11 @@ struct SettingsView: View {
     @State private var resetHovering = false
     @State private var versionHovering = false
 
+    // Claude Code statusline setup [#27].
+    @State private var showWireConfirm = false
+    @State private var statusLineMessage: String? = nil
+    @State private var statusLineError = false
+
     var body: some View {
         VStack(spacing: 0) {
             ScrollView {
@@ -112,6 +117,9 @@ struct SettingsView: View {
                     stepperRow(icon: "timer", title: "Refresh interval",
                                description: "Poll usage every \(usageRefreshMinutes) min (1–30).",
                                value: $usageRefreshMinutes, range: 1...30) { settingsManager.setUsageRefreshMinutes($0) }
+
+                    rowDivider
+                    statusLineSection
 
                     HStack {
                         Spacer()
@@ -233,6 +241,114 @@ struct SettingsView: View {
                 .onChange(of: value.wrappedValue) { onChange($0) }
         }
         .padding(.vertical, 8)
+    }
+
+    // MARK: - Claude Code statusline [#27]
+
+    private var statusLineSection: some View {
+        HStack(alignment: .top, spacing: 14) {
+            rowIcon("terminal")
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Claude Code statusline")
+                    .font(.system(size: 13, weight: .medium))
+                Text("Show these usage numbers (5h · 7d) at the bottom of your Claude Code sessions, sourced from ClaudeGlance.")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                // The two buttons are alternatives — you only need one. The "or"
+                // between them makes that explicit.
+                HStack(spacing: 8) {
+                    HoverButton(title: "Add to settings.json") { showWireConfirm = true }
+                    Text("or")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                    HoverButton(title: "Install & copy snippet") { installStatusLine() }
+                }
+                .padding(.top, 2)
+                Text("Pick one: “Add to settings.json” installs the script and wires it up for you (backs up settings.json first). “Install & copy snippet” is the manual route — it installs the script and copies the snippet to paste in yourself.")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 1)
+                if let statusLineMessage {
+                    Text(statusLineMessage)
+                        .font(.system(size: 11))
+                        .foregroundColor(statusLineError ? .red : .secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 2)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 8)
+        .confirmationDialog("Add ClaudeGlance's statusline to ~/.claude/settings.json?",
+                            isPresented: $showWireConfirm, titleVisibility: .visible) {
+            Button("Add to settings.json") { wireStatusLine() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("A timestamped backup of settings.json is saved first. Restart your Claude Code sessions to see the statusline.")
+        }
+    }
+
+    /// A small pill button that fills blue (white text) on hover — the same
+    /// affordance as the "Reset to Defaults" button below.
+    private struct HoverButton: View {
+        let title: String
+        let action: () -> Void
+        @State private var hovering = false
+
+        var body: some View {
+            Button(action: action) {
+                Text(title)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(hovering ? .white : .primary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(hovering ? Color.blue : Color(NSColor.controlBackgroundColor)))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(Color.gray.opacity(0.35), lineWidth: hovering ? 0 : 1))
+            }
+            .buttonStyle(.plain)
+            .onHover { hovering = $0 }
+        }
+    }
+
+    private func installStatusLine() {
+        do {
+            let url = try StatusLineSetup.installScript()
+            StatusLineSetup.copySnippetToPasteboard()
+            statusLineError = false
+            statusLineMessage = "Installed to \(prettyPath(url)). Snippet copied — paste it into ~/.claude/settings.json, then restart your Claude Code sessions."
+        } catch {
+            statusLineError = true
+            statusLineMessage = error.localizedDescription
+        }
+    }
+
+    private func wireStatusLine() {
+        do {
+            // Make sure the script is in place before pointing settings.json at it.
+            try StatusLineSetup.installScript()
+            let result = try StatusLineSetup.wireIntoSettings()
+            statusLineError = false
+            var msg = result.replacedExisting
+                ? "Replaced your existing statusLine in settings.json."
+                : "Added to ~/.claude/settings.json."
+            if let backup = result.backup { msg += " Backup: \(prettyPath(backup))." }
+            msg += " Restart your Claude Code sessions to see it."
+            statusLineMessage = msg
+        } catch {
+            statusLineError = true
+            statusLineMessage = error.localizedDescription
+        }
+    }
+
+    /// Abbreviate a path under the home directory with `~` for display.
+    private func prettyPath(_ url: URL) -> String {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        return url.path.hasPrefix(home) ? "~" + url.path.dropFirst(home.count) : url.path
     }
 
     private func rowIcon(_ name: String, color: Color = .secondary) -> some View {

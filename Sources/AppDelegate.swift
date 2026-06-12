@@ -45,6 +45,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self?.updateStatusItemAppearance()
                 self?.checkForNotifications()
                 self?.checkForResets()
+                // Keep the statusline sidecar [#27] in step with the menu numbers.
+                StatusLineExporter.shared.export()
             }
             .store(in: &cancellables)
 
@@ -519,6 +521,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             // Re-evaluate staleness even when no new data has arrived, so the
             // menu bar dims once refreshes stop landing.
             self?.updateStatusItemAppearance()
+            // Refresh the statusline sidecar [#27] so today's cost/tokens (which
+            // update on the 60s metrics cycle) stay current between usage polls.
+            StatusLineExporter.shared.export()
         }
     }
 
