@@ -138,7 +138,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         // The OAuth usage rows deep-link to the dashboard's Usage tab (they dim
         // slightly and brighten on hover — no blue highlight).
-        menu.addItem(linkInfoItem(title: "5hr: \(snapshot.fiveHourUtilization)%",
+        menu.addItem(linkInfoItem(title: usageLabel("5hr", snapshot.fiveHourUtilization),
                                   symbol: usageSymbolName(for: snapshot.fiveHourUtilization), tab: .usage))
         if let resetIn = snapshot.fiveHourResetIn {
             menu.addItem(linkSecondaryItem("Resets in: \(resetIn)", tab: .usage))
@@ -158,13 +158,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(linkSecondaryItem("Trend: \(sparkline(trend, maxValue: 100))", tab: .usage))
         }
 
-        menu.addItem(linkInfoItem(title: "Week: \(snapshot.sevenDayUtilization)%", symbol: "calendar", tab: .usage))
+        menu.addItem(linkInfoItem(title: usageLabel("Week", snapshot.sevenDayUtilization), symbol: "calendar", tab: .usage))
         if let resetIn = snapshot.sevenDayResetIn {
             menu.addItem(linkSecondaryItem("Resets in: \(resetIn)", tab: .usage))
         }
 
         if let sonnet = snapshot.sevenDaySonnetUtilization {
-            menu.addItem(linkInfoItem(title: "Sonnet: \(sonnet)%", symbol: "cpu", tab: .usage))
+            menu.addItem(linkInfoItem(title: usageLabel("Sonnet", sonnet), symbol: "cpu", tab: .usage))
         }
 
         // "Today" glance from the local Claude Code logs (no Keychain / network).
@@ -556,6 +556,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         dashboardWindow?.makeKeyAndOrderFront(nil)
     }
 
+    /// A usage menu-row label honoring the used-vs-remaining preference [#19],
+    /// e.g. "5hr: 16%" or "5hr: 84% left".
+    private func usageLabel(_ prefix: String, _ utilization: Int) -> String {
+        let remaining = settingsManager.settings.showRemaining
+        let value = displayedUsagePercent(utilization: utilization, showRemaining: remaining)
+        return remaining ? "\(prefix): \(value)% left" : "\(prefix): \(value)%"
+    }
+
     /// Today's session grade from the signals we currently have — cache efficiency
     /// (local), 5h limit headroom (OAuth, once loaded), and active-session context
     /// headroom (local). nil when none are available yet.
@@ -667,14 +675,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // 5h%, 7d%, sonnet%, 5h reset, 7d reset.
         var segments: [String] = []
 
+        // [19] Each percent honors the used-vs-remaining preference.
+        func pct(_ util: Int) -> String {
+            "\(displayedUsagePercent(utilization: util, showRemaining: settings.showRemaining))%"
+        }
         if settings.showFiveHour {
-            segments.append("\(snapshot.fiveHourUtilization)%")
+            segments.append(pct(snapshot.fiveHourUtilization))
         }
         if settings.showSevenDay {
-            segments.append("\(snapshot.sevenDayUtilization)%")
+            segments.append(pct(snapshot.sevenDayUtilization))
         }
         if settings.showSonnet, let sonnet = snapshot.sevenDaySonnetUtilization {
-            segments.append("\(sonnet)%")
+            segments.append(pct(sonnet))
         }
         if settings.showFiveHourReset, let resetAt = snapshot.fiveHourResetAt {
             segments.append(formatTimeRemainingCompact(until: resetAt))
@@ -704,7 +716,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let pace = snapshot.fiveHourResetAt.map {
             elapsedFraction(resetAt: $0, windowLength: 5 * 60 * 60)
         }
-        let ringImage: NSImage? = settings.showRingIcon
+        // [21] The ring is an icon, so it's also suppressed when the icon is hidden.
+        let ringImage: NSImage? = (settings.showRingIcon && settings.showMenuBarIcon)
             ? menuBarRingImage(fiveHourPercent: snapshot.fiveHourUtilization,
                                sevenDayPercent: snapshot.sevenDayUtilization,
                                fiveHourPaceFraction: pace)
@@ -716,6 +729,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             button.image = ringImage
             button.imagePosition = title.length > 0 ? .imageLeading : .imageOnly
             button.attributedTitle = title
+            return
+        }
+
+        // [21] Icon hidden by preference: text only, never empty — if nothing else
+        // is enabled, fall back to the 5h percent so the item stays visible/clickable.
+        if !settings.showMenuBarIcon {
+            button.image = nil
+            if title.length > 0 {
+                button.attributedTitle = title
+            } else {
+                button.attributedTitle = NSAttributedString(
+                    string: pct(snapshot.fiveHourUtilization),
+                    attributes: [.font: font, .foregroundColor: NSColor.labelColor])
+            }
             return
         }
 

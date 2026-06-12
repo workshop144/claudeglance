@@ -41,6 +41,9 @@ final class SettingsManager: ObservableObject {
     func setShowUsageCredits(_ enabled: Bool) { settings.showUsageCredits = enabled }
     func setShowContextWindow(_ enabled: Bool) { settings.showContextWindow = enabled }
     func setShowSessionGrade(_ enabled: Bool) { settings.showSessionGrade = enabled }
+    func setShowRemaining(_ enabled: Bool) { settings.showRemaining = enabled }
+    func setShowMenuBarIcon(_ enabled: Bool) { settings.showMenuBarIcon = enabled }
+    func setUsageRefreshMinutes(_ minutes: Int) { settings.usageRefreshMinutes = clampedRefreshMinutes(minutes) }
     func resetToDefaults() { settings = AppSettings() }
 
     // MARK: - Launch at login
