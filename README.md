@@ -54,7 +54,9 @@ single tabbed window (built with SwiftUI + Swift Charts) that holds the richer
 detail the menu deliberately leaves out:
 
 - **Usage** — a 5h/7d utilization **history chart** recorded over time, plus the
-  current session/weekly/Sonnet cards and reset countdowns.
+  current session/weekly/Sonnet cards and reset countdowns, and a **plan-fit nudge**
+  ("often near your limits" / "comfortable headroom") inferred from your observed
+  limit-pressure and any overage — no plan tier assumed.
 - **Cost** — today / month-to-date / projected **spend cards**, a **per-model
   breakdown** (e.g. Opus 4.8 vs Sonnet), and a daily-spend chart. All
   API-equivalent (tokens × model price; a flat plan isn't billed per token).
