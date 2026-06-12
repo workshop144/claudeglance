@@ -72,6 +72,33 @@ Everything in the dashboard is computed locally — the cost/activity/tokens/con
 tabs from your `~/.claude/projects` logs, the usage history from ClaudeGlance's own
 recordings.
 
+## Claude Code statusline
+
+ClaudeGlance can put its usage numbers right in your Claude Code sessions, as a
+[statusline](https://docs.claude.com/en/docs/claude-code/statusline):
+
+```
+Opus 4.8  5h 35% · 7d 71%
+```
+
+It works by reusing the numbers the app already has: ClaudeGlance writes its
+current usage to a small JSON sidecar each poll, and a bundled shell script reads
+that file. No extra API calls, no log parsing per render — the line just reflects
+whatever the menu bar is showing (so it needs the app running).
+
+**Set it up** from **Settings › Claude Code statusline**:
+
+- **Install script & copy snippet** — copies `claudeglance-statusline.sh` into
+  `~/.claude` and puts the `settings.json` snippet on your clipboard to paste in.
+- **Add to settings.json** — does the wiring for you, after backing up your
+  existing `~/.claude/settings.json` (timestamped). Restart your Claude Code
+  sessions to see it.
+
+The model name comes from Claude Code's own statusline context; the `5h · 7d`
+segment is ClaudeGlance's. Power users can build a custom line from the full
+sidecar at `~/Library/Application Support/ClaudeGlance/status.json` (it also carries
+today's cost/tokens, reset countdowns, burn rate, and an on-pace ETA).
+
 ## Requirements
 
 - macOS 13+ (universal — runs on both Apple Silicon and Intel)
