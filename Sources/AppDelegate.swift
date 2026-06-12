@@ -198,6 +198,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(linkInfoItem(title: "Context: \(s.utilization)%\(suffix)",
                                       symbol: "memorychip", tab: .context))
             menu.addItem(linkSecondaryItem("\(formatTokenCount(s.contextTokens)) of 200K · \(s.project)", tab: .context))
+            // Prompt-cache freshness: warm means the next message hits a cheap cache
+            // read; cold means it re-pays cache creation. (5-min TTL from the last turn.)
+            if s.cacheActive {
+                let now = Date()
+                if s.isCacheWarm(now: now) {
+                    menu.addItem(linkSecondaryItem("Cache warm · \(formatDuration(s.cacheFreshSeconds(now: now))) left", tab: .context))
+                } else {
+                    menu.addItem(linkSecondaryItem("Cache cold · next message re-caches", tab: .context))
+                }
+            }
         }
 
         if let error = usageService.error {

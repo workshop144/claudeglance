@@ -408,10 +408,30 @@ struct ContextTabView: View {
 
             Text("\(formatTokenCount(s.contextTokens)) used · \(formatTokenCount(s.tokensRemaining)) of headroom left")
                 .font(.system(size: 11)).foregroundColor(.secondary)
+
+            if s.cacheActive { cacheRow(s) }
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 8).fill(Color(NSColor.controlBackgroundColor)))
+    }
+
+    /// Prompt-cache freshness, ticking live: a green dot + countdown while warm,
+    /// fading to a hollow dot + "re-caches next message" once the 5-min TTL lapses.
+    /// Warm = the next turn hits a cheap cache read; cold = it re-pays cache creation.
+    private func cacheRow(_ s: ContextSession) -> some View {
+        TimelineView(.periodic(from: Date(), by: 1)) { ctx in
+            let now = ctx.date
+            let warm = s.isCacheWarm(now: now)
+            HStack(spacing: 6) {
+                Circle().fill(warm ? Color.green : Color.secondary.opacity(0.4))
+                    .frame(width: 7, height: 7)
+                Text(warm
+                     ? "Prompt cache warm · \(formatDuration(s.cacheFreshSeconds(now: now))) until cold"
+                     : "Prompt cache cold · next message re-caches (idle \(formatDuration(s.idleSeconds(now: now))))")
+                    .font(.system(size: 11)).foregroundColor(.secondary)
+            }
+        }
     }
 
     private func sessionRow(_ s: ContextSession) -> some View {
