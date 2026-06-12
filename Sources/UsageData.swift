@@ -28,6 +28,10 @@ struct AppSettings: Codable {
     // "Usage credits" on/off status row in the menu (extra_usage from OAuth).
     var showUsageCredits: Bool = true
 
+    // Per-session context-window fill in the menu (from local Claude Code logs).
+    // Off by default — a power-user "second glance" that keeps the default clean.
+    var showContextWindow: Bool = false
+
     var isConfigured: Bool { true }
 
     init() {}
@@ -50,6 +54,7 @@ struct AppSettings: Codable {
         showHealth = try c.decodeIfPresent(Bool.self, forKey: .showHealth) ?? true
         showActivity = try c.decodeIfPresent(Bool.self, forKey: .showActivity) ?? true
         showUsageCredits = try c.decodeIfPresent(Bool.self, forKey: .showUsageCredits) ?? true
+        showContextWindow = try c.decodeIfPresent(Bool.self, forKey: .showContextWindow) ?? false
     }
 }
 

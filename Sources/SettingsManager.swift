@@ -39,6 +39,7 @@ final class SettingsManager: ObservableObject {
     func setShowHealth(_ enabled: Bool) { settings.showHealth = enabled }
     func setShowActivity(_ enabled: Bool) { settings.showActivity = enabled }
     func setShowUsageCredits(_ enabled: Bool) { settings.showUsageCredits = enabled }
+    func setShowContextWindow(_ enabled: Bool) { settings.showContextWindow = enabled }
     func resetToDefaults() { settings = AppSettings() }
 
     // MARK: - Launch at login

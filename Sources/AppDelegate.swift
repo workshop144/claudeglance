@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let usageService = UsageService.shared
     private let statusService = StatusService.shared
     private let metricsService = MetricsService.shared
+    private let contextService = ContextWindowService.shared
     private let settingsManager = SettingsManager.shared
 
     private var lastWarningNotified: Int = 0
@@ -68,6 +69,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         usageService.stopPolling()
         statusService.stopPolling()
         metricsService.stopPolling()
+        contextService.stopPolling()
     }
 
     private func setupStatusItem() {
@@ -186,6 +188,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     menu.addItem(linkSecondaryItem("≈ \(today) today · \(month) this month", tab: .cost))
                 }
             }
+        }
+
+        // Context-window glance for the session you're most likely in, from the
+        // local logs. Off by default (opt-in) so the menu stays a quick glance.
+        if settingsManager.settings.showContextWindow, let s = contextService.metrics.active {
+            menu.addItem(.separator())
+            let suffix = s.isHigh ? " · compact soon" : ""
+            menu.addItem(linkInfoItem(title: "Context: \(s.utilization)%\(suffix)",
+                                      symbol: "memorychip", tab: .context))
+            menu.addItem(linkSecondaryItem("\(formatTokenCount(s.contextTokens)) of 200K · \(s.project)", tab: .context))
         }
 
         if let error = usageService.error {
@@ -482,7 +494,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         statusService.startPolling()
         metricsService.startPolling()
-        
+        contextService.startPolling()
+
         Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             self?.checkForNotifications()
             // Re-evaluate staleness even when no new data has arrived, so the
@@ -513,7 +526,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             window.isReleasedWhenClosed = false
             window.contentViewController = NSHostingController(
                 rootView: DashboardView(model: dashboardModel, usage: usageService,
-                                        history: HistoryStore.shared, metrics: metricsService))
+                                        history: HistoryStore.shared, metrics: metricsService,
+                                        context: contextService))
             window.addTitlebarAccessoryViewController(titleAccessory("Dashboard"))
             window.addTitlebarAccessoryViewController(closeAccessory(for: window))
             window.setFrameAutosaveName("ClaudeGlanceDashboard")
