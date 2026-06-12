@@ -7,7 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		01B9C43B6DF569BA417F2292 /* StatusHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0612118C71B2E629BC9701D3 /* StatusHistory.swift */; };
 		0396481B1D8F58F6985B5412 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 852DDB101F006E8024AAD959 /* SettingsView.swift */; };
+		08768C509388764D5866CFA3 /* StatusHistoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 054F822A413107C0E6AE613C /* StatusHistoryTests.swift */; };
 		0A5539902838346BC1CC4924 /* MetricsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58363E6825D4E0B111A03DFD /* MetricsService.swift */; };
 		16BF940B052B4A948B9B1147 /* StatusLineExportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7122E4ED4E2E86D4A2CC15E /* StatusLineExportTests.swift */; };
 		2D03BEEECC338E3613DAC90F /* StatusLineSetup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 170AE89169EADCDEBB16662E /* StatusLineSetup.swift */; };
@@ -48,6 +50,8 @@
 
 /* Begin PBXFileReference section */
 		01DF3C6B8EDFEDE6A749C2F0 /* HistoryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryStore.swift; sourceTree = "<group>"; };
+		054F822A413107C0E6AE613C /* StatusHistoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusHistoryTests.swift; sourceTree = "<group>"; };
+		0612118C71B2E629BC9701D3 /* StatusHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusHistory.swift; sourceTree = "<group>"; };
 		0F3A98B4FB00A61798935BF6 /* BuildInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuildInfo.swift; sourceTree = "<group>"; };
 		15B60109596823E8B3049AE5 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
 		170AE89169EADCDEBB16662E /* StatusLineSetup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusLineSetup.swift; sourceTree = "<group>"; };
@@ -130,6 +134,7 @@
 				5F94FF2A4B0577DE427D40BD /* SessionGrade.swift */,
 				B1517703E21CE6FD07CD0FE7 /* SettingsManager.swift */,
 				852DDB101F006E8024AAD959 /* SettingsView.swift */,
+				0612118C71B2E629BC9701D3 /* StatusHistory.swift */,
 				57AA60810E166F2247382514 /* StatusLineExport.swift */,
 				170AE89169EADCDEBB16662E /* StatusLineSetup.swift */,
 				7CDA3E43B0AD4B7359CF6C39 /* StatusService.swift */,
@@ -163,6 +168,7 @@
 		E6DB70BE103B4934B0ABABD9 /* Tests */ = {
 			isa = PBXGroup;
 			children = (
+				054F822A413107C0E6AE613C /* StatusHistoryTests.swift */,
 				B7122E4ED4E2E86D4A2CC15E /* StatusLineExportTests.swift */,
 				1949DB119DBBF5FE0F65D2A4 /* UsageServiceTests.swift */,
 			);
@@ -266,6 +272,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				08768C509388764D5866CFA3 /* StatusHistoryTests.swift in Sources */,
 				16BF940B052B4A948B9B1147 /* StatusLineExportTests.swift in Sources */,
 				641791CDCB279ABBC08D042E /* UsageServiceTests.swift in Sources */,
 			);
@@ -289,6 +296,7 @@
 				513B1D3A50992861B757990A /* SessionGrade.swift in Sources */,
 				71DAB555D0B8F113180BEA2C /* SettingsManager.swift in Sources */,
 				0396481B1D8F58F6985B5412 /* SettingsView.swift in Sources */,
+				01B9C43B6DF569BA417F2292 /* StatusHistory.swift in Sources */,
 				DD75D1F2509353074C95CE82 /* StatusLineExport.swift in Sources */,
 				2D03BEEECC338E3613DAC90F /* StatusLineSetup.swift in Sources */,
 				88B574542640CD9982279FE6 /* StatusService.swift in Sources */,
@@ -367,7 +375,7 @@
 				GIT_BRANCH = "";
 				GIT_COMMIT = "";
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
-				MARKETING_VERSION = 1.6.1;
+				MARKETING_VERSION = 1.6.2;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -493,7 +501,7 @@
 				GIT_BRANCH = "";
 				GIT_COMMIT = "";
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
-				MARKETING_VERSION = 1.6.1;
+				MARKETING_VERSION = 1.6.2;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = NO;

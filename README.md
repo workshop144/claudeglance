@@ -197,6 +197,7 @@ show just a countdown, just percentages, or any mix.
 | Show usage credits | On | Pay-as-you-go credit state, with a link to manage it |
 | Show context window | Off | Active session's context-window fill + cache freshness |
 | Show session grade | Off | Today's composite health grade (A–F) |
+| Show uptime history | Off | 30-day Claude service-status uptime bar under the health row |
 | Refresh interval | 5 min | How often to poll usage (1–30 min) |
 | Warning threshold | 80% | Usage % that triggers a warning notification |
 | Critical threshold | 90% | Usage % that triggers a critical notification |
