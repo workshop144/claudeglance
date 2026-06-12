@@ -47,6 +47,13 @@ func readOAuthToken() throws -> OAuthToken {
 
 func readOAuthAccessToken() throws -> String { try readOAuthToken().accessToken }
 
+/// Pure throttle decision for a user-initiated refresh: allowed if none has run
+/// yet, or the last one was at least `minInterval` ago.
+func manualRefreshAllowed(last: Date?, now: Date, minInterval: TimeInterval) -> Bool {
+    guard let last else { return true }
+    return now.timeIntervalSince(last) >= minInterval
+}
+
 // MARK: - API Response Model
 
 struct OAuthUsageResponse: Decodable {
@@ -207,6 +214,19 @@ final class UsageService: ObservableObject {
         cachedTokenExpiresAt = nil
     }
 
+    // Manual-refresh throttle. The OAuth usage endpoint rate-limits, so rapidly
+    // tapping Refresh (e.g. to watch context fill) used to fire a request per tap
+    // and trip a 429 → 15-min backoff. We let a manual refresh through at most once
+    // every `minManualRefresh` seconds; auto-polling is unaffected.
+    private var lastManualRefresh: Date?
+    private let minManualRefresh: TimeInterval = 10
+
+    /// Whether a manual refresh would be allowed right now (false if one ran within
+    /// the throttle window).
+    func canRefreshNow(_ now: Date = Date()) -> Bool {
+        manualRefreshAllowed(last: lastManualRefresh, now: now, minInterval: minManualRefresh)
+    }
+
     func startPolling() {
         fetchUsage()
         scheduleTimer(interval: normalInterval)
@@ -224,7 +244,15 @@ final class UsageService: ObservableObject {
         }
     }
 
-    func fetchUsage() {
+    /// Fetch current usage. `manual` marks a user-initiated Refresh, which is
+    /// throttled to `minManualRefresh`; the returned Bool says whether the request
+    /// was actually started (false = ignored as a too-soon repeat tap).
+    @discardableResult
+    func fetchUsage(manual: Bool = false) -> Bool {
+        if manual {
+            guard canRefreshNow() else { return false }
+            lastManualRefresh = Date()
+        }
         DispatchQueue.main.async { self.isLoading = true }
 
         Task {
@@ -290,6 +318,7 @@ final class UsageService: ObservableObject {
                 }
             }
         }
+        return true
     }
 
     func fetchOAuthUsage(accessToken: String) async throws -> OAuthUsageResponse {

@@ -549,7 +549,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func refreshUsage() {
-        usageService.fetchUsage()
+        // Manual refresh is throttled in the service so rapid taps can't trip the
+        // usage endpoint's rate limit; a too-soon tap is simply ignored.
+        usageService.fetchUsage(manual: true)
     }
 
     @objc private func openStatusPage() {
