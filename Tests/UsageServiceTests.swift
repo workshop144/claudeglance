@@ -1313,6 +1313,55 @@ final class SessionGradeTests: XCTestCase {
     }
 }
 
+// MARK: - UX niceties ([#19] used-vs-remaining, [#22] interval + config dirs)
+
+final class DisplayedUsagePercentTests: XCTestCase {
+    func testUsedShowsUtilization() {
+        XCTAssertEqual(displayedUsagePercent(utilization: 16, showRemaining: false), 16)
+    }
+    func testRemainingIsComplement() {
+        XCTAssertEqual(displayedUsagePercent(utilization: 16, showRemaining: true), 84)
+        XCTAssertEqual(displayedUsagePercent(utilization: 0, showRemaining: true), 100)
+    }
+    func testRemainingClampsAtZero() {
+        XCTAssertEqual(displayedUsagePercent(utilization: 120, showRemaining: true), 0)
+    }
+}
+
+final class ClampedRefreshMinutesTests: XCTestCase {
+    func testClampsToOneToThirty() {
+        XCTAssertEqual(clampedRefreshMinutes(0), 1)
+        XCTAssertEqual(clampedRefreshMinutes(-5), 1)
+        XCTAssertEqual(clampedRefreshMinutes(5), 5)
+        XCTAssertEqual(clampedRefreshMinutes(99), 30)
+    }
+}
+
+final class ClaudeProjectsDirectoriesTests: XCTestCase {
+    private let home = URL(fileURLWithPath: "/Users/test")
+
+    func testDefaultOnlyWhenNoEnv() {
+        let dirs = claudeProjectsDirectories(env: [:], home: home)
+        XCTAssertEqual(dirs.map(\.path), ["/Users/test/.claude/projects"])
+    }
+
+    func testConfiguredPathThenDefault() {
+        let dirs = claudeProjectsDirectories(env: ["CLAUDE_CONFIG_DIR": "/custom/cfg"], home: home)
+        XCTAssertEqual(dirs.map(\.path), ["/custom/cfg/projects", "/Users/test/.claude/projects"])
+    }
+
+    func testMultiplePathsColonAndCommaSeparated() {
+        let dirs = claudeProjectsDirectories(env: ["CLAUDE_CONFIG_DIR": "/a:/b,/c"], home: home)
+        XCTAssertEqual(dirs.map(\.path),
+                       ["/a/projects", "/b/projects", "/c/projects", "/Users/test/.claude/projects"])
+    }
+
+    func testDefaultNotDuplicatedWhenConfigured() {
+        let dirs = claudeProjectsDirectories(env: ["CLAUDE_CONFIG_DIR": "/Users/test/.claude"], home: home)
+        XCTAssertEqual(dirs.map(\.path), ["/Users/test/.claude/projects"])
+    }
+}
+
 // MARK: - mcpServerName ([#18])
 
 final class McpServerNameTests: XCTestCase {

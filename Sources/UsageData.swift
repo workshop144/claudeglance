@@ -35,6 +35,13 @@ struct AppSettings: Codable {
     // Today's composite session-health grade (A–F) in the menu. Opt-in.
     var showSessionGrade: Bool = false
 
+    // [19] Show remaining headroom ("84% left") instead of used ("16%").
+    var showRemaining: Bool = false
+    // [21] Show the menu-bar icon/glyph. Off = text-only menu bar.
+    var showMenuBarIcon: Bool = true
+    // [22] How often to poll the OAuth usage endpoint, in minutes (1–30).
+    var usageRefreshMinutes: Int = 5
+
     var isConfigured: Bool { true }
 
     init() {}
@@ -59,8 +66,22 @@ struct AppSettings: Codable {
         showUsageCredits = try c.decodeIfPresent(Bool.self, forKey: .showUsageCredits) ?? true
         showContextWindow = try c.decodeIfPresent(Bool.self, forKey: .showContextWindow) ?? false
         showSessionGrade = try c.decodeIfPresent(Bool.self, forKey: .showSessionGrade) ?? false
+        showRemaining = try c.decodeIfPresent(Bool.self, forKey: .showRemaining) ?? false
+        showMenuBarIcon = try c.decodeIfPresent(Bool.self, forKey: .showMenuBarIcon) ?? true
+        usageRefreshMinutes = try c.decodeIfPresent(Int.self, forKey: .usageRefreshMinutes) ?? 5
     }
 }
+
+// MARK: - Display helpers
+
+/// The percentage to display for a usage window, given the used-vs-remaining
+/// preference [#19]. Used shows utilization; remaining shows headroom (100−used).
+func displayedUsagePercent(utilization: Int, showRemaining: Bool) -> Int {
+    showRemaining ? max(0, 100 - utilization) : utilization
+}
+
+/// Clamp a configured refresh interval to a sane 1–30 minute range [#22].
+func clampedRefreshMinutes(_ minutes: Int) -> Int { min(30, max(1, minutes)) }
 
 struct UsageSnapshot {
     let fiveHourUtilization: Int

@@ -185,7 +185,11 @@ final class UsageService: ObservableObject {
     var fiveHourBurn: BurnEstimate? { estimateBurn(from: fiveHourSamples) }
 
     private var refreshTimer: Timer?
-    private let normalInterval: TimeInterval = 5 * 60   // 5 minutes
+    // User-configurable poll cadence [#22], clamped to 1–30 min; re-read on each
+    // (re)schedule so a settings change takes effect from the next cycle.
+    private var normalInterval: TimeInterval {
+        TimeInterval(clampedRefreshMinutes(SettingsManager.shared.settings.usageRefreshMinutes) * 60)
+    }
     private let backoffInterval: TimeInterval = 15 * 60 // 15 minutes after 429
 
     // Injectable for testing

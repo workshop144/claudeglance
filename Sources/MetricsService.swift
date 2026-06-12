@@ -243,12 +243,6 @@ final class MetricsService: ObservableObject {
     private func computeMetrics() -> (UsageMetrics, ToolBreakdown) {
         let now = Date()
         let fm = FileManager.default
-        let projects = fm.homeDirectoryForCurrentUser.appendingPathComponent(".claude/projects")
-        guard let enumerator = fm.enumerator(
-            at: projects,
-            includingPropertiesForKeys: [.contentModificationDateKey],
-            options: [.skipsHiddenFiles]
-        ) else { return (.empty, .empty) }
 
         let cal = Calendar.current
         let startToday = cal.startOfDay(for: now)
@@ -259,12 +253,20 @@ final class MetricsService: ObservableObject {
         // month-to-date, or yesterday) so every figure is complete.
         let cutoff = min(startMonth, startYesterday, lookbackStart)
 
+        // Scan every configured Claude config dir [#22], not just ~/.claude.
         var contents: [String] = []
-        for case let url as URL in enumerator where url.pathExtension == "jsonl" {
-            let mod = (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-            if mod < cutoff { continue }
-            guard let content = try? String(contentsOf: url, encoding: .utf8) else { continue }
-            contents.append(content)
+        for projects in claudeProjectsDirectories() {
+            guard let enumerator = fm.enumerator(
+                at: projects,
+                includingPropertiesForKeys: [.contentModificationDateKey],
+                options: [.skipsHiddenFiles]
+            ) else { continue }
+            for case let url as URL in enumerator where url.pathExtension == "jsonl" {
+                let mod = (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                if mod < cutoff { continue }
+                guard let content = try? String(contentsOf: url, encoding: .utf8) else { continue }
+                contents.append(content)
+            }
         }
 
         return (aggregateMetrics(jsonlContents: contents, now: now),
