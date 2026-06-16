@@ -114,8 +114,9 @@ today's cost/tokens, reset countdowns, burn rate, and an on-pace ETA).
 ## Requirements
 
 - macOS 13+ (universal — runs on both Apple Silicon and Intel)
-- [Claude Code](https://claude.ai/code) installed and logged in (the app reads
-  its OAuth token from your Keychain — no separate credentials needed)
+- A Claude (Pro/Max) account — sign in once from **Settings › Claude sign-in**
+  via your browser. ClaudeGlance keeps its own token and renews it automatically;
+  Claude Code is no longer required.
 
 ## Install
 
@@ -221,9 +222,11 @@ show just a countdown, just percentages, or any mix.
 
 ## How it works
 
-The app reads your Claude Code OAuth token from the macOS Keychain
-(`Claude Code-credentials`) and calls the same internal endpoint that powers
-`claude.ai/settings/usage`:
+You sign in once through your browser (an OAuth 2.0 PKCE flow). ClaudeGlance
+stores the resulting access/refresh tokens in its **own** macOS Keychain item
+(`ClaudeGlance-credentials`) — which it created, so reading it never triggers a
+password prompt — and refreshes them itself before they expire. It then calls the
+same internal endpoint that powers `claude.ai/settings/usage`:
 
 ```
 GET https://api.anthropic.com/api/oauth/usage
