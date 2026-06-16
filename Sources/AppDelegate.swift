@@ -239,6 +239,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(secondaryItem(error))
         }
 
+        // When there's no Claude session yet, offer a one-tap way into Settings
+        // to start the browser sign-in (otherwise the menu shows only the prompt).
+        if !OAuthLoginService.shared.isSignedIn {
+            menu.addItem(actionItem(title: "Sign in to Claude…", symbol: "person.crop.circle.badge.plus",
+                                    action: #selector(openSettings)))
+        }
+
         // When the numbers are stale, say how old they are (the menu bar is also
         // dimmed). Only shown while stale, so it stays out of the way normally.
         if isStale(lastUpdated: snapshot.lastUpdated) {

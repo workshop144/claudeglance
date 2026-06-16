@@ -1,51 +1,6 @@
 import Foundation
-import Security
 
-// MARK: - OAuth Keychain
-
-private struct KeychainCredentials: Decodable {
-    let claudeAiOauth: OAuthData
-
-    struct OAuthData: Decodable {
-        let accessToken: String
-        let expiresAt: Double
-    }
-}
-
-/// The Claude Code OAuth credentials we actually use — the bearer token plus when
-/// it expires, so the service can re-read a refreshed token before it goes stale.
-struct OAuthToken {
-    let accessToken: String
-    let expiresAt: Date
-}
-
-/// Claude Code stores `expiresAt` as a Unix epoch. It writes milliseconds, but be
-/// unit-safe: treat large values as ms and smaller ones as seconds, so a future
-/// format change can't silently turn "expires in 8h" into "expired in 1970".
-func parseOAuthExpiry(_ raw: Double) -> Date {
-    let seconds = raw > 1_000_000_000_000 ? raw / 1000 : raw
-    return Date(timeIntervalSince1970: seconds)
-}
-
-func readOAuthToken() throws -> OAuthToken {
-    var result: AnyObject?
-    let query: [String: Any] = [
-        kSecClass as String: kSecClassGenericPassword,
-        kSecAttrService as String: "Claude Code-credentials",
-        kSecReturnData as String: true,
-        kSecMatchLimit as String: kSecMatchLimitOne
-    ]
-    let status = SecItemCopyMatching(query as CFDictionary, &result)
-    guard status == errSecSuccess, let data = result as? Data else {
-        throw NSError(domain: "Keychain", code: Int(status),
-                      userInfo: [NSLocalizedDescriptionKey: "Claude Code credentials not found in Keychain. Make sure Claude Code is installed and logged in. (status: \(status))"])
-    }
-    let creds = try JSONDecoder().decode(KeychainCredentials.self, from: data)
-    return OAuthToken(accessToken: creds.claudeAiOauth.accessToken,
-                      expiresAt: parseOAuthExpiry(creds.claudeAiOauth.expiresAt))
-}
-
-func readOAuthAccessToken() throws -> String { try readOAuthToken().accessToken }
+// MARK: - Manual-refresh throttle
 
 /// Pure throttle decision for a user-initiated refresh: allowed if none has run
 /// yet, or the last one was at least `minInterval` ago.
@@ -195,30 +150,19 @@ final class UsageService: ObservableObject {
     // Injectable for testing
     var urlSession: URLSession = .shared
 
-    private var cachedToken: String?
-    private var cachedTokenExpiresAt: Date?
-
     private init() {}
 
-    /// Returns the bearer token, re-reading the Keychain when there's no cached
-    /// token or the cached one is within a minute of expiry — so a token Claude
-    /// Code has already refreshed is picked up before we send a dead one.
-    private func accessToken() throws -> String {
-        if let token = cachedToken, let exp = cachedTokenExpiresAt,
-           exp.timeIntervalSinceNow > 60 {
-            return token
-        }
-        let creds = try readOAuthToken()
-        cachedToken = creds.accessToken
-        cachedTokenExpiresAt = creds.expiresAt
-        return creds.accessToken
+    /// Returns a valid bearer token from our own OAuth session, refreshing it
+    /// first if it's near expiry. Throws if the user hasn't signed in (or the
+    /// session expired), which surfaces as a "sign in" prompt in the UI.
+    private func accessToken() async throws -> String {
+        try await OAuthLoginService.shared.validAccessToken()
     }
 
-    /// Drop the cached token so the next poll re-reads (possibly refreshed)
-    /// credentials from the Keychain.
+    /// Drop the cached token so the next poll forces a refresh — used after a
+    /// 401/403, where the token we sent was rotated or rejected.
     private func invalidateToken() {
-        cachedToken = nil
-        cachedTokenExpiresAt = nil
+        OAuthLoginService.shared.invalidateCache()
     }
 
     // Manual-refresh throttle. The OAuth usage endpoint rate-limits, so rapidly
@@ -264,7 +208,7 @@ final class UsageService: ObservableObject {
 
         Task {
             do {
-                let token = try accessToken()
+                let token = try await accessToken()
                 let response = try await fetchOAuthUsage(accessToken: token)
 
                 let fiveHourUtil = Int(response.fiveHour?.utilization ?? 0)
@@ -316,7 +260,7 @@ final class UsageService: ObservableObject {
                         self.scheduleTimer(interval: self.backoffInterval)
                     } else if isAuthError {
                         self.invalidateToken()
-                        self.error = "Auth token expired — retrying (re-login to Claude Code if this persists)"
+                        self.error = "Auth token expired — refreshing (sign in to Claude in Settings if this persists)"
                         self.scheduleTimer(interval: self.normalInterval)
                     } else {
                         self.error = error.localizedDescription
