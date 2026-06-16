@@ -14,6 +14,17 @@
 
 ## ✅ Shipped
 
+**v1.7.0 — "Standalone"** (June 2026): **Browser OAuth sign-in.** ClaudeGlance no
+longer piggybacks on the Claude Code CLI's Keychain item (`Claude Code-credentials`),
+which triggered a recurring macOS password prompt — every time Claude Code refreshed
+its token it deleted-and-recreated that item, wiping the "Always Allow" ACL, so a
+cross-app read re-prompted ~daily. The app now runs its own OAuth 2.0 **PKCE** browser
+sign-in (Settings › Claude sign-in), stores the access/refresh tokens in its **own**
+Keychain item (`ClaudeGlance-credentials`, updated in place so the ACL survives), and
+**refreshes them itself** before expiry. No more password prompts, and Claude Code is
+no longer required. Reuses Claude's public OAuth client (same one the CLI uses); see
+SECURITY.md.
+
 **v1.6.5 — "Reach"** (June 2026): **Per-model context window [11 fix]** — the
 context-window monitor (and the session grade's context-headroom factor) hardcoded
 a 200K window, which read ~5× too full for the 1M-context models (Opus 4.x, Sonnet
