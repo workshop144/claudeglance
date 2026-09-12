@@ -52,6 +52,59 @@ final class AuthorizationURLTests: XCTestCase {
     }
 }
 
+// MARK: - Loopback redirect (seamless flow)
+
+final class LoopbackCallbackTests: XCTestCase {
+
+    func testParsesCodeAndStateFromRequestLine() {
+        let parsed = parseLoopbackRequestLine("GET /callback?code=abc123&state=xyz HTTP/1.1")
+        XCTAssertEqual(parsed?.code, "abc123")
+        XCTAssertEqual(parsed?.state, "xyz")
+    }
+
+    func testIgnoresOtherPathsAndMethods() {
+        XCTAssertNil(parseLoopbackRequestLine("GET /favicon.ico HTTP/1.1"))
+        XCTAssertNil(parseLoopbackRequestLine("POST /callback?code=abc HTTP/1.1"))
+        XCTAssertNil(parseLoopbackRequestLine("GET /callback?state=only HTTP/1.1"))
+        XCTAssertNil(parseLoopbackRequestLine(""))
+    }
+
+    func testLoopbackAuthorizationURLOmitsManualCodeFlag() {
+        let url = buildAuthorizationURL(redirectURI: OAuthConfig.loopbackRedirectURI(port: 54321),
+                                        state: "s", challenge: "c", manualCode: false)
+        let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        let q = Dictionary(uniqueKeysWithValues: items.map { ($0.name, $0.value ?? "") })
+        XCTAssertNil(q["code"])
+        XCTAssertEqual(q["redirect_uri"], "http://localhost:54321/callback")
+    }
+
+    func testManualAuthorizationURLKeepsCodeFlag() {
+        let url = buildAuthorizationURL(state: "s", challenge: "c")
+        XCTAssertTrue(url.absoluteString.contains("code=true"))
+    }
+
+    func testServerBindsLoopbackAndAnswersCallback() async throws {
+        let server = OAuthCallbackServer()
+        let got = expectation(description: "callback delivered")
+        var received: (String, String?)?
+        let port = try await server.start { code, state in
+            received = (code, state)
+            got.fulfill()
+        }
+        XCTAssertGreaterThan(port, 0)
+
+        let url = URL(string: "http://127.0.0.1:\(port)/callback?code=CODE1&state=ST1")!
+        let (data, response) = try await URLSession.shared.data(from: url)
+        XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
+        XCTAssertTrue(String(decoding: data, as: UTF8.self).contains("Signed in"))
+
+        await fulfillment(of: [got], timeout: 2)
+        XCTAssertEqual(received?.0, "CODE1")
+        XCTAssertEqual(received?.1, "ST1")
+        server.stop()
+    }
+}
+
 // MARK: - Callback parsing
 
 final class AuthorizationCallbackTests: XCTestCase {

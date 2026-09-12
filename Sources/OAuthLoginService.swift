@@ -2,6 +2,7 @@ import Foundation
 import AppKit
 import Security
 import CryptoKit
+import Network
 
 // MARK: - OAuth configuration
 
@@ -18,8 +19,15 @@ enum OAuthConfig {
     static let authorizeURL = "https://claude.ai/oauth/authorize"
     static let tokenURL = "https://console.anthropic.com/v1/oauth/token"
     /// The console "code" page the authorize flow redirects to; it displays a
-    /// `code#state` string the user pastes back into ClaudeGlance.
+    /// `code#state` string the user pastes back into ClaudeGlance. This is the
+    /// manual fallback — the default flow redirects to a loopback server below.
     static let redirectURI = "https://console.anthropic.com/oauth/code/callback"
+    /// Loopback redirect for the seamless flow: claude.ai sends the browser back
+    /// to a one-shot HTTP server we run on 127.0.0.1 (same mechanism Claude Code
+    /// uses). The port is chosen at sign-in time.
+    static func loopbackRedirectURI(port: UInt16) -> String {
+        "http://localhost:\(port)/callback"
+    }
     static let scopes = "org:create_api_key user:profile user:inference"
 
     /// Our own Keychain item — created and owned by ClaudeGlance, so reading it
@@ -61,10 +69,12 @@ func buildAuthorizationURL(clientID: String = OAuthConfig.clientID,
                            redirectURI: String = OAuthConfig.redirectURI,
                            scope: String = OAuthConfig.scopes,
                            state: String,
-                           challenge: String) -> URL {
+                           challenge: String,
+                           manualCode: Bool = true) -> URL {
     var components = URLComponents(string: authorizeURL)!
-    components.queryItems = [
-        URLQueryItem(name: "code", value: "true"),
+    // `code=true` asks claude.ai to render the paste-me code page instead of
+    // redirecting; the loopback flow wants the redirect, so it omits it.
+    components.queryItems = (manualCode ? [URLQueryItem(name: "code", value: "true")] : []) + [
         URLQueryItem(name: "client_id", value: clientID),
         URLQueryItem(name: "response_type", value: "code"),
         URLQueryItem(name: "redirect_uri", value: redirectURI),
@@ -97,6 +107,113 @@ func parseAuthorizationCallback(_ pasted: String) -> (code: String, state: Strin
     guard !code.isEmpty else { return nil }
     let state = parts.count > 1 ? String(parts[1]).trimmingCharacters(in: .whitespaces) : nil
     return (code, state?.isEmpty == true ? nil : state)
+}
+
+/// Parse the request line of the browser's loopback hit
+/// (`GET /callback?code=…&state=… HTTP/1.1`). Nil for anything that isn't a
+/// callback carrying a code — favicon requests, probes, etc.
+func parseLoopbackRequestLine(_ line: String) -> (code: String, state: String?)? {
+    let parts = line.split(separator: " ")
+    guard parts.count >= 2, parts[0] == "GET",
+          let comps = URLComponents(string: "http://localhost" + parts[1]),
+          comps.path == "/callback",
+          let code = comps.queryItems?.first(where: { $0.name == "code" })?.value,
+          !code.isEmpty else { return nil }
+    let state = comps.queryItems?.first(where: { $0.name == "state" })?.value
+    return (code, state?.isEmpty == true ? nil : state)
+}
+
+/// Minimal HTML the browser lands on after the redirect. Kept plain and inline
+/// so the tab reads as "done" instantly and can be closed.
+func loopbackResponseHTML(success: Bool) -> String {
+    let title = success ? "Signed in to ClaudeGlance" : "Sign-in didn't complete"
+    let body = success
+        ? "You can close this tab and return to the menu bar."
+        : "Go back to ClaudeGlance and try again."
+    return """
+    <!doctype html><html><head><meta charset="utf-8"><title>\(title)</title>
+    <style>body{font:15px -apple-system,system-ui,sans-serif;color:#222;background:#fafafa;
+    display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
+    div{text-align:center}h1{font-size:20px;margin:0 0 8px}p{color:#666;margin:0}</style></head>
+    <body><div><h1>\(title)</h1><p>\(body)</p></div></body></html>
+    """
+}
+
+/// One-shot loopback HTTP listener for the OAuth redirect. Binds 127.0.0.1 on
+/// an ephemeral port, answers exactly one `/callback` hit, then stops. Anything
+/// else it sees gets a 404 and the listener stays up.
+final class OAuthCallbackServer {
+    private var listener: NWListener?
+    private let queue = DispatchQueue(label: "io.github.broots144.ClaudeGlance.oauth-callback")
+    private var handled = false
+    private var onCallback: ((String, String?) -> Void)?
+
+    /// Start listening; resolves with the bound port once the socket is ready.
+    func start(onCallback: @escaping (String, String?) -> Void) async throws -> UInt16 {
+        stop()
+        handled = false
+        self.onCallback = onCallback
+
+        let params = NWParameters.tcp
+        params.requiredLocalEndpoint = NWEndpoint.hostPort(host: "127.0.0.1", port: .any)
+        params.allowLocalEndpointReuse = true
+        let listener = try NWListener(using: params)
+        self.listener = listener
+
+        listener.newConnectionHandler = { [weak self] conn in self?.accept(conn) }
+
+        return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<UInt16, Error>) in
+            var resumed = false
+            listener.stateUpdateHandler = { state in
+                switch state {
+                case .ready:
+                    guard !resumed, let port = listener.port?.rawValue else { return }
+                    resumed = true
+                    cont.resume(returning: port)
+                case .failed(let err):
+                    guard !resumed else { return }
+                    resumed = true
+                    cont.resume(throwing: err)
+                default:
+                    break
+                }
+            }
+            listener.start(queue: queue)
+        }
+    }
+
+    func stop() {
+        listener?.cancel()
+        listener = nil
+        onCallback = nil
+    }
+
+    private func accept(_ conn: NWConnection) {
+        conn.start(queue: queue)
+        conn.receive(minimumIncompleteLength: 1, maximumLength: 16 * 1024) { [weak self] data, _, _, _ in
+            guard let self else { conn.cancel(); return }
+            let text = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+            let firstLine = text.split(separator: "\r\n", maxSplits: 1, omittingEmptySubsequences: false)
+                .first.map(String.init) ?? text
+            if let parsed = parseLoopbackRequestLine(firstLine), !self.handled {
+                self.handled = true
+                self.respond(conn, status: "200 OK", html: loopbackResponseHTML(success: true))
+                let cb = self.onCallback
+                DispatchQueue.main.async { cb?(parsed.code, parsed.state) }
+            } else {
+                self.respond(conn, status: "404 Not Found", html: loopbackResponseHTML(success: false))
+            }
+        }
+    }
+
+    private func respond(_ conn: NWConnection, status: String, html: String) {
+        let body = Data(html.utf8)
+        let head = "HTTP/1.1 \(status)\r\nContent-Type: text/html; charset=utf-8\r\n"
+            + "Content-Length: \(body.count)\r\nConnection: close\r\n\r\n"
+        conn.send(content: Data(head.utf8) + body, completion: .contentProcessed { _ in
+            conn.cancel()
+        })
+    }
 }
 
 /// Whether a token expiring at `expiresAt` should be refreshed now — true once
@@ -136,7 +253,8 @@ final class OAuthLoginService: ObservableObject {
 
     enum AuthState: Equatable {
         case signedOut
-        case awaitingCode          // browser opened, waiting for the pasted code
+        case awaitingBrowser       // browser opened, loopback server waiting for the redirect
+        case awaitingCode          // browser opened (manual flow), waiting for the pasted code
         case signedIn(Date)        // associated value = current token expiry
         case error(String)
     }
@@ -149,6 +267,8 @@ final class OAuthLoginService: ObservableObject {
     // PKCE material for the in-flight login.
     private var pendingVerifier: String?
     private var pendingState: String?
+    private var pendingRedirectURI: String = OAuthConfig.redirectURI
+    private let callbackServer = OAuthCallbackServer()
 
     // In-memory token cache so each usage poll doesn't hit the Keychain. (Reading
     // our own item is unprompted and cheap, but the cache also lets a 401 force a
@@ -168,45 +288,104 @@ final class OAuthLoginService: ObservableObject {
 
     // MARK: Login flow
 
-    /// Step 1: generate PKCE material and open the browser to authorize.
+    /// Step 1 (default): start a loopback listener, then open the browser. When
+    /// claude.ai redirects back, the listener completes the exchange itself —
+    /// nothing to copy or paste. Falls back to the manual code flow if the
+    /// listener can't bind.
     @MainActor
     func beginLogin() {
         let verifier = generateCodeVerifier()
         let stateValue = generateState()
         pendingVerifier = verifier
         pendingState = stateValue
-        let url = buildAuthorizationURL(state: stateValue, challenge: codeChallenge(for: verifier))
+        state = .awaitingBrowser
+
+        Task { @MainActor in
+            do {
+                let port = try await callbackServer.start { [weak self] code, returnedState in
+                    guard let self else { return }
+                    Task { @MainActor in
+                        await self.completeLogin(code: code, returnedState: returnedState)
+                    }
+                }
+                let redirect = OAuthConfig.loopbackRedirectURI(port: port)
+                pendingRedirectURI = redirect
+                let url = buildAuthorizationURL(redirectURI: redirect,
+                                                state: stateValue,
+                                                challenge: codeChallenge(for: verifier),
+                                                manualCode: false)
+                NSWorkspace.shared.open(url)
+            } catch {
+                // Couldn't listen locally (sandbox/firewall) — use the paste flow.
+                beginManualLogin()
+            }
+        }
+    }
+
+    /// Step 1 (fallback): open the browser to the console code page; the user
+    /// pastes the `code#state` it shows into Settings.
+    @MainActor
+    func beginManualLogin() {
+        callbackServer.stop()
+        let verifier = generateCodeVerifier()
+        let stateValue = generateState()
+        pendingVerifier = verifier
+        pendingState = stateValue
+        pendingRedirectURI = OAuthConfig.redirectURI
+        let url = buildAuthorizationURL(redirectURI: OAuthConfig.redirectURI,
+                                        state: stateValue,
+                                        challenge: codeChallenge(for: verifier),
+                                        manualCode: true)
         state = .awaitingCode
         NSWorkspace.shared.open(url)
     }
 
-    /// Step 2: exchange the pasted `code#state` for tokens and persist them.
+    /// Abort an in-flight sign-in (either flow) without touching stored credentials.
+    @MainActor
+    func cancelLogin() {
+        callbackServer.stop()
+        pendingVerifier = nil
+        pendingState = nil
+        state = loadCredentials().map { .signedIn($0.expiresAtDate) } ?? .signedOut
+    }
+
+    /// Step 2 (manual): exchange the pasted `code#state` for tokens and persist them.
     @MainActor
     func completeLogin(pastedInput: String) async {
-        guard let verifier = pendingVerifier else {
-            state = .error("Start sign-in first, then paste the code.")
-            return
-        }
         guard let parsed = parseAuthorizationCallback(pastedInput) else {
             state = .error("Couldn't read that code. Copy the whole value from the page.")
             return
         }
-        // If the page returned a state, it must match the one we sent (CSRF guard).
-        if let returned = parsed.state, let expected = pendingState, returned != expected {
+        await completeLogin(code: parsed.code, returnedState: parsed.state)
+    }
+
+    /// Step 2 (shared): verify state, exchange the code, persist, and refresh usage.
+    @MainActor
+    func completeLogin(code: String, returnedState: String?) async {
+        callbackServer.stop()
+        guard let verifier = pendingVerifier else {
+            state = .error("Start sign-in first, then paste the code.")
+            return
+        }
+        // If a state came back, it must match the one we sent (CSRF guard).
+        if let returned = returnedState, let expected = pendingState, returned != expected {
             state = .error("Sign-in state mismatch — please try again.")
             return
         }
         do {
-            let creds = try await exchangeCode(code: parsed.code,
-                                               state: parsed.state ?? pendingState ?? "",
-                                               verifier: verifier)
+            let creds = try await exchangeCode(code: code,
+                                               state: returnedState ?? pendingState ?? "",
+                                               verifier: verifier,
+                                               redirectURI: pendingRedirectURI)
             try saveCredentials(creds)
             cache(creds)
             pendingVerifier = nil
             pendingState = nil
             state = .signedIn(creds.expiresAtDate)
-            // Pull fresh usage immediately now that we're authenticated.
+            // Pull fresh usage immediately now that we're authenticated, and
+            // bring the app forward so the result is visible without hunting.
             UsageService.shared.fetchUsage(manual: true)
+            NSApp.activate(ignoringOtherApps: true)
         } catch let error as NSError {
             state = .error("Sign-in failed: \(error.localizedDescription)")
         }
@@ -214,6 +393,7 @@ final class OAuthLoginService: ObservableObject {
 
     @MainActor
     func signOut() {
+        callbackServer.stop()
         deleteCredentials()
         clearCache()
         pendingVerifier = nil
@@ -277,13 +457,14 @@ final class OAuthLoginService: ObservableObject {
 
     // MARK: Network
 
-    private func exchangeCode(code: String, state: String, verifier: String) async throws -> StoredCredentials {
+    private func exchangeCode(code: String, state: String, verifier: String,
+                              redirectURI: String) async throws -> StoredCredentials {
         try await postToken(body: [
             "grant_type": "authorization_code",
             "code": code,
             "state": state,
             "client_id": OAuthConfig.clientID,
-            "redirect_uri": OAuthConfig.redirectURI,
+            "redirect_uri": redirectURI,
             "code_verifier": verifier
         ], fallbackRefreshToken: nil)
     }

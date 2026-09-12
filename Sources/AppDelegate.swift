@@ -35,9 +35,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // (no window server / notification center) — "Early unexpected exit".
         if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil { return }
 
+        installMainMenu()
         setupStatusItem()
         setupNotifications()
         startUsagePolling()
+
+        // First run / signed out: open Settings so the sign-in button is in
+        // front of the user instead of buried behind the menu bar icon.
+        if !OAuthLoginService.shared.isSignedIn {
+            openSettings()
+        }
 
         // Observe usage changes to keep the menu bar numbers up to date
         usageService.$currentUsage
@@ -243,7 +250,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // to start the browser sign-in (otherwise the menu shows only the prompt).
         if !OAuthLoginService.shared.isSignedIn {
             menu.addItem(actionItem(title: "Sign in to Claude…", symbol: "person.crop.circle.badge.plus",
-                                    action: #selector(openSettings)))
+                                    action: #selector(signInFromMenu)))
         }
 
         // When the numbers are stale, say how old they are (the menu bar is also
@@ -638,6 +645,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let url = URL(string: "https://status.claude.com") {
             NSWorkspace.shared.open(url)
         }
+    }
+
+    /// A menu-bar-only app (LSUIElement) has no visible main menu, but AppKit
+    /// still routes key equivalents through `NSApp.mainMenu`. Without an Edit
+    /// menu, ⌘V/⌘C/⌘X/⌘A/⌘Z do nothing in our text fields — so install one.
+    private func installMainMenu() {
+        let main = NSMenu()
+
+        let appItem = NSMenuItem()
+        let appMenu = NSMenu()
+        appMenu.addItem(withTitle: "Quit ClaudeGlance",
+                        action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appItem.submenu = appMenu
+        main.addItem(appItem)
+
+        let editItem = NSMenuItem()
+        let edit = NSMenu(title: "Edit")
+        edit.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
+        edit.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "Z")
+        edit.addItem(.separator())
+        edit.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        edit.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        edit.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        editItem.submenu = edit
+        main.addItem(editItem)
+
+        let windowItem = NSMenuItem()
+        let window = NSMenu(title: "Window")
+        window.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        windowItem.submenu = window
+        main.addItem(windowItem)
+
+        NSApp.mainMenu = main
+    }
+
+    /// Menu-bar "Sign in": open Settings *and* kick off the browser flow in one tap.
+    @objc private func signInFromMenu() {
+        openSettings()
+        Task { @MainActor in OAuthLoginService.shared.beginLogin() }
     }
 
     @objc private func openUsageCredits() {
