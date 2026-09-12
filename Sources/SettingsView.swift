@@ -4,6 +4,10 @@ import AppKit
 struct SettingsView: View {
     @ObservedObject var settingsManager: SettingsManager
     @ObservedObject var usageService: UsageService
+    @ObservedObject private var auth = OAuthLoginService.shared
+
+    // Browser-OAuth sign-in: the code the user pastes back from the callback page.
+    @State private var pastedCode: String = ""
 
     @State private var warningThreshold: Double = 80
     @State private var criticalThreshold: Double = 90
@@ -162,24 +166,94 @@ struct SettingsView: View {
     // MARK: - Rows
 
     private var authRow: some View {
-        HStack(spacing: 14) {
-            rowIcon("lock.fill", color: .green)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Claude Code OAuth")
-                    .font(.system(size: 13, weight: .medium))
-                Text("Using your local Claude Code credentials.")
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 14) {
+                rowIcon("lock.fill", color: authIsSignedIn ? .green : .secondary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Claude sign-in")
+                        .font(.system(size: 13, weight: .medium))
+                    Text(authSubtitle)
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+                Spacer()
+                authControl
             }
-            Spacer()
-            Text("Auto")
-                .font(.system(size: 11, weight: .medium))
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
-                .background(Color.green.opacity(0.18))
-                .clipShape(Capsule())
+            authDetail
         }
         .padding(.vertical, 8)
+    }
+
+    private var authIsSignedIn: Bool {
+        if case .signedIn = auth.state { return true }
+        return false
+    }
+
+    private var authSubtitle: String {
+        switch auth.state {
+        case .signedIn:    return "Signed in. Token renews automatically."
+        case .awaitingBrowser: return "Finish in your browser. This updates on its own when you're done."
+        case .awaitingCode: return "Paste the code the page shows below."
+        case .error(let message): return message
+        case .signedOut:   return "Sign in with your Claude account to read your usage."
+        }
+    }
+
+    @ViewBuilder
+    private var authControl: some View {
+        switch auth.state {
+        case .signedIn:
+            Button("Sign out") { auth.signOut() }
+                .controlSize(.small)
+        case .awaitingBrowser:
+            ProgressView()
+                .controlSize(.small)
+        case .awaitingCode:
+            EmptyView()
+        case .signedOut, .error:
+            Button("Sign in to Claude") { auth.beginLogin() }
+                .controlSize(.small)
+        }
+    }
+
+    @ViewBuilder
+    private var authDetail: some View {
+        switch auth.state {
+        case .awaitingBrowser:
+            // The loopback flow finishes itself; offer an escape hatch for the
+            // rare browser/firewall setup where the redirect never lands.
+            HStack(spacing: 8) {
+                Button("Browser didn't come back? Paste a code instead") { auth.beginManualLogin() }
+                    .buttonStyle(.link)
+                    .font(.system(size: 11))
+                Spacer()
+                Button("Cancel") { auth.cancelLogin() }
+                    .controlSize(.small)
+            }
+            .padding(.leading, 38)
+        case .awaitingCode:
+            HStack(spacing: 8) {
+                TextField("Paste code from the page", text: $pastedCode)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 11))
+                    .onSubmit { submitPastedCode() }
+                Button("Complete") { submitPastedCode() }
+                    .controlSize(.small)
+                    .disabled(pastedCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                Button("Cancel") { auth.cancelLogin() }
+                    .controlSize(.small)
+            }
+            .padding(.leading, 38)
+        default:
+            EmptyView()
+        }
+    }
+
+    private func submitPastedCode() {
+        let input = pastedCode
+        guard !input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        pastedCode = ""
+        Task { await auth.completeLogin(pastedInput: input) }
     }
 
     private func toggleRow(icon: String, title: String, description: String,

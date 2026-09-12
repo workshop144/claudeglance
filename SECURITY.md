@@ -25,8 +25,14 @@ we'll coordinate disclosure and credit you if you'd like.
 
 ## Scope notes
 
-ClaudeGlance reads your Claude Code OAuth token from the **local macOS Keychain**
-(`Claude Code-credentials`) and sends it only to Anthropic's own usage endpoint
-over HTTPS. The token is held in memory and is never written to disk, logged, or
-transmitted anywhere else. Reports about how the app stores, transmits, or
-exposes that token are especially welcome.
+ClaudeGlance signs you in through your browser using an OAuth 2.0 PKCE flow and
+stores the resulting access/refresh tokens in its **own local macOS Keychain
+item** (`ClaudeGlance-credentials`). Tokens are sent only to Anthropic's own
+OAuth token and usage endpoints over HTTPS, and are never logged or transmitted
+anywhere else. Reports about how the app stores, refreshes, transmits, or exposes
+those tokens are especially welcome.
+
+> Note: the browser flow reuses Claude's **public** OAuth client (the same public
+> client the Claude Code CLI uses; no client secret is involved). There is no
+> separate third-party client registration for usage apps, so this reuse is
+> unofficial and could change if Anthropic alters that client.
