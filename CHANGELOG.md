@@ -4,6 +4,22 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.1] — Seamless sign-in
+
+### Changed
+- **Sign-in no longer needs copy/paste.** ClaudeGlance runs a one-shot loopback
+  listener on 127.0.0.1 and claude.ai redirects straight back to it (the same
+  mechanism the Claude Code CLI uses). Authorize in the browser and the app
+  finishes on its own. The console-code paste flow remains as a fallback
+  ("Browser didn't come back?").
+- Menu-bar **Sign in to Claude…** opens Settings and starts the browser flow in
+  one tap; Settings opens automatically on launch when signed out.
+
+### Fixed
+- **⌘V / ⌘C / ⌘X / ⌘A / ⌘Z now work in text fields.** As a menu-bar-only app
+  ClaudeGlance had no main menu, so AppKit had nothing to route standard edit
+  key equivalents to. ⌘W closes windows too.
+
 ## [1.0.0] — ClaudeGlance
 
 First release under the **ClaudeGlance** name. This project began as a fork of

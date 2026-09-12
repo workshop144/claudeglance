@@ -192,7 +192,8 @@ struct SettingsView: View {
     private var authSubtitle: String {
         switch auth.state {
         case .signedIn:    return "Signed in. Token renews automatically."
-        case .awaitingCode: return "Authorize in your browser, then paste the code below."
+        case .awaitingBrowser: return "Finish in your browser. This updates on its own when you're done."
+        case .awaitingCode: return "Paste the code the page shows below."
         case .error(let message): return message
         case .signedOut:   return "Sign in with your Claude account to read your usage."
         }
@@ -204,6 +205,9 @@ struct SettingsView: View {
         case .signedIn:
             Button("Sign out") { auth.signOut() }
                 .controlSize(.small)
+        case .awaitingBrowser:
+            ProgressView()
+                .controlSize(.small)
         case .awaitingCode:
             EmptyView()
         case .signedOut, .error:
@@ -214,23 +218,42 @@ struct SettingsView: View {
 
     @ViewBuilder
     private var authDetail: some View {
-        if case .awaitingCode = auth.state {
+        switch auth.state {
+        case .awaitingBrowser:
+            // The loopback flow finishes itself; offer an escape hatch for the
+            // rare browser/firewall setup where the redirect never lands.
+            HStack(spacing: 8) {
+                Button("Browser didn't come back? Paste a code instead") { auth.beginManualLogin() }
+                    .buttonStyle(.link)
+                    .font(.system(size: 11))
+                Spacer()
+                Button("Cancel") { auth.cancelLogin() }
+                    .controlSize(.small)
+            }
+            .padding(.leading, 38)
+        case .awaitingCode:
             HStack(spacing: 8) {
                 TextField("Paste code from the page", text: $pastedCode)
                     .textFieldStyle(.roundedBorder)
                     .font(.system(size: 11))
-                Button("Complete") {
-                    let input = pastedCode
-                    pastedCode = ""
-                    Task { await auth.completeLogin(pastedInput: input) }
-                }
-                .controlSize(.small)
-                .disabled(pastedCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                Button("Cancel") { auth.signOut() }
+                    .onSubmit { submitPastedCode() }
+                Button("Complete") { submitPastedCode() }
+                    .controlSize(.small)
+                    .disabled(pastedCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                Button("Cancel") { auth.cancelLogin() }
                     .controlSize(.small)
             }
             .padding(.leading, 38)
+        default:
+            EmptyView()
         }
+    }
+
+    private func submitPastedCode() {
+        let input = pastedCode
+        guard !input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        pastedCode = ""
+        Task { await auth.completeLogin(pastedInput: input) }
     }
 
     private func toggleRow(icon: String, title: String, description: String,
