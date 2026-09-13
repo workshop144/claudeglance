@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		01B9C43B6DF569BA417F2292 /* StatusHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0612118C71B2E629BC9701D3 /* StatusHistory.swift */; };
 		0396481B1D8F58F6985B5412 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 852DDB101F006E8024AAD959 /* SettingsView.swift */; };
+		03CE7DE684796ED66631D751 /* ActivityArchive.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64613ACC113520771A55CBD2 /* ActivityArchive.swift */; };
 		08768C509388764D5866CFA3 /* StatusHistoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 054F822A413107C0E6AE613C /* StatusHistoryTests.swift */; };
 		0A5539902838346BC1CC4924 /* MetricsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58363E6825D4E0B111A03DFD /* MetricsService.swift */; };
 		16BF940B052B4A948B9B1147 /* StatusLineExportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7122E4ED4E2E86D4A2CC15E /* StatusLineExportTests.swift */; };
@@ -32,6 +33,8 @@
 		A0A38307B0E52D5BAA352F5C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A9C92B40480B46451A779F3E /* Assets.xcassets */; };
 		A8F5786D359DC59F12661A93 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15B60109596823E8B3049AE5 /* DashboardView.swift */; };
 		AE544F59981EFC7528DB706E /* BuildInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F3A98B4FB00A61798935BF6 /* BuildInfo.swift */; };
+		B9BB427F4B25FF58AF2F12BE /* HistoryBackup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4833BF2BAC908370F76F3D12 /* HistoryBackup.swift */; };
+		C3494525D1305C4F2BF31FE9 /* HistoryPersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B36FB16856DC48803542CAE5 /* HistoryPersistenceTests.swift */; };
 		CE3D6DABD601B48FB4D64469 /* PlanFitTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4F0004C2C97093175FCCF74 /* PlanFitTests.swift */; };
 		D5901D4A120D88360A14272E /* AppIcon.icns in Resources */ = {isa = PBXBuildFile; fileRef = 41DBB8C43A660F12A6C09B8C /* AppIcon.icns */; };
 		D5C6822375FC7952CB358FC6 /* UsageService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 389B96510CE84AF4DA0D39BF /* UsageService.swift */; };
@@ -41,6 +44,7 @@
 		F132079F85A7CCDD36607874 /* ToolUsage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D669BEFDE86EF5611899941 /* ToolUsage.swift */; };
 		F228D6812CD9ABAA0B73B62A /* BurnRate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A990F191E512F052132FC6BF /* BurnRate.swift */; };
 		F469BCF763F4CE2B6387E655 /* OAuthLoginService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05F1A8530BEECE125C9CD433 /* OAuthLoginService.swift */; };
+		FA56861CCC28E18AC4658376 /* HistoryStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = A151385E73DAC680D30C981D /* HistoryStorage.swift */; };
 		FB58AC8C346887E986EF1C21 /* WrappedCardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3FF9EBD17B7B96B3A223C27 /* WrappedCardTests.swift */; };
 /* End PBXBuildFile section */
 
@@ -70,11 +74,13 @@
 		41DBB8C43A660F12A6C09B8C /* AppIcon.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = AppIcon.icns; sourceTree = "<group>"; };
 		43285A0918E2B6249471B9C3 /* claudeglance-statusline.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "claudeglance-statusline.sh"; sourceTree = "<group>"; };
 		4398E2F05CF55A6F687BA545 /* ContextWindowService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextWindowService.swift; sourceTree = "<group>"; };
+		4833BF2BAC908370F76F3D12 /* HistoryBackup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryBackup.swift; sourceTree = "<group>"; };
 		49ACE0A9954AE2900B722F7A /* ClaudePaths.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudePaths.swift; sourceTree = "<group>"; };
 		53CFE271FC0ED6CCD0C70D05 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		57AA60810E166F2247382514 /* StatusLineExport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusLineExport.swift; sourceTree = "<group>"; };
 		58363E6825D4E0B111A03DFD /* MetricsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetricsService.swift; sourceTree = "<group>"; };
 		5F94FF2A4B0577DE427D40BD /* SessionGrade.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionGrade.swift; sourceTree = "<group>"; };
+		64613ACC113520771A55CBD2 /* ActivityArchive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityArchive.swift; sourceTree = "<group>"; };
 		73C3777959157876E1139AF1 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		7774E9F94623765B11979F07 /* ClaudeGlance.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ClaudeGlance.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		7CDA3E43B0AD4B7359CF6C39 /* StatusService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusService.swift; sourceTree = "<group>"; };
@@ -85,10 +91,12 @@
 		902E74C4D3D8F218834C393B /* ClaudeGlanceTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ClaudeGlanceTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		9C63355792ADD1D751C4F42B /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
 		9D9839F56564B16692FADC94 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		A151385E73DAC680D30C981D /* HistoryStorage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryStorage.swift; sourceTree = "<group>"; };
 		A36FA88E079EA2A96CE3E701 /* OAuthLoginTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OAuthLoginTests.swift; sourceTree = "<group>"; };
 		A990F191E512F052132FC6BF /* BurnRate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnRate.swift; sourceTree = "<group>"; };
 		A9C92B40480B46451A779F3E /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		B1517703E21CE6FD07CD0FE7 /* SettingsManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsManager.swift; sourceTree = "<group>"; };
+		B36FB16856DC48803542CAE5 /* HistoryPersistenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryPersistenceTests.swift; sourceTree = "<group>"; };
 		B7122E4ED4E2E86D4A2CC15E /* StatusLineExportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusLineExportTests.swift; sourceTree = "<group>"; };
 		CD69DF6900409BF9A03F064A /* WrappedCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WrappedCard.swift; sourceTree = "<group>"; };
 		D200048597B4157291EE1A2F /* UsageData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageData.swift; sourceTree = "<group>"; };
@@ -132,12 +140,15 @@
 			isa = PBXGroup;
 			children = (
 				235D97063A45F0B54F4B17FF /* Activity.swift */,
+				64613ACC113520771A55CBD2 /* ActivityArchive.swift */,
 				73C3777959157876E1139AF1 /* AppDelegate.swift */,
 				0F3A98B4FB00A61798935BF6 /* BuildInfo.swift */,
 				A990F191E512F052132FC6BF /* BurnRate.swift */,
 				49ACE0A9954AE2900B722F7A /* ClaudePaths.swift */,
 				4398E2F05CF55A6F687BA545 /* ContextWindowService.swift */,
 				15B60109596823E8B3049AE5 /* DashboardView.swift */,
+				4833BF2BAC908370F76F3D12 /* HistoryBackup.swift */,
+				A151385E73DAC680D30C981D /* HistoryStorage.swift */,
 				01DF3C6B8EDFEDE6A749C2F0 /* HistoryStore.swift */,
 				53CFE271FC0ED6CCD0C70D05 /* main.swift */,
 				23F3D9F26ACD335A9867053D /* MenuBarIcon.swift */,
@@ -183,6 +194,7 @@
 		E6DB70BE103B4934B0ABABD9 /* Tests */ = {
 			isa = PBXGroup;
 			children = (
+				B36FB16856DC48803542CAE5 /* HistoryPersistenceTests.swift */,
 				A36FA88E079EA2A96CE3E701 /* OAuthLoginTests.swift */,
 				F4F0004C2C97093175FCCF74 /* PlanFitTests.swift */,
 				054F822A413107C0E6AE613C /* StatusHistoryTests.swift */,
@@ -290,6 +302,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C3494525D1305C4F2BF31FE9 /* HistoryPersistenceTests.swift in Sources */,
 				DC313BEF77D3899745D72858 /* OAuthLoginTests.swift in Sources */,
 				CE3D6DABD601B48FB4D64469 /* PlanFitTests.swift in Sources */,
 				08768C509388764D5866CFA3 /* StatusHistoryTests.swift in Sources */,
@@ -304,12 +317,15 @@
 			buildActionMask = 2147483647;
 			files = (
 				3D2E45E18392A07DCD9CA1C3 /* Activity.swift in Sources */,
+				03CE7DE684796ED66631D751 /* ActivityArchive.swift in Sources */,
 				6D214E56F105333C2AA79C24 /* AppDelegate.swift in Sources */,
 				AE544F59981EFC7528DB706E /* BuildInfo.swift in Sources */,
 				F228D6812CD9ABAA0B73B62A /* BurnRate.swift in Sources */,
 				71334E3131A76CB33D721E33 /* ClaudePaths.swift in Sources */,
 				4E2D274727CD82AF9428F3B1 /* ContextWindowService.swift in Sources */,
 				A8F5786D359DC59F12661A93 /* DashboardView.swift in Sources */,
+				B9BB427F4B25FF58AF2F12BE /* HistoryBackup.swift in Sources */,
+				FA56861CCC28E18AC4658376 /* HistoryStorage.swift in Sources */,
 				EE03B28A6FDCF419578F9309 /* HistoryStore.swift in Sources */,
 				7DF83E170CC197AA3BF0BCC8 /* MenuBarIcon.swift in Sources */,
 				0A5539902838346BC1CC4924 /* MetricsService.swift in Sources */,
@@ -399,7 +415,7 @@
 				GIT_BRANCH = "";
 				GIT_COMMIT = "";
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
-				MARKETING_VERSION = 1.7.1;
+				MARKETING_VERSION = 1.7.2;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -525,7 +541,7 @@
 				GIT_BRANCH = "";
 				GIT_COMMIT = "";
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
-				MARKETING_VERSION = 1.7.1;
+				MARKETING_VERSION = 1.7.2;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = NO;

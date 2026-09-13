@@ -75,6 +75,30 @@ Everything in the dashboard is computed locally — the cost/activity/tokens/con
 tabs from your `~/.claude/projects` logs, the usage history from ClaudeGlance's own
 recordings.
 
+### Where history lives
+
+Streaks, the heatmap and the utilization chart outlive the logs they came from.
+Claude Code deletes its transcripts after `cleanupPeriodDays` (30 by default), so
+ClaudeGlance rolls each day's totals into its own archive and merges them
+max-wins — a day it has already recorded can grow, never shrink.
+
+Every history file is written to **two** places and unioned on load:
+
+| | Path |
+|---|---|
+| Primary | `~/Library/Application Support/ClaudeGlance/` |
+| Mirror | `~/.claudeglance/` |
+
+Both sit outside the `.app`, so upgrades and a drag-to-Trash uninstall leave them
+alone. Third-party uninstallers sweep Application Support by bundle id but don't
+know about the home dot-directory, so a wipe-and-reinstall still finds its
+history — whichever copy survives restores the other. Payloads carry a version so
+a future format change can't silently zero them; an unreadable file is set aside
+as `*.corrupt.json` rather than overwritten.
+
+For a new Mac, **Settings › History backup** exports all three stores to a single
+JSON file. Import merges — it only ever adds days back.
+
 ## Wrapped card
 
 **Share Wrapped card…** (in the menu, or the **Share Wrapped** button on the
