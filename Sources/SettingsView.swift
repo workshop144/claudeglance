@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @ObservedObject var settingsManager: SettingsManager
@@ -40,6 +41,9 @@ struct SettingsView: View {
     @State private var showWireConfirm = false
     @State private var statusLineMessage: String? = nil
     @State private var statusLineError = false
+
+    @State private var historyMessage: String? = nil
+    @State private var historyError = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -128,6 +132,9 @@ struct SettingsView: View {
 
                     rowDivider
                     statusLineSection
+
+                    rowDivider
+                    historySection
 
                     HStack {
                         Spacer()
@@ -319,6 +326,92 @@ struct SettingsView: View {
                 .onChange(of: value.wrappedValue) { onChange($0) }
         }
         .padding(.vertical, 8)
+    }
+
+    // MARK: - History backup
+
+    /// Streaks, the heatmap and the utilization chart are kept in
+    /// `~/Library/Application Support/ClaudeGlance` and mirrored to
+    /// `~/.claudeglance`, so upgrades and ordinary uninstalls leave them alone.
+    /// Export covers the rest: a new Mac, or an uninstaller that takes both.
+    private var historySection: some View {
+        HStack(alignment: .top, spacing: 14) {
+            rowIcon("clock.arrow.circlepath")
+            VStack(alignment: .leading, spacing: 6) {
+                Text("History backup")
+                    .font(.system(size: 13, weight: .medium))
+                Text("Your streaks, heatmap and utilization history are stored outside the app, so they survive upgrades and reinstalls. Export a copy to move them to another Mac.")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 8) {
+                    HoverButton(title: "Export…") { exportHistory() }
+                    HoverButton(title: "Import…") { importHistory() }
+                    HoverButton(title: "Reveal in Finder") { revealHistory() }
+                }
+                .padding(.top, 2)
+                Text("Importing merges — it only ever adds days back, never overwrites what you already have.")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 1)
+                if let historyMessage {
+                    Text(historyMessage)
+                        .font(.system(size: 11))
+                        .foregroundColor(historyError ? .red : .secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 2)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 8)
+    }
+
+    private func exportHistory() {
+        guard let data = HistoryBackupService.exportData() else {
+            historyError = true
+            historyMessage = "Couldn't build the backup."
+            return
+        }
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = HistoryBackupService.suggestedFileName
+        panel.allowedContentTypes = [.json]
+        panel.canCreateDirectories = true
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            try data.write(to: url, options: .atomic)
+            historyError = false
+            historyMessage = "Exported to \(prettyPath(url))."
+        } catch {
+            historyError = true
+            historyMessage = error.localizedDescription
+        }
+    }
+
+    private func importHistory() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        guard let data = try? Data(contentsOf: url),
+              let backup = HistoryBackupService.restore(from: data) else {
+            historyError = true
+            historyMessage = "That file isn't a ClaudeGlance history export."
+            return
+        }
+        historyError = false
+        historyMessage = HistoryBackupService.summary(backup)
+    }
+
+    private func revealHistory() {
+        guard let dir = HistoryStorage.primaryDirectory else {
+            historyError = true
+            historyMessage = "Couldn't locate the history folder."
+            return
+        }
+        NSWorkspace.shared.activateFileViewerSelecting([dir])
     }
 
     // MARK: - Claude Code statusline [#27]

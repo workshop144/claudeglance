@@ -47,7 +47,7 @@ func worseStatus(_ a: ServiceStatusIndicator, _ b: ServiceStatusIndicator) -> Se
 /// A stable "yyyy-MM-dd" key in the calendar's own time zone, so days line up with
 /// the rest of the app's day boundaries. Sortable as a plain string.
 func statusDayKey(_ date: Date, calendar: Calendar = .current) -> String {
-    var f = DateFormatter()
+    let f = DateFormatter()
     f.calendar = calendar
     f.timeZone = calendar.timeZone
     f.locale = Locale(identifier: "en_US_POSIX")
@@ -179,11 +179,21 @@ func parseIncidents(_ data: Data) -> [StatusIncident] {
     }
 }
 
+/// Unions two readings of the history, worst-wins per day. Used to reconcile the
+/// primary and mirror copies on load.
+func mergedStatusHistory(_ a: StatusHistory, _ b: StatusHistory) -> StatusHistory {
+    var days = a.days
+    for (key, raw) in b.days {
+        mergeStatus(into: &days, key: key, indicator: ServiceStatusIndicator(rawValue: raw) ?? .unknown)
+    }
+    return StatusHistory(days: days)
+}
+
 // MARK: - Store
 
-/// Records the worst service status per day and persists it to Application Support
-/// (rolling 90-day window). Reads happen on the main thread (like the menu); disk
-/// writes are async + atomic — same shape as `HistoryStore`.
+/// Records the worst service status per day and persists it to both history
+/// locations (rolling 90-day window). Reads happen on the main thread (like the
+/// menu); disk writes are async + atomic — same shape as `HistoryStore`.
 final class StatusHistoryStore: ObservableObject {
     static let shared = StatusHistoryStore()
 
@@ -191,7 +201,12 @@ final class StatusHistoryStore: ObservableObject {
     private let retentionDays = 90
     private let io = DispatchQueue(label: "io.github.broots144.ClaudeGlance.statushistory", qos: .utility)
 
-    private init() { history = StatusHistoryStore.load(from: StatusHistoryStore.fileURL) }
+    static let fileName = "status-history.json"
+
+    private init() {
+        history = DurableJSON.load(StatusHistoryStore.fileName, as: StatusHistory.self,
+                                   merging: mergedStatusHistory) ?? StatusHistory()
+    }
 
     /// Record the current indicator into today's cell (worst-wins). Ignores
     /// `.unknown` (a failed/parse-less poll shouldn't overwrite real data).
@@ -221,27 +236,11 @@ final class StatusHistoryStore: ObservableObject {
     private func commit(_ days: [String: String], now: Date, calendar: Calendar) {
         history = StatusHistory(days: prunedStatus(days, now: now, keepDays: retentionDays, calendar: calendar))
         let snapshot = history
-        io.async { StatusHistoryStore.save(snapshot, to: StatusHistoryStore.fileURL) }
+        io.async { DurableJSON.save(snapshot, to: StatusHistoryStore.fileName) }
     }
 
-    // MARK: - Disk
-
-    private static var fileURL: URL? {
-        let fm = FileManager.default
-        guard let base = try? fm.url(for: .applicationSupportDirectory, in: .userDomainMask,
-                                     appropriateFor: nil, create: true) else { return nil }
-        let dir = base.appendingPathComponent("ClaudeGlance", isDirectory: true)
-        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir.appendingPathComponent("status-history.json")
-    }
-
-    private static func load(from url: URL?) -> StatusHistory {
-        guard let url, let data = try? Data(contentsOf: url) else { return StatusHistory() }
-        return (try? JSONDecoder().decode(StatusHistory.self, from: data)) ?? StatusHistory()
-    }
-
-    private static func save(_ history: StatusHistory, to url: URL?) {
-        guard let url, let data = try? JSONEncoder().encode(history) else { return }
-        try? data.write(to: url, options: .atomic)
+    /// Folds an imported history in — the restore path.
+    func merge(_ imported: StatusHistory, now: Date = Date(), calendar: Calendar = .current) {
+        commit(mergedStatusHistory(history, imported).days, now: now, calendar: calendar)
     }
 }
