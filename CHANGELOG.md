@@ -4,6 +4,41 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.2] — History that sticks around
+
+### Fixed
+- **Streaks and the contribution heatmap no longer reset.** They were recomputed
+  on every poll straight from `~/.claude/projects/**/*.jsonl`, and Claude Code
+  deletes those transcripts after `cleanupPeriodDays` (30 by default) — so history
+  quietly collapsed as the logs aged out, with nothing on disk to recover. Daily
+  totals are now rolled up into ClaudeGlance's own `daily-activity.json` and
+  merged max-wins, making a recorded day a floor that can't erode. Streaks read
+  the archive, so a run longer than the 30-day scan window counts in full.
+- **A gap in polling no longer wipes the utilization chart.** Retention was 7
+  days and the prune ran on the first write after a gap, so signing back in after
+  a week discarded everything older. Retention is now a rolling year.
+- **A future format change can no longer destroy history silently.** Every store
+  treated *any* decode failure as "no history" and overwrote the file on the next
+  write. Payloads are now wrapped in a versioned envelope (older top-level files
+  still load), and an undecodable file is set aside as `*.corrupt.json` instead
+  of being overwritten.
+
+### Added
+- **History survives uninstall/reinstall.** Every history file is written to both
+  `~/Library/Application Support/ClaudeGlance/` and a mirror in `~/.claudeglance/`,
+  and unioned on load — third-party uninstallers sweep Application Support by
+  bundle id but don't know about the home dot-directory, so whichever copy
+  survives restores the other.
+- **Settings › History backup** — Export / Import / Reveal in Finder, for moving
+  history to another Mac. Import merges; it only ever adds days back.
+- **Range picker on the utilization chart** (7d / 30d / 90d / All), now that
+  there's more than a week to look at. Samples older than 48h are thinned to
+  hourly peaks, so a year of history stays a few thousand rows.
+
+### Changed
+- The plan-fit nudge is pinned to the last 7 days regardless of the chart range —
+  an all-time peak would otherwise pin it to the worst week of the year forever.
+
 ## [1.7.1] — Seamless sign-in
 
 ### Changed
