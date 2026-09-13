@@ -99,6 +99,10 @@ as `*.corrupt.json` rather than overwritten.
 For a new Mac, **Settings › History backup** exports all three stores to a single
 JSON file. Import merges — it only ever adds days back.
 
+To remove history deliberately, `brew uninstall --zap claudeglance` clears both
+locations; a plain uninstall leaves them, which is what makes a reinstall pick up
+where you left off.
+
 ## Wrapped card
 
 **Share Wrapped card…** (in the menu, or the **Share Wrapped** button on the

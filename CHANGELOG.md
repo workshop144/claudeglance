@@ -38,6 +38,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed
 - The plan-fit nudge is pinned to the last 7 days regardless of the chart range —
   an all-time peak would otherwise pin it to the worst week of the year forever.
+- The Homebrew cask's `zap` list now includes `~/.claudeglance`, so
+  `brew uninstall --zap` still means "remove everything". A plain uninstall
+  leaves both copies, which is what keeps history across a reinstall.
+- The loopback OAuth listener latches its continuation through a lock-guarded box
+  instead of a captured `var`, clearing four Swift 6 concurrency warnings
+  (mutating a captured `var` from a concurrently-executing closure is an error
+  under the Swift 6 language mode). Behaviour is unchanged: still resumes once,
+  and a `.ready` without a port still waits for a later one.
 
 ## [1.7.1] — Seamless sign-in
 
