@@ -79,8 +79,26 @@ struct UsageTabView: View {
     @ObservedObject var usage: UsageService
     @ObservedObject var history: HistoryStore
 
+    /// How far back the utilization chart looks. The store keeps a year now, so
+    /// the chart has to pick a window rather than plot everything.
+    private enum Range: String, CaseIterable, Identifiable {
+        case week = "7d", month = "30d", quarter = "90d", all = "All"
+        var id: String { rawValue }
+        var days: Int? {
+            switch self {
+            case .week: return 7
+            case .month: return 30
+            case .quarter: return 90
+            case .all: return nil
+            }
+        }
+    }
+    @State private var range: Range = .week
+
     var body: some View {
         let snap = usage.currentUsage
+        let now = Date()
+        let shown = range.days.map { history.recent(days: $0, now: now) } ?? history.samples
         VStack(alignment: .leading, spacing: 20) {
             HStack(spacing: 12) {
                 statCard("Session · 5h", snap.fiveHourUtilization, snap.fiveHourResetIn)
@@ -92,14 +110,23 @@ struct UsageTabView: View {
 
             Divider()
 
-            Text("Utilization history").font(.system(size: 13, weight: .semibold))
-            if history.samples.count >= 2 {
+            HStack {
+                Text("Utilization history").font(.system(size: 13, weight: .semibold))
+                Spacer()
+                Picker("", selection: $range) {
+                    ForEach(Range.allCases) { Text($0.rawValue).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(width: 200)
+            }
+            if shown.count >= 2 {
                 Chart {
-                    ForEach(history.samples, id: \.t) { s in
+                    ForEach(shown, id: \.t) { s in
                         LineMark(x: .value("Time", s.t), y: .value("%", s.h5))
                             .foregroundStyle(by: .value("Window", "5h"))
                     }
-                    ForEach(history.samples, id: \.t) { s in
+                    ForEach(shown, id: \.t) { s in
                         LineMark(x: .value("Time", s.t), y: .value("%", s.h7))
                             .foregroundStyle(by: .value("Window", "7d"))
                     }
@@ -112,10 +139,13 @@ struct UsageTabView: View {
             }
 
             // Plan-fit nudge [#28] — only when there's enough signal to say something.
-            if let rec = planRecommendation(samples: history.samples,
+            // Always the last 7 days, whatever the chart is showing: plan fit is a
+            // question about current pressure, and an all-time peak would pin it to
+            // the worst week of the year forever.
+            if let rec = planRecommendation(samples: history.recent(days: 7, now: now),
                                             overageEnabled: snap.extraUsageEnabled,
                                             overageUsedCents: snap.extraUsageUsedCents,
-                                            now: Date()) {
+                                            now: now) {
                 Divider()
                 Text("Plan fit").font(.system(size: 13, weight: .semibold))
                 planFitCard(rec)
@@ -427,8 +457,12 @@ struct ActivityTabView: View {
     var body: some View {
         let m = metrics.metrics
         let daily = m.dailyTokens
-        let hasActivity = !daily.allSatisfy { $0.value == 0 }
-        let active = Set(daily.filter { $0.value > 0 }.keys)
+        // Streaks read the persisted archive, so a run longer than the 30-day scan
+        // window — or one whose transcripts Claude Code has already cleaned up —
+        // still counts in full. The heatmap and bar chart stay on the 30 days.
+        let active = m.activeDaySet
+        let recentActive = Set(daily.filter { $0.value > 0 }.keys)
+        let hasActivity = !active.isEmpty
         let today = Date()
 
         VStack(alignment: .leading, spacing: 20) {
@@ -441,7 +475,7 @@ struct ActivityTabView: View {
                 HStack(spacing: 12) {
                     statCard("Current streak", "\(currentStreak(activeDays: active, today: today))d")
                     statCard("Longest streak", "\(longestStreak(activeDays: active))d")
-                    statCard("Active days", "\(active.count)", caption: "last 30 days")
+                    statCard("Active days", "\(recentActive.count)", caption: "last 30 days")
                 }
 
                 Divider()

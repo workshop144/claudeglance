@@ -37,7 +37,7 @@ func buildWrappedStats(metrics: UsageMetrics, tools: ToolBreakdown, now: Date,
     let startMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: now))
         ?? calendar.startOfDay(for: now)
     let activeDays = metrics.dailyTokens.filter { $0.value > 0 && $0.key >= startMonth }.count
-    let activeSet = Set(metrics.dailyTokens.filter { $0.value > 0 }.keys)
+    let activeSet = metrics.activeDaySet
     let streak = currentStreak(activeDays: activeSet, today: now, calendar: calendar)
 
     return WrappedStats(

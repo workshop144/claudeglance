@@ -202,6 +202,7 @@ jobs:
             zap trash: [
               \"~/Library/Preferences/io.github.broots144.ClaudeGlance.plist\",
               \"~/Library/Application Support/ClaudeGlance\",
+              \"~/.claudeglance\",
             ]
           end"
 

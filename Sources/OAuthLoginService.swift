@@ -139,6 +139,29 @@ func loopbackResponseHTML(success: Bool) -> String {
     """
 }
 
+/// Latches a one-shot continuation so it resumes exactly once. `NWListener`'s
+/// `stateUpdateHandler` fires on the listener queue and can report a terminal
+/// state more than once, so the resume has to be guarded — and a captured local
+/// `var` can't do that job: mutating one from a concurrently-executing closure
+/// is a warning today and an error under the Swift 6 language mode. The lock
+/// makes the box safe to hand across queues; `@unchecked` because the compiler
+/// can't see that the lock covers every access to `cont`.
+private final class ContinuationLatch<T>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var cont: CheckedContinuation<T, Error>?
+
+    init(_ cont: CheckedContinuation<T, Error>) { self.cont = cont }
+
+    /// Resumes on the first call; every later call is a no-op.
+    func resume(_ result: Result<T, Error>) {
+        lock.lock()
+        let pending = cont
+        cont = nil
+        lock.unlock()
+        pending?.resume(with: result)
+    }
+}
+
 /// One-shot loopback HTTP listener for the OAuth redirect. Binds 127.0.0.1 on
 /// an ephemeral port, answers exactly one `/callback` hit, then stops. Anything
 /// else it sees gets a 404 and the listener stays up.
@@ -163,17 +186,16 @@ final class OAuthCallbackServer {
         listener.newConnectionHandler = { [weak self] conn in self?.accept(conn) }
 
         return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<UInt16, Error>) in
-            var resumed = false
+            let latch = ContinuationLatch(cont)
             listener.stateUpdateHandler = { state in
                 switch state {
                 case .ready:
-                    guard !resumed, let port = listener.port?.rawValue else { return }
-                    resumed = true
-                    cont.resume(returning: port)
+                    // A `.ready` without a port isn't usable; stay unlatched so a
+                    // later one can still resolve, exactly as before.
+                    guard let port = listener.port?.rawValue else { return }
+                    latch.resume(.success(port))
                 case .failed(let err):
-                    guard !resumed else { return }
-                    resumed = true
-                    cont.resume(throwing: err)
+                    latch.resume(.failure(err))
                 default:
                     break
                 }

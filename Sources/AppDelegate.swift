@@ -200,8 +200,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if m.hasData {
                 menu.addItem(.separator())
 
-                let active = Set(m.dailyTokens.filter { $0.value > 0 }.keys)
-                let streak = currentStreak(activeDays: active, today: Date())
+                let streak = currentStreak(activeDays: m.activeDaySet, today: Date())
                 let streakSuffix = streak > 0 ? " · \(streak)d streak" : ""
                 menu.addItem(linkInfoItem(title: "Today: \(formatTokenCount(m.todayTokens)) tokens\(streakSuffix)",
                                           symbol: "number", tab: .activity))
