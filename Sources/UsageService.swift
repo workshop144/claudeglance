@@ -9,6 +9,45 @@ func manualRefreshAllowed(last: Date?, now: Date, minInterval: TimeInterval) -> 
     return now.timeIntervalSince(last) >= minInterval
 }
 
+// MARK: - Fetch error presentation
+
+/// How long to wait after a 429 from the usage endpoint. Honors a numeric
+/// `Retry-After` (seconds) when the server sends one, clamped to 1–60 min so a
+/// bogus value can neither hammer the endpoint nor stall updates for hours.
+func usageRetryDelay(retryAfter: String?, fallback: TimeInterval = 15 * 60) -> TimeInterval {
+    guard let raw = retryAfter?.trimmingCharacters(in: .whitespaces),
+          let seconds = TimeInterval(raw) else { return fallback }
+    return min(max(seconds, 60), 60 * 60)
+}
+
+/// A short, human message for a failed usage fetch. A 429 here is Anthropic
+/// throttling the *usage lookup* — not the user's Claude plan limits — so say
+/// that plainly instead of a bare "Rate limited", which reads like the latter.
+/// Never includes the raw response body.
+func usageErrorMessage(for error: NSError, retryAt: Date) -> String {
+    let when = formatClockTime(retryAt)
+    if error.domain == "OAuthUsage" {
+        switch error.code {
+        case 429:
+            return "Anthropic is throttling usage checks (your Claude limits are unaffected) — retrying at \(when)"
+        case 401, 403:
+            return "Auth token expired — refreshing (sign in to Claude in Settings if this persists)"
+        case 500...599:
+            return "Anthropic's usage API is having trouble (HTTP \(error.code)) — retrying at \(when)"
+        default:
+            return "Couldn't load usage (HTTP \(error.code)) — retrying at \(when)"
+        }
+    }
+    if error.domain == NSURLErrorDomain {
+        return "Can't reach Anthropic — check your connection. Retrying at \(when)"
+    }
+    if error.domain == "OAuth" {
+        // Sign-in errors already carry a user-facing message.
+        return error.localizedDescription
+    }
+    return "Couldn't load usage: \(error.localizedDescription) — retrying at \(when)"
+}
+
 // MARK: - API Response Model
 
 struct OAuthUsageResponse: Decodable {
@@ -145,7 +184,7 @@ final class UsageService: ObservableObject {
     private var normalInterval: TimeInterval {
         TimeInterval(clampedRefreshMinutes(SettingsManager.shared.settings.usageRefreshMinutes) * 60)
     }
-    private let backoffInterval: TimeInterval = 15 * 60 // 15 minutes after 429
+    private let backoffInterval: TimeInterval = 15 * 60 // after a 429 with no Retry-After
 
     // Injectable for testing
     var urlSession: URLSession = .shared
@@ -248,24 +287,20 @@ final class UsageService: ObservableObject {
                     self.scheduleTimer(interval: self.normalInterval)
                 }
             } catch let error as NSError {
-                let isRateLimit = error.code == 429
+                let isUsageHTTP = error.domain == "OAuthUsage"
+                let isRateLimit = isUsageHTTP && error.code == 429
                 // A 401/403 means the token we sent is stale or was rotated — the
                 // cached copy is now useless, so drop it and re-read next poll.
-                let isAuthError = error.code == 401 || error.code == 403
+                // (A 429 says nothing about the token, so it's left alone.)
+                let isAuthError = isUsageHTTP && (error.code == 401 || error.code == 403)
                 await MainActor.run {
-                    if isRateLimit {
-                        // Clear token so next attempt re-reads a potentially refreshed token from Keychain
-                        self.invalidateToken()
-                        self.error = "Rate limited — retrying in 15 min"
-                        self.scheduleTimer(interval: self.backoffInterval)
-                    } else if isAuthError {
-                        self.invalidateToken()
-                        self.error = "Auth token expired — refreshing (sign in to Claude in Settings if this persists)"
-                        self.scheduleTimer(interval: self.normalInterval)
-                    } else {
-                        self.error = error.localizedDescription
-                        self.scheduleTimer(interval: self.normalInterval)
-                    }
+                    if isAuthError { self.invalidateToken() }
+                    let delay = isRateLimit
+                        ? usageRetryDelay(retryAfter: error.userInfo["Retry-After"] as? String,
+                                          fallback: self.backoffInterval)
+                        : self.normalInterval
+                    self.error = usageErrorMessage(for: error, retryAt: Date().addingTimeInterval(delay))
+                    self.scheduleTimer(interval: delay)
                     self.isLoading = false
                 }
             }
@@ -297,8 +332,11 @@ final class UsageService: ObservableObject {
         #endif
 
         guard http.statusCode == 200 else {
-            throw NSError(domain: "OAuthUsage", code: http.statusCode,
-                          userInfo: [NSLocalizedDescriptionKey: "HTTP \(http.statusCode): \(body)"])
+            var info: [String: Any] = [NSLocalizedDescriptionKey: "HTTP \(http.statusCode): \(body)"]
+            if let retryAfter = http.value(forHTTPHeaderField: "Retry-After") {
+                info["Retry-After"] = retryAfter
+            }
+            throw NSError(domain: "OAuthUsage", code: http.statusCode, userInfo: info)
         }
 
         return try JSONDecoder().decode(OAuthUsageResponse.self, from: data)

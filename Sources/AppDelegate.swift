@@ -58,6 +58,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             .store(in: &cancellables)
 
+        // An error or the first real snapshot changes what the menu bar shows
+        // (warning glyph / placeholder dashes vs. numbers) without new usage data.
+        usageService.$error
+            .combineLatest(usageService.$hasLoaded)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.updateStatusItemAppearance() }
+            .store(in: &cancellables)
+
         // Refresh the menu-bar health dot whenever the service status changes.
         statusService.$status
             .receive(on: RunLoop.main)
@@ -160,35 +168,50 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(.separator())
         }
 
+        // A fetch problem leads the usage section, so it's the first thing read
+        // rather than a footnote under numbers that may be stale or never loaded.
+        if let error = usageService.error {
+            menu.addItem(readonlyItem(error, symbol: "exclamationmark.triangle"))
+        }
+
+        // Until a real snapshot lands there are no numbers to show — don't
+        // present the zeroed placeholder as if it were actual usage.
+        let loaded = usageService.hasLoaded
+        if !loaded && usageService.error == nil {
+            menu.addItem(secondaryItem(usageService.isLoading ? "Loading usage…" : "Usage not loaded yet"))
+        }
+
         // The OAuth usage rows deep-link to the dashboard's Usage tab (they dim
         // slightly and brighten on hover — no blue highlight).
-        menu.addItem(linkInfoItem(title: usageLabel("5hr", snapshot.fiveHourUtilization),
-                                  symbol: usageSymbolName(for: snapshot.fiveHourUtilization), tab: .usage))
-        if let resetIn = snapshot.fiveHourResetIn {
-            menu.addItem(linkSecondaryItem("Resets in: \(resetIn)", tab: .usage))
-        }
-        // Burn rate / run-out ETA, once a few polls have established a trend.
-        if let burn = usageService.fiveHourBurn, let secs = burn.secondsToLimit {
-            let now = Date()
-            if burn.hitsLimitBeforeReset(resetAt: snapshot.fiveHourResetAt, now: now) {
-                menu.addItem(linkSecondaryItem("On pace for 100% by \(formatClockTime(now.addingTimeInterval(secs)))", tab: .usage))
-            } else if burn.percentPerHour >= 1 {
-                menu.addItem(linkSecondaryItem("Using ~\(Int(burn.percentPerHour.rounded()))%/hr", tab: .usage))
+        if loaded {
+            menu.addItem(linkInfoItem(title: usageLabel("5hr", snapshot.fiveHourUtilization),
+                                      symbol: usageSymbolName(for: snapshot.fiveHourUtilization), tab: .usage))
+            if let resetIn = snapshot.fiveHourResetIn {
+                menu.addItem(linkSecondaryItem("Resets in: \(resetIn)", tab: .usage))
             }
-        }
-        // Recent 5h-usage trend from persisted history (survives restarts).
-        let trend = HistoryStore.shared.fiveHourTrend()
-        if trend.count >= 2 {
-            menu.addItem(linkSecondaryItem("Trend: \(sparkline(trend, maxValue: 100))", tab: .usage))
-        }
+            // Burn rate / run-out ETA, once a few polls have established a trend.
+            if let burn = usageService.fiveHourBurn, let secs = burn.secondsToLimit {
+                let now = Date()
+                if burn.hitsLimitBeforeReset(resetAt: snapshot.fiveHourResetAt, now: now) {
+                    menu.addItem(linkSecondaryItem("On pace for 100% by \(formatClockTime(now.addingTimeInterval(secs)))", tab: .usage))
+                } else if burn.percentPerHour >= 1 {
+                    menu.addItem(linkSecondaryItem("Using ~\(Int(burn.percentPerHour.rounded()))%/hr", tab: .usage))
+                }
+            }
+            // Recent 5h-usage trend from persisted history (survives restarts).
+            let trend = HistoryStore.shared.fiveHourTrend()
+            if trend.count >= 2 {
+                menu.addItem(linkSecondaryItem("Trend: \(sparkline(trend, maxValue: 100))", tab: .usage))
+            }
 
-        menu.addItem(linkInfoItem(title: usageLabel("Week", snapshot.sevenDayUtilization), symbol: "calendar", tab: .usage))
-        if let resetIn = snapshot.sevenDayResetIn {
-            menu.addItem(linkSecondaryItem("Resets in: \(resetIn)", tab: .usage))
-        }
+            menu.addItem(linkInfoItem(title: usageLabel("Week", snapshot.sevenDayUtilization), symbol: "calendar", tab: .usage))
+            if let resetIn = snapshot.sevenDayResetIn {
+                menu.addItem(linkSecondaryItem("Resets in: \(resetIn)", tab: .usage))
+            }
 
-        if let sonnet = snapshot.sevenDaySonnetUtilization {
-            menu.addItem(linkInfoItem(title: usageLabel("Sonnet", sonnet), symbol: "cpu", tab: .usage))
+            if let sonnet = snapshot.sevenDaySonnetUtilization {
+                menu.addItem(linkInfoItem(title: usageLabel("Sonnet", sonnet), symbol: "cpu", tab: .usage))
+            }
         }
 
         // "Today" glance from the local Claude Code logs (no Keychain / network).
@@ -241,10 +264,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                                       symbol: "checkmark.seal", tab: .activity))
         }
 
-        if let error = usageService.error {
-            menu.addItem(secondaryItem(error))
-        }
-
         // When there's no Claude session yet, offer a one-tap way into Settings
         // to start the browser sign-in (otherwise the menu shows only the prompt).
         if !OAuthLoginService.shared.isSignedIn {
@@ -254,7 +273,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         // When the numbers are stale, say how old they are (the menu bar is also
         // dimmed). Only shown while stale, so it stays out of the way normally.
-        if isStale(lastUpdated: snapshot.lastUpdated) {
+        if usageService.hasLoaded, isStale(lastUpdated: snapshot.lastUpdated) {
             menu.addItem(secondaryItem("Updated \(minutesAgo(snapshot.lastUpdated))m ago"))
         }
 
@@ -279,6 +298,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(.separator())
         menu.addItem(versionItem())
+    }
+
+    /// A read-only row with a tinted leading symbol — used for the usage fetch error.
+    private func readonlyItem(_ text: String, symbol: String) -> NSMenuItem {
+        let item = NSMenuItem()
+        item.isEnabled = false
+        item.view = readonlyRowView(symbol: symbol, text: text, font: .menuFont(ofSize: 0), symbolColor: .systemOrange)
+        return item
     }
 
     /// A smaller, indented detail row (e.g. "Resets in: 2h 19m") — same black text,
@@ -767,15 +794,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Dim the entire status item (ring, text, and health dot) when the data
         // is stale, so old numbers never read as current. Applies to every render
         // path below; re-evaluated by the 60s tick even when no new data arrives.
-        button.appearsDisabled = isStale(lastUpdated: snapshot.lastUpdated)
+        let loaded = usageService.hasLoaded
+        button.appearsDisabled = !loaded || isStale(lastUpdated: snapshot.lastUpdated)
+        button.toolTip = usageService.error
 
         // Build the title from each enabled element in a fixed order:
         // 5h%, 7d%, sonnet%, 5h reset, 7d reset.
         var segments: [String] = []
 
         // [19] Each percent honors the used-vs-remaining preference.
+        // Before the first successful fetch the snapshot is a zeroed placeholder;
+        // show dashes rather than a misleading "0%".
         func pct(_ util: Int) -> String {
-            "\(displayedUsagePercent(utilization: util, showRemaining: settings.showRemaining))%"
+            guard loaded else { return "–%" }
+            return "\(displayedUsagePercent(utilization: util, showRemaining: settings.showRemaining))%"
         }
         if settings.showFiveHour {
             segments.append(pct(snapshot.fiveHourUtilization))
@@ -815,7 +847,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             elapsedFraction(resetAt: $0, windowLength: 5 * 60 * 60)
         }
         // [21] The ring is an icon, so it's also suppressed when the icon is hidden.
-        let ringImage: NSImage? = (settings.showRingIcon && settings.showMenuBarIcon)
+        // With no data yet it would draw an empty (0%) ring, so a warning glyph
+        // (fetch failed) or the plain pie (still loading) stands in for it.
+        let showRing = settings.showRingIcon && settings.showMenuBarIcon
+        if showRing && !loaded {
+            let config = NSImage.SymbolConfiguration(pointSize: 12, weight: .medium)
+            let symbol = usageService.error != nil ? "exclamationmark.triangle" : "chart.pie"
+            button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: usageService.error ?? "ClaudeGlance")?
+                .withSymbolConfiguration(config)
+            button.imagePosition = title.length > 0 ? .imageLeading : .imageOnly
+            button.attributedTitle = title
+            return
+        }
+        let ringImage: NSImage? = showRing
             ? menuBarRingImage(fiveHourPercent: snapshot.fiveHourUtilization,
                                sevenDayPercent: snapshot.sevenDayUtilization,
                                fiveHourPaceFraction: pace)
