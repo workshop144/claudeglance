@@ -1447,3 +1447,44 @@ final class MonthTokenSplitTests: XCTestCase {
         XCTAssertEqual(m.monthTotalTokens, 200)
     }
 }
+
+final class UsageErrorPresentationTests: XCTestCase {
+
+    func testRetryDelayHonorsNumericRetryAfterWithinBounds() {
+        XCTAssertEqual(usageRetryDelay(retryAfter: "120"), 120)
+        XCTAssertEqual(usageRetryDelay(retryAfter: " 300 "), 300)
+        // Clamped to 1–60 min.
+        XCTAssertEqual(usageRetryDelay(retryAfter: "5"), 60)
+        XCTAssertEqual(usageRetryDelay(retryAfter: "86400"), 3600)
+        // Missing or non-numeric (e.g. an HTTP date) falls back.
+        XCTAssertEqual(usageRetryDelay(retryAfter: nil, fallback: 900), 900)
+        XCTAssertEqual(usageRetryDelay(retryAfter: "Wed, 21 Oct 2026 07:28:00 GMT", fallback: 900), 900)
+    }
+
+    func testUsageErrorMessages() {
+        let at = Date()
+        let throttled = usageErrorMessage(for: NSError(domain: "OAuthUsage", code: 429), retryAt: at)
+        XCTAssertTrue(throttled.contains("throttling usage checks"))
+        XCTAssertTrue(throttled.contains("limits are unaffected"))
+        XCTAssertFalse(throttled.contains("Rate limited"))
+
+        let server = usageErrorMessage(
+            for: NSError(domain: "OAuthUsage", code: 503,
+                         userInfo: [NSLocalizedDescriptionKey: "HTTP 503: <html>secret body</html>"]),
+            retryAt: at)
+        XCTAssertTrue(server.contains("HTTP 503"))
+        XCTAssertFalse(server.contains("secret body"))
+
+        let offline = usageErrorMessage(for: NSError(domain: NSURLErrorDomain, code: NSURLErrorNotConnectedToInternet), retryAt: at)
+        XCTAssertTrue(offline.contains("Can't reach Anthropic"))
+
+        // A token-endpoint 429 isn't a usage-endpoint throttle.
+        let token = usageErrorMessage(
+            for: NSError(domain: "OAuthToken", code: 429, userInfo: [NSLocalizedDescriptionKey: "HTTP 429"]),
+            retryAt: at)
+        XCTAssertFalse(token.contains("throttling usage checks"))
+
+        let signIn = OAuthLoginService.notSignedInError
+        XCTAssertEqual(usageErrorMessage(for: signIn, retryAt: at), signIn.localizedDescription)
+    }
+}
