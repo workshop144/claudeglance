@@ -4,6 +4,23 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.3] — Honest errors
+
+### Fixed
+- **No more fake "0%" when usage can't be loaded.** Before the first successful
+  fetch the menu bar showed the zeroed placeholder as if it were real usage. It
+  now shows a warning glyph (or a plain pie while loading) with `–%`, dimmed, and
+  the error as a tooltip; the menu leads with the error and hides the empty rows.
+- **Clearer throttling message.** An HTTP 429 from the usage endpoint read as
+  "Rate limited", which sounded like your Claude plan limits. It now says
+  Anthropic is throttling usage checks, that your limits are unaffected, and the
+  clock time of the next retry. Server, offline and auth failures get their own
+  short messages, and raw response bodies are never shown.
+- **429 backoff honors `Retry-After`** (clamped to 1–60 min; 15 min if absent)
+  and no longer discards a perfectly good token, which forced a needless token
+  refresh on every throttled poll. Token-endpoint errors are no longer mistaken
+  for usage-endpoint throttling.
+
 ## [1.7.2] — History that sticks around
 
 ### Fixed
