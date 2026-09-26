@@ -10,7 +10,7 @@ struct BuildInfo {
     let branch: String?
     let commit: String?
 
-    static let repoURL = "https://github.com/broots144/claudeglance"
+    static let repoURL = "https://github.com/workshop144/claudeglance"
 
     static var current: BuildInfo {
         let info = Bundle.main.infoDictionary

@@ -192,10 +192,10 @@ jobs:
             version \"$VERSION\"
             sha256 \"$SHA\"
 
-            url \"https://github.com/broots144/claudeglance/releases/download/v#{version}/ClaudeGlance.dmg\"
+            url \"https://github.com/workshop144/claudeglance/releases/download/v#{version}/ClaudeGlance.dmg\"
             name \"ClaudeGlance\"
             desc \"macOS menu bar app showing Claude.ai plan usage in real time\"
-            homepage \"https://github.com/broots144/claudeglance\"
+            homepage \"https://github.com/workshop144/claudeglance\"
 
             app \"ClaudeGlance.app\"
           $CAVEATS

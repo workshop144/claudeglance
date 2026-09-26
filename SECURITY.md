@@ -10,7 +10,7 @@ fixes. Please make sure you're on the most recent version before reporting.
 **Please do not open a public issue for security problems.**
 
 Report vulnerabilities privately via GitHub's
-[**Report a vulnerability**](https://github.com/broots144/claudeglance/security/advisories/new)
+[**Report a vulnerability**](https://github.com/workshop144/claudeglance/security/advisories/new)
 button (under the repository's **Security** tab). If that's unavailable, contact
 the maintainer through their GitHub profile.
 

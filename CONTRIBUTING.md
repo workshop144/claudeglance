@@ -5,7 +5,7 @@ project and contributions are welcome — bug reports, fixes, and features alike
 
 ## Reporting bugs / requesting features
 
-Open an [issue](https://github.com/broots144/claudeglance/issues). For bugs,
+Open an [issue](https://github.com/workshop144/claudeglance/issues). For bugs,
 please include your macOS version, what you expected, what happened, and steps
 to reproduce.
 

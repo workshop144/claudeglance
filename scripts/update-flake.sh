@@ -17,7 +17,7 @@ cd "$(dirname "$0")/.."
 
 VERSION="${1:?usage: scripts/update-flake.sh <version, e.g. 1.6.5>}"
 VERSION="${VERSION#v}"
-URL="https://github.com/broots144/claudeglance/releases/download/v${VERSION}/ClaudeGlance.dmg"
+URL="https://github.com/workshop144/claudeglance/releases/download/v${VERSION}/ClaudeGlance.dmg"
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
