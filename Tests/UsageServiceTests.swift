@@ -646,7 +646,7 @@ final class FormatDollarsTests: XCTestCase {
 
 final class BuildInfoTests: XCTestCase {
 
-    private let repo = "https://github.com/broots144/claudeglance"
+    private let repo = "https://github.com/workshop144/claudeglance"
 
     func testLabelVersionOnlyWhenNoCommit() {
         XCTAssertEqual(buildInfoLabel(version: "1.1.1", branch: nil, commit: nil), "v1.1.1")

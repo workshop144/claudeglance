@@ -109,4 +109,4 @@ First release under the **ClaudeGlance** name. This project began as a fork of
 - The release build is ad-hoc signed (not notarized) — clear quarantine on
   first launch with `xattr -dr com.apple.quarantine /Applications/ClaudeGlance.app`.
 
-[1.0.0]: https://github.com/broots144/claudeglance/releases/tag/v1.0.0
+[1.0.0]: https://github.com/workshop144/claudeglance/releases/tag/v1.0.0

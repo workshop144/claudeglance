@@ -25,7 +25,7 @@
             inherit version;
 
             src = pkgs.fetchurl {
-              url = "https://github.com/broots144/claudeglance/releases/download/v${version}/ClaudeGlance.dmg";
+              url = "https://github.com/workshop144/claudeglance/releases/download/v${version}/ClaudeGlance.dmg";
               hash = dmgHash;
             };
 
@@ -51,7 +51,7 @@
 
             meta = with pkgs.lib; {
               description = "macOS menu bar app showing Claude.ai plan usage in real time";
-              homepage = "https://github.com/broots144/claudeglance";
+              homepage = "https://github.com/workshop144/claudeglance";
               license = licenses.mit;
               # Ad-hoc signed (not notarized) until an Apple Developer account lands.
               sourceProvenance = [ sourceTypes.binaryNativeCode ];

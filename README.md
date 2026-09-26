@@ -163,7 +163,7 @@ that once after installing — either way:
 (Homebrew removed its `--no-quarantine` flag, so this is a one-time manual step
 until the app is notarized.)
 
-**Or download the DMG** from the [Releases page](https://github.com/broots144/claudeglance/releases),
+**Or download the DMG** from the [Releases page](https://github.com/workshop144/claudeglance/releases),
 open it, and drag **ClaudeGlance** onto the **Applications** folder in the same
 window.
 
@@ -176,17 +176,17 @@ window.
 
 ```bash
 # Run it once without installing:
-nix run github:broots144/claudeglance
+nix run github:workshop144/claudeglance
 
 # …or add it to your profile:
-nix profile install github:broots144/claudeglance
+nix profile install github:workshop144/claudeglance
 ```
 
 For **nix-darwin** or **home-manager**, add the package to your config:
 
 ```nix
 {
-  inputs.claudeglance.url = "github:broots144/claudeglance";
+  inputs.claudeglance.url = "github:workshop144/claudeglance";
   # then, in your darwin/home modules:
   #   environment.systemPackages = [ inputs.claudeglance.packages.${system}.default ];   # nix-darwin
   #   home.packages            = [ inputs.claudeglance.packages.${system}.default ];     # home-manager
@@ -202,7 +202,7 @@ lands.
 ## Build from source
 
 ```bash
-git clone https://github.com/broots144/claudeglance
+git clone https://github.com/workshop144/claudeglance
 cd claudeglance
 xcodebuild -scheme ClaudeGlance -configuration Release build
 open ~/Library/Developer/Xcode/DerivedData/ClaudeGlance-*/Build/Products/Release/ClaudeGlance.app
