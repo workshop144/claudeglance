@@ -173,7 +173,7 @@ this is the "pure coolness" ordering you asked for.
 | 1 | ✅ **Graphical dual-ring menu-bar icon** (outer arc = 5h, inner disc = 7d, template for light/dark) — *shipped v1.1.0, monochrome; pulse/color intentionally skipped* | ac3charland, cctray, hamed, AgentLimits | ★★★ yes, the #1 gap & most-requested |
 | 2 | ✅ **Run-out ETA as a clock time** + "on pace for 100% by 3:47 PM" — *shipped v1.1.3* | CCUM, par_cc_usage, ClaudePulse | ★★★ |
 | 3 | ✅ **Pacemaker** — pace notch on the 5h ring (fill past it = ahead of pace) — *shipped v1.2.0* | AgentLimits, ac3 (`isAhead`), CCUM #216 | ★★★ |
-| 4 | ✅ **`extra_usage` dollars** — `$X / $Y (Z%)` overage line — *shipped v1.1.2* | cfranci, elliot/ClaudeWatch | ★★★ |
+| 4 | ✅ **`extra_usage` dollars** — `$X / $Y (Z%)` overage line — *shipped v1.1.2* | cfranci, ClaudeWatch | ★★★ |
 | 5 | ✅ **Burn rate** (as %/hr, not tokens/min) — *shipped v1.1.3* | ccowl, cctray, Sapeet, CCUM | ★★★ |
 | 6 | **Notarize the app** + drop the `xattr` step | saqoosha, hamed, ClaudeMeter | ★★★ table-stakes |
 | 7 | ✅ **Sparklines + utilization history chart** — in-menu trend (1.3.4) + full line chart in the v1.4 Usage tab | cctray | ★★★ |
@@ -196,9 +196,9 @@ this is the "pure coolness" ordering you asked for.
 | 24 | **Multi-account** + "headroom" score (`100−max(5h%,7d%)`) + sortable table | rjmon, dsado, hamed | ★ scope-expanding |
 | 25 | **WidgetKit / Notification Center widgets** (donut gauges + heatmap) — *deferred to v1.7: sandboxed extension needs an App Group + real code signing* | AgentLimits, theangeloumali | ★ |
 | 26 | ✅ **Shareable "Wrapped" PNG card** — *shipped v1.6.3* | cc-wrapped | ★ fun/viral |
-| 27 | ✅ **Bundled Claude Code statusline script** (reuse our data in the CLI) — *shipped v1.6.0* | AgentLimits, elliot | ★ |
+| 27 | ✅ **Bundled Claude Code statusline script** (reuse our data in the CLI) — *shipped v1.6.0* | AgentLimits | ★ |
 | 28 | ✅ **Plan-recommendation nudge** ("often near your limits") — plan-agnostic — *shipped v1.6.4* | haasonsaas | ★ |
-| 29 | ✅ **Service-status uptime history bar** — 30-day menu bar — *shipped v1.6.2* | elliot/ClaudeWatch | ★ |
+| 29 | ✅ **Service-status uptime history bar** — 30-day menu bar — *shipped v1.6.2* | ClaudeWatch | ★ |
 | 30 | ✅ **Nix / home-manager** formula — *shipped v1.6.1* | hamed | ★ |
 | 31 | Copy-usage-to-clipboard | cctray, joachim | ½ |
 | 32 | Per-session status + approve/deny prompts + jump-to-terminal | wangsen, TwilightVoyager, theangeloumali | different product → decline |
