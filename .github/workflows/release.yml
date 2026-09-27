@@ -5,12 +5,18 @@ on:
     tags:
       - 'v*'
 
-permissions:
-  contents: write
+permissions: {}
 
 jobs:
   release:
     runs-on: macos-15
+    permissions:
+      contents: write
+    # The tap job gets the DMG hash from here, computed before any third-party
+    # action runs, instead of hashing a workspace file that action could replace.
+    outputs:
+      dmg_sha256: ${{ steps.dmg.outputs.sha256 }}
+      signed: ${{ steps.mode.outputs.signed }}
 
     # Secrets can't be referenced directly in `if:`, so fold the "are the Apple
     # Developer secrets configured?" check into a job-level env var that every
@@ -20,16 +26,16 @@ jobs:
     # with no further changes.
     env:
       HAS_SIGNING: ${{ secrets.APPLE_CERTIFICATE_1 != '' && secrets.APPLE_ID != '' && secrets.APPLE_TEAM_ID != '' && secrets.APPLE_APP_PASSWORD != '' }}
-      # When the cross-repo Homebrew token is absent, skip the cask update with a
-      # visible warning instead of silently failing (the old curl-based step
-      # returned 0 even on a 401, so a missing token looked like success).
-      HAS_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN != '' }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Report signing mode
+        id: mode
         run: |
+          echo "signed=$HAS_SIGNING" >> "$GITHUB_OUTPUT"
           if [ "$HAS_SIGNING" = "true" ]; then
             echo "::notice::Apple signing secrets present — building a NOTARIZED release."
           else
@@ -130,10 +136,12 @@ jobs:
       # Common path (both modes)
       # ---------------------------------------------------------------------
       - name: Build DMG
+        id: dmg
         run: |
           VOL_NAME="ClaudeGlance" scripts/make-dmg.sh \
             build/export/ClaudeGlance.app \
             ClaudeGlance.dmg
+          echo "sha256=$(shasum -a 256 ClaudeGlance.dmg | awk '{print $1}')" >> "$GITHUB_OUTPUT"
 
       - name: Compose release notes
         run: |
@@ -151,7 +159,7 @@ jobs:
           fi
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           # The .zip only exists on the signed (notarized) path; softprops skips
           # unmatched files by default, so listing it here is safe in both modes.
@@ -161,16 +169,32 @@ jobs:
           body: ${{ env.RELEASE_BODY }}
           generate_release_notes: true
 
+  # A separate job so the cross-repo tap token never shares a runner, PATH or
+  # environment with the build or with a third-party action.
+  homebrew-tap:
+    needs: release
+    runs-on: macos-15
+    permissions: {}
+    env:
+      HAS_SIGNING: ${{ needs.release.outputs.signed }}
+      # When the cross-repo Homebrew token is absent, skip the cask update with a
+      # visible warning instead of silently failing (the old curl-based step
+      # returned 0 even on a 401, so a missing token looked like success).
+      HAS_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN != '' }}
+    steps:
       - name: Update Homebrew tap
         if: env.HAS_TAP_TOKEN == 'true'
         env:
           # Authenticate gh as the cross-repo token so it can write to the tap.
           GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           TAG: ${{ github.ref_name }}
+          SHA: ${{ needs.release.outputs.dmg_sha256 }}
         run: |
           set -euo pipefail
           VERSION=${TAG#v}
-          SHA=$(shasum -a 256 ClaudeGlance.dmg | awk '{print $1}')
+          # The tag is interpolated into Ruby below: accept plain versions only.
+          [[ "$VERSION" =~ ^[0-9]+(\.[0-9]+){1,3}$ ]] || { echo "::error::tag $TAG is not a plain version"; exit 1; }
+          [[ "$SHA" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::missing DMG sha256 from the release job"; exit 1; }
 
           # Unsigned builds are quarantined by Gatekeeper, so the cask carries a
           # caveat telling users how to clear it. Once the build is notarized this

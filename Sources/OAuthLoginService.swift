@@ -163,18 +163,22 @@ private final class ContinuationLatch<T>: @unchecked Sendable {
 }
 
 /// One-shot loopback HTTP listener for the OAuth redirect. Binds 127.0.0.1 on
-/// an ephemeral port, answers exactly one `/callback` hit, then stops. Anything
-/// else it sees gets a 404 and the listener stays up.
+/// an ephemeral port, answers exactly one `/callback` hit carrying the state of
+/// the sign-in in progress, then stops. Anything else it sees (other paths, or a
+/// callback with a missing or wrong state, e.g. from another local process) gets
+/// an error page and the listener stays up for the real browser redirect.
 final class OAuthCallbackServer {
     private var listener: NWListener?
     private let queue = DispatchQueue(label: "io.github.broots144.ClaudeGlance.oauth-callback")
     private var handled = false
+    private var expectedState = ""
     private var onCallback: ((String, String?) -> Void)?
 
     /// Start listening; resolves with the bound port once the socket is ready.
-    func start(onCallback: @escaping (String, String?) -> Void) async throws -> UInt16 {
+    func start(expectedState: String, onCallback: @escaping (String, String?) -> Void) async throws -> UInt16 {
         stop()
         handled = false
+        self.expectedState = expectedState
         self.onCallback = onCallback
 
         let params = NWParameters.tcp
@@ -217,14 +221,18 @@ final class OAuthCallbackServer {
             let text = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
             let firstLine = text.split(separator: "\r\n", maxSplits: 1, omittingEmptySubsequences: false)
                 .first.map(String.init) ?? text
-            if let parsed = parseLoopbackRequestLine(firstLine), !self.handled {
-                self.handled = true
-                self.respond(conn, status: "200 OK", html: loopbackResponseHTML(success: true))
-                let cb = self.onCallback
-                DispatchQueue.main.async { cb?(parsed.code, parsed.state) }
-            } else {
+            guard let parsed = parseLoopbackRequestLine(firstLine) else {
                 self.respond(conn, status: "404 Not Found", html: loopbackResponseHTML(success: false))
+                return
             }
+            guard !self.handled, !self.expectedState.isEmpty, parsed.state == self.expectedState else {
+                self.respond(conn, status: "400 Bad Request", html: loopbackResponseHTML(success: false))
+                return
+            }
+            self.handled = true
+            self.respond(conn, status: "200 OK", html: loopbackResponseHTML(success: true))
+            let cb = self.onCallback
+            DispatchQueue.main.async { cb?(parsed.code, parsed.state) }
         }
     }
 
@@ -324,10 +332,10 @@ final class OAuthLoginService: ObservableObject {
 
         Task { @MainActor in
             do {
-                let port = try await callbackServer.start { [weak self] code, returnedState in
+                let port = try await callbackServer.start(expectedState: stateValue) { [weak self] code, returnedState in
                     guard let self else { return }
                     Task { @MainActor in
-                        await self.completeLogin(code: code, returnedState: returnedState)
+                        await self.completeLogin(code: code, returnedState: returnedState, requireState: true)
                     }
                 }
                 let redirect = OAuthConfig.loopbackRedirectURI(port: port)
@@ -382,21 +390,23 @@ final class OAuthLoginService: ObservableObject {
     }
 
     /// Step 2 (shared): verify state, exchange the code, persist, and refresh usage.
+    /// The loopback redirect must carry the state we sent (`requireState`); a
+    /// pasted bare code, typed by the user themselves, may omit it.
     @MainActor
-    func completeLogin(code: String, returnedState: String?) async {
+    func completeLogin(code: String, returnedState: String?, requireState: Bool = false) async {
         callbackServer.stop()
-        guard let verifier = pendingVerifier else {
+        guard let verifier = pendingVerifier, let expected = pendingState else {
             state = .error("Start sign-in first, then paste the code.")
             return
         }
-        // If a state came back, it must match the one we sent (CSRF guard).
-        if let returned = returnedState, let expected = pendingState, returned != expected {
+        // CSRF guard: a state that came back (or is required) must be the one we sent.
+        if (requireState || returnedState != nil) && returnedState != expected {
             state = .error("Sign-in state mismatch — please try again.")
             return
         }
         do {
             let creds = try await exchangeCode(code: code,
-                                               state: returnedState ?? pendingState ?? "",
+                                               state: expected,
                                                verifier: verifier,
                                                redirectURI: pendingRedirectURI)
             try saveCredentials(creds)
@@ -539,31 +549,31 @@ final class OAuthLoginService: ObservableObject {
         return try? JSONDecoder().decode(StoredCredentials.self, from: data)
     }
 
-    /// Persist credentials, updating the existing item in place when present so
-    /// the user-granted ACL is preserved across refreshes (delete+re-add wipes it).
+    /// Persist credentials in a fresh item this app creates. An item's access list
+    /// belongs to whoever created it, so updating an existing match in place would
+    /// write our tokens into an item another app could have planted under our
+    /// service name with an access list that lets it read them back. Delete and
+    /// re-add instead; if the old item can't be removed, save nothing.
     private func saveCredentials(_ creds: StoredCredentials) throws {
         let data = try JSONEncoder().encode(creds)
         let match: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: OAuthConfig.keychainService
         ]
-        let update: [String: Any] = [
-            kSecValueData as String: data,
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock
-        ]
-        let status = SecItemUpdate(match as CFDictionary, update as CFDictionary)
-        if status == errSecItemNotFound {
-            var add = match
-            add[kSecValueData as String] = data
-            add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
-            let addStatus = SecItemAdd(add as CFDictionary, nil)
-            guard addStatus == errSecSuccess else {
-                throw NSError(domain: "Keychain", code: Int(addStatus),
-                              userInfo: [NSLocalizedDescriptionKey: "Couldn't save credentials (status \(addStatus))."])
-            }
-        } else if status != errSecSuccess {
-            throw NSError(domain: "Keychain", code: Int(status),
-                          userInfo: [NSLocalizedDescriptionKey: "Couldn't update credentials (status \(status))."])
+        let deleteStatus = SecItemDelete(match as CFDictionary)
+        guard deleteStatus == errSecSuccess || deleteStatus == errSecItemNotFound else {
+            throw NSError(domain: "Keychain", code: Int(deleteStatus),
+                          userInfo: [NSLocalizedDescriptionKey: "Couldn't replace the stored credentials (status \(deleteStatus))."])
+        }
+        var add = match
+        add[kSecValueData as String] = data
+        add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+        // errSecDuplicateItem here means something re-created the item between the
+        // delete and the add: fail rather than fall back to updating it.
+        let addStatus = SecItemAdd(add as CFDictionary, nil)
+        guard addStatus == errSecSuccess else {
+            throw NSError(domain: "Keychain", code: Int(addStatus),
+                          userInfo: [NSLocalizedDescriptionKey: "Couldn't save credentials (status \(addStatus))."])
         }
     }
 

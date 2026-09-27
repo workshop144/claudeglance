@@ -4,6 +4,24 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+- **Sign-in only accepts its own browser redirect.** The loopback listener now
+  answers only a callback carrying the state of the sign-in in progress. A
+  request with a missing or wrong state (for example from another local process
+  racing the browser) gets an error page and no longer uses up the one-shot
+  listener, and the automatic flow rejects a callback without state.
+- **Tokens always go into a Keychain item ClaudeGlance created.** Saving used to
+  update any existing item under our service name in place, keeping whatever
+  access list it had, so another app could pre-create that item and read the
+  tokens back. Saving now deletes and re-adds the item, and saves nothing if the
+  old item can't be removed.
+- **Release pipeline hardening.** Every action is pinned to a full commit SHA
+  (Dependabot keeps them current), workflow tokens are least-privilege per job,
+  and the Homebrew tap update runs in its own job that receives the DMG hash
+  computed before any third-party action and only accepts plain version tags.
+
 ## [1.7.3] — Honest errors
 
 ### Fixed
