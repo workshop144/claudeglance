@@ -177,16 +177,15 @@ jobs:
     permissions: {}
     env:
       HAS_SIGNING: ${{ needs.release.outputs.signed }}
-      # When the cross-repo Homebrew token is absent, skip the cask update with a
-      # visible warning instead of silently failing (the old curl-based step
-      # returned 0 even on a 401, so a missing token looked like success).
-      HAS_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN != '' }}
+      # The tap is written with a deploy key that can push to broots144/homebrew-tap
+      # and nothing else (a token held in this org had no write access there). When
+      # the key is absent, skip the cask update with a visible warning.
+      HAS_TAP_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY != '' }}
     steps:
       - name: Update Homebrew tap
-        if: env.HAS_TAP_TOKEN == 'true'
+        if: env.HAS_TAP_KEY == 'true'
         env:
-          # Authenticate gh as the cross-repo token so it can write to the tap.
-          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          TAP_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
           TAG: ${{ github.ref_name }}
           SHA: ${{ needs.release.outputs.dmg_sha256 }}
         run: |
@@ -230,15 +229,21 @@ jobs:
             ]
           end"
 
-          # gh exits non-zero on any HTTP error (bad/expired token, lost access),
-          # so a broken tap update now fails the release loudly instead of silently.
-          FILE_SHA=$(gh api repos/broots144/homebrew-tap/contents/Casks/claudeglance.rb --jq .sha)
-          gh api -X PUT repos/broots144/homebrew-tap/contents/Casks/claudeglance.rb \
-            -f message="Update claudeglance to $VERSION" \
-            -f content="$(printf '%s' "$FORMULA" | base64)" \
-            -f sha="$FILE_SHA"
+          # SSH with the deploy key; github.com's published ed25519 host key is pinned
+          # (api.github.com/meta), so no trust-on-first-use.
+          KEYDIR=$(mktemp -d); trap 'rm -rf "$KEYDIR"' EXIT
+          printf '%s\n' "$TAP_KEY" > "$KEYDIR/id"; chmod 600 "$KEYDIR/id"
+          echo 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' > "$KEYDIR/known_hosts"
+          export GIT_SSH_COMMAND="ssh -i $KEYDIR/id -o IdentitiesOnly=yes -o UserKnownHostsFile=$KEYDIR/known_hosts -o StrictHostKeyChecking=yes"
+          git clone -q --depth 1 git@github.com:broots144/homebrew-tap.git "$KEYDIR/tap"
+          cd "$KEYDIR/tap"
+          printf '%s\n' "$FORMULA" > Casks/claudeglance.rb
+          if git diff --quiet; then echo "::notice::Homebrew cask already at $VERSION."; exit 0; fi
+          git -c user.name="Mr. Broots" -c user.email="3696657+broots144@users.noreply.github.com" \
+            commit -q -am "Update claudeglance to $VERSION"
+          git push -q origin HEAD:main
           echo "::notice::Homebrew cask updated to $VERSION."
 
       - name: Note skipped Homebrew update
-        if: env.HAS_TAP_TOKEN != 'true'
-        run: echo "::warning::HOMEBREW_TAP_TOKEN secret not set — the GitHub release shipped, but the Homebrew cask was NOT updated. Add the secret to automate it."
+        if: env.HAS_TAP_KEY != 'true'
+        run: echo "::warning::HOMEBREW_TAP_DEPLOY_KEY secret not set — the GitHub release shipped, but the Homebrew cask was NOT updated. Add a write deploy key on broots144/homebrew-tap and its private half as this secret."
