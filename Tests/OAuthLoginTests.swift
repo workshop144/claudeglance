@@ -87,7 +87,7 @@ final class LoopbackCallbackTests: XCTestCase {
         let server = OAuthCallbackServer()
         let got = expectation(description: "callback delivered")
         var received: (String, String?)?
-        let port = try await server.start { code, state in
+        let port = try await server.start(expectedState: "ST1") { code, state in
             received = (code, state)
             got.fulfill()
         }
@@ -101,6 +101,37 @@ final class LoopbackCallbackTests: XCTestCase {
         await fulfillment(of: [got], timeout: 2)
         XCTAssertEqual(received?.0, "CODE1")
         XCTAssertEqual(received?.1, "ST1")
+        server.stop()
+    }
+}
+
+extension LoopbackCallbackTests {
+
+    /// Another local process racing the browser: a callback with no state or the
+    /// wrong state is refused and must not consume the one-shot listener.
+    func testServerRefusesMissingOrWrongStateAndStaysUp() async throws {
+        let server = OAuthCallbackServer()
+        let got = expectation(description: "only the matching callback is delivered")
+        var received: [(String, String?)] = []
+        let port = try await server.start(expectedState: "ST1") { code, state in
+            received.append((code, state))
+            got.fulfill()
+        }
+        func status(_ query: String) async throws -> Int? {
+            let url = URL(string: "http://127.0.0.1:\(port)/callback?\(query)")!
+            let (_, response) = try await URLSession.shared.data(from: url)
+            return (response as? HTTPURLResponse)?.statusCode
+        }
+        let noState = try await status("code=EVIL1")
+        XCTAssertEqual(noState, 400)
+        let wrongState = try await status("code=EVIL2&state=WRONG")
+        XCTAssertEqual(wrongState, 400)
+        let real = try await status("code=REAL&state=ST1")
+        XCTAssertEqual(real, 200)
+
+        await fulfillment(of: [got], timeout: 2)
+        XCTAssertEqual(received.count, 1)
+        XCTAssertEqual(received.first?.0, "REAL")
         server.stop()
     }
 }

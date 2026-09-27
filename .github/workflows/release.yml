@@ -5,12 +5,18 @@ on:
     tags:
       - 'v*'
 
-permissions:
-  contents: write
+permissions: {}
 
 jobs:
   release:
     runs-on: macos-15
+    permissions:
+      contents: write
+    # The tap job gets the DMG hash from here, computed before any third-party
+    # action runs, instead of hashing a workspace file that action could replace.
+    outputs:
+      dmg_sha256: ${{ steps.dmg.outputs.sha256 }}
+      signed: ${{ steps.mode.outputs.signed }}
 
     # Secrets can't be referenced directly in `if:`, so fold the "are the Apple
     # Developer secrets configured?" check into a job-level env var that every
@@ -20,16 +26,16 @@ jobs:
     # with no further changes.
     env:
       HAS_SIGNING: ${{ secrets.APPLE_CERTIFICATE_1 != '' && secrets.APPLE_ID != '' && secrets.APPLE_TEAM_ID != '' && secrets.APPLE_APP_PASSWORD != '' }}
-      # When the cross-repo Homebrew token is absent, skip the cask update with a
-      # visible warning instead of silently failing (the old curl-based step
-      # returned 0 even on a 401, so a missing token looked like success).
-      HAS_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN != '' }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Report signing mode
+        id: mode
         run: |
+          echo "signed=$HAS_SIGNING" >> "$GITHUB_OUTPUT"
           if [ "$HAS_SIGNING" = "true" ]; then
             echo "::notice::Apple signing secrets present — building a NOTARIZED release."
           else
@@ -130,10 +136,12 @@ jobs:
       # Common path (both modes)
       # ---------------------------------------------------------------------
       - name: Build DMG
+        id: dmg
         run: |
           VOL_NAME="ClaudeGlance" scripts/make-dmg.sh \
             build/export/ClaudeGlance.app \
             ClaudeGlance.dmg
+          echo "sha256=$(shasum -a 256 ClaudeGlance.dmg | awk '{print $1}')" >> "$GITHUB_OUTPUT"
 
       - name: Compose release notes
         run: |
@@ -151,7 +159,7 @@ jobs:
           fi
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           # The .zip only exists on the signed (notarized) path; softprops skips
           # unmatched files by default, so listing it here is safe in both modes.
@@ -161,16 +169,31 @@ jobs:
           body: ${{ env.RELEASE_BODY }}
           generate_release_notes: true
 
+  # A separate job so the cross-repo tap token never shares a runner, PATH or
+  # environment with the build or with a third-party action.
+  homebrew-tap:
+    needs: release
+    runs-on: macos-15
+    permissions: {}
+    env:
+      HAS_SIGNING: ${{ needs.release.outputs.signed }}
+      # The tap is written with a deploy key that can push to broots144/homebrew-tap
+      # and nothing else (a token held in this org had no write access there). When
+      # the key is absent, skip the cask update with a visible warning.
+      HAS_TAP_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY != '' }}
+    steps:
       - name: Update Homebrew tap
-        if: env.HAS_TAP_TOKEN == 'true'
+        if: env.HAS_TAP_KEY == 'true'
         env:
-          # Authenticate gh as the cross-repo token so it can write to the tap.
-          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          TAP_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
           TAG: ${{ github.ref_name }}
+          SHA: ${{ needs.release.outputs.dmg_sha256 }}
         run: |
           set -euo pipefail
           VERSION=${TAG#v}
-          SHA=$(shasum -a 256 ClaudeGlance.dmg | awk '{print $1}')
+          # The tag is interpolated into Ruby below: accept plain versions only.
+          [[ "$VERSION" =~ ^[0-9]+(\.[0-9]+){1,3}$ ]] || { echo "::error::tag $TAG is not a plain version"; exit 1; }
+          [[ "$SHA" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::missing DMG sha256 from the release job"; exit 1; }
 
           # Unsigned builds are quarantined by Gatekeeper, so the cask carries a
           # caveat telling users how to clear it. Once the build is notarized this
@@ -206,15 +229,21 @@ jobs:
             ]
           end"
 
-          # gh exits non-zero on any HTTP error (bad/expired token, lost access),
-          # so a broken tap update now fails the release loudly instead of silently.
-          FILE_SHA=$(gh api repos/broots144/homebrew-tap/contents/Casks/claudeglance.rb --jq .sha)
-          gh api -X PUT repos/broots144/homebrew-tap/contents/Casks/claudeglance.rb \
-            -f message="Update claudeglance to $VERSION" \
-            -f content="$(printf '%s' "$FORMULA" | base64)" \
-            -f sha="$FILE_SHA"
+          # SSH with the deploy key; github.com's published ed25519 host key is pinned
+          # (api.github.com/meta), so no trust-on-first-use.
+          KEYDIR=$(mktemp -d); trap 'rm -rf "$KEYDIR"' EXIT
+          printf '%s\n' "$TAP_KEY" > "$KEYDIR/id"; chmod 600 "$KEYDIR/id"
+          echo 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' > "$KEYDIR/known_hosts"
+          export GIT_SSH_COMMAND="ssh -i $KEYDIR/id -o IdentitiesOnly=yes -o UserKnownHostsFile=$KEYDIR/known_hosts -o StrictHostKeyChecking=yes"
+          git clone -q --depth 1 git@github.com:broots144/homebrew-tap.git "$KEYDIR/tap"
+          cd "$KEYDIR/tap"
+          printf '%s\n' "$FORMULA" > Casks/claudeglance.rb
+          if git diff --quiet; then echo "::notice::Homebrew cask already at $VERSION."; exit 0; fi
+          git -c user.name="Mr. Broots" -c user.email="3696657+broots144@users.noreply.github.com" \
+            commit -q -am "Update claudeglance to $VERSION"
+          git push -q origin HEAD:main
           echo "::notice::Homebrew cask updated to $VERSION."
 
       - name: Note skipped Homebrew update
-        if: env.HAS_TAP_TOKEN != 'true'
-        run: echo "::warning::HOMEBREW_TAP_TOKEN secret not set — the GitHub release shipped, but the Homebrew cask was NOT updated. Add the secret to automate it."
+        if: env.HAS_TAP_KEY != 'true'
+        run: echo "::warning::HOMEBREW_TAP_DEPLOY_KEY secret not set — the GitHub release shipped, but the Homebrew cask was NOT updated. Add a write deploy key on broots144/homebrew-tap and its private half as this secret."
