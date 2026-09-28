@@ -135,6 +135,9 @@ jobs:
       # ---------------------------------------------------------------------
       # Common path (both modes)
       # ---------------------------------------------------------------------
+      - name: Check the hardened runtime
+        run: scripts/check-hardened-runtime.sh build/export/ClaudeGlance.app
+
       - name: Build DMG
         id: dmg
         run: |

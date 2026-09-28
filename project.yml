@@ -8,7 +8,7 @@ options:
 
 settings:
   base:
-    MARKETING_VERSION: "1.7.4"
+    MARKETING_VERSION: "1.7.5"
     SWIFT_VERSION: "5.9"
     # Build-time git provenance, surfaced in the Settings footer so it's obvious
     # which build is running while testing. Empty by default (plain Xcode ⌘R
@@ -20,6 +20,10 @@ settings:
     CODE_SIGN_IDENTITY: "-"
     CODE_SIGN_STYLE: Manual
     DEVELOPMENT_TEAM: ""
+    # Hardened runtime on every signed build, ad-hoc included: without it another
+    # process running as the user could start this signed binary with
+    # DYLD_INSERT_LIBRARIES and read the OAuth tokens its keychain item trusts it with.
+    ENABLE_HARDENED_RUNTIME: YES
   configs:
     # Pin both architectures explicitly so release builds stay universal
     # (Intel + Apple Silicon) even after a future Xcode drops x86_64 from
