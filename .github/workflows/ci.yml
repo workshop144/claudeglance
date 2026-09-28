@@ -43,6 +43,18 @@ jobs:
             CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
             -quiet
 
+      - name: Release build is signed with the hardened runtime
+        run: |
+          set -euo pipefail
+          xcodebuild build \
+            -project ClaudeGlance.xcodeproj \
+            -scheme ClaudeGlance \
+            -configuration Release \
+            -derivedDataPath build/dd \
+            CODE_SIGN_IDENTITY="-" CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM="" \
+            -quiet
+          scripts/check-hardened-runtime.sh build/dd/Build/Products/Release/ClaudeGlance.app
+
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
