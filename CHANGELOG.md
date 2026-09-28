@@ -4,6 +4,17 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.5] — Hardened runtime
+
+### Security
+- **Builds are signed with the hardened runtime.** The app is ad-hoc signed and
+  its Keychain item trusts that signature, so without the runtime flag another
+  program running as you could start the unmodified app with an injected library
+  (`DYLD_INSERT_LIBRARIES`) and read the stored tokens without a prompt. Release
+  and CI builds now fail if the flag is missing
+  (`scripts/check-hardened-runtime.sh`). After updating, macOS may ask once for
+  Keychain access, or you may need to sign in again.
+
 ## [1.7.4] — Sign-in hardening
 
 ### Security
