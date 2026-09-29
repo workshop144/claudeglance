@@ -1,4 +1,5 @@
 import XCTest
+import Security
 @testable import ClaudeGlance
 
 // MARK: - PKCE
@@ -212,5 +213,26 @@ final class OAuthCredentialsTests: XCTestCase {
         XCTAssertEqual(decoded.accessToken, "a")
         XCTAssertEqual(decoded.refreshToken, "r")
         XCTAssertEqual(decoded.expiresAtDate, Date(timeIntervalSince1970: 1_700_000_000))
+    }
+}
+
+final class LaunchKeychainActionTests: XCTestCase {
+    func testReadableItemIsRecreatedUnderThisBuild() {
+        // A pre-hardened build's item must not survive launch with its old access list.
+        XCTAssertEqual(launchKeychainAction(status: errSecSuccess, decoded: true), .recreate)
+    }
+
+    func testUndecodableItemIsDeleted() {
+        XCTAssertEqual(launchKeychainAction(status: errSecSuccess, decoded: false), .deleteStale)
+    }
+
+    func testRefusedItemIsDeleted() {
+        XCTAssertEqual(launchKeychainAction(status: errSecAuthFailed, decoded: false), .deleteStale)
+        XCTAssertEqual(launchKeychainAction(status: errSecUserCanceled, decoded: false), .deleteStale)
+    }
+
+    func testMissingOrLockedItemIsLeftAlone() {
+        XCTAssertEqual(launchKeychainAction(status: errSecItemNotFound, decoded: false), .keep)
+        XCTAssertEqual(launchKeychainAction(status: errSecInteractionNotAllowed, decoded: false), .keep)
     }
 }

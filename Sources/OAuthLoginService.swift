@@ -252,6 +252,27 @@ func shouldRefreshToken(expiresAt: Date, now: Date = Date(), leeway: TimeInterva
     expiresAt.timeIntervalSince(now) <= leeway
 }
 
+/// What to do with the stored credentials item at launch.
+enum LaunchKeychainAction: Equatable {
+    case recreate     // readable: delete and re-add it so only this build is trusted
+    case deleteStale  // present but refused or unreadable: remove it, sign in again
+    case keep         // absent, or the keychain is locked right now: leave it alone
+}
+
+/// Decide the launch-time action from the read status and whether the data decoded.
+func launchKeychainAction(status: OSStatus, decoded: Bool) -> LaunchKeychainAction {
+    switch status {
+    case errSecSuccess:
+        return decoded ? .recreate : .deleteStale
+    case errSecAuthFailed, errSecUserCanceled:
+        return .deleteStale
+    default:
+        // errSecItemNotFound, or errSecInteractionNotAllowed while the keychain is
+        // still locked at login: nothing to do (a later read or login handles it).
+        return .keep
+    }
+}
+
 // MARK: - Stored credentials & token response
 
 /// What we persist in our own Keychain item. `expiresAt` is epoch seconds.
@@ -308,9 +329,42 @@ final class OAuthLoginService: ObservableObject {
     private var needsRefresh = false
 
     private init() {
-        // Reflect any stored session on launch so the UI starts in the right state.
-        if let creds = loadCredentials() {
+        // Reflect any stored session on launch so the UI starts in the right state,
+        // after re-creating the item under this build (see reclaimStoredCredentials).
+        if let creds = reclaimStoredCredentials() {
             state = .signedIn(creds.expiresAtDate)
+        }
+    }
+
+    /// Launch-time Keychain migration. An item's access list trusts the build that
+    /// created it, and approving the post-update prompt adds the new build without
+    /// removing the old one. An item written by a build without the hardened runtime
+    /// (1.7.4 and earlier) would therefore stay readable by that old binary started
+    /// with an injected library until the next login or token refresh. Re-creating
+    /// the item on every launch drops those stale entries right after an update; a
+    /// marker would not do, since the old trusted build could forge it. An item we
+    /// may no longer read (access denied at the prompt, or undecodable) is deleted
+    /// so it doesn't linger; the user signs in again.
+    private func reclaimStoredCredentials() -> StoredCredentials? {
+        // Unit tests run inside a host copy of the app: never rewrite or delete a
+        // developer's real sign-in from a test build.
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
+            return loadCredentials()
+        }
+        let (status, data) = copyCredentialsData()
+        let decoded = data.flatMap { try? JSONDecoder().decode(StoredCredentials.self, from: $0) }
+        switch launchKeychainAction(status: status, decoded: decoded != nil) {
+        case .recreate:
+            guard let creds = decoded else { return nil }
+            // A failed re-create saves nothing and leaves the user signed out rather
+            // than keep tokens in an item we couldn't take back.
+            do { try saveCredentials(creds) } catch { return nil }
+            return creds
+        case .deleteStale:
+            deleteCredentials()
+            return nil
+        case .keep:
+            return nil
         }
     }
 
@@ -537,6 +591,12 @@ final class OAuthLoginService: ObservableObject {
     // MARK: Keychain (our own item — no cross-app prompt)
 
     func loadCredentials() -> StoredCredentials? {
+        let (status, data) = copyCredentialsData()
+        guard status == errSecSuccess, let data else { return nil }
+        return try? JSONDecoder().decode(StoredCredentials.self, from: data)
+    }
+
+    private func copyCredentialsData() -> (OSStatus, Data?) {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: OAuthConfig.keychainService,
@@ -544,9 +604,8 @@ final class OAuthLoginService: ObservableObject {
             kSecMatchLimit as String: kSecMatchLimitOne
         ]
         var result: AnyObject?
-        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
-              let data = result as? Data else { return nil }
-        return try? JSONDecoder().decode(StoredCredentials.self, from: data)
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        return (status, result as? Data)
     }
 
     /// Persist credentials in a fresh item this app creates. An item's access list

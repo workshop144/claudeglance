@@ -8,10 +8,10 @@
       # Tracks the latest *public* release. Bump both together when a new version
       # ships — scripts/update-flake.sh does it from the released DMG. (ClaudeGlance
       # versions on `develop` between public releases; this points at the release.)
-      version = "1.7.5";
+      version = "1.7.6";
       # SRI hash of that release's ClaudeGlance.dmg — the same artifact the Homebrew
-      # cask pins (hex 56e8ea8d…). Verify with: scripts/update-flake.sh <version>.
-      dmgHash = "sha256-awxhpn0jLgfP98Vy6Z3L8qdFrBbOYdGJAmkG7aMFg6A=";
+      # cask pins (hex c5d7f07e…). Verify with: scripts/update-flake.sh <version>.
+      dmgHash = "sha256-xdfwfjfX+IlR//fkHVfDPo66C3Vg83jTHhuBqdm3Rts=";
 
       # macOS only — this is a native .app bundle (no Linux build).
       systems = [ "aarch64-darwin" "x86_64-darwin" ];

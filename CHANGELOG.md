@@ -4,6 +4,18 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.6] — Keychain item re-created on launch
+
+### Security
+- **The stored sign-in is re-created under the running build at every launch.**
+  An item written by 1.7.4 or earlier kept trusting that non-hardened build
+  after an update (approving the update prompt adds the new build without
+  removing the old one), so the old binary started with an injected library
+  could still read the tokens until the next sign-in or token refresh. Launch
+  now deletes and re-adds the item, so only the current build is trusted. An
+  item the app is refused access to, or can't decode, is deleted and you sign
+  in again.
+
 ## [1.7.5] — Hardened runtime
 
 ### Security
