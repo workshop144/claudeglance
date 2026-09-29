@@ -4,6 +4,16 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.7] — No more spurious reset notifications
+
+### Fixed
+- **"5-hour session reset" no longer fires while the window is still open.**
+  The usage API returns the reset time with a different fraction of a second
+  on each request, and any later value counted as a new window, so with usage
+  above the warning threshold the notification repeated every few polls. A
+  reset now needs the boundary to move by at least an hour. The weekly reset
+  notification had the same bug and gets the same fix.
+
 ## [1.7.6] — Keychain item re-created on launch
 
 ### Security
