@@ -151,10 +151,16 @@ func minutesAgo(_ date: Date, from now: Date = Date()) -> Int {
 /// reset = the reset time advanced to a new, later boundary; we only ping if you
 /// were actually constrained beforehand (≥ threshold), which keeps it from firing
 /// every window regardless of usage. Returns false on first run (no prior reset).
+///
+/// The API's `resets_at` carries random sub-second jitter on every call (the
+/// same boundary comes back as `…:00.68`, then `…:00.93`), so a plain `>` fired
+/// on roughly every other poll. A real rollover moves the boundary by hours
+/// (5h window) or days (7d), so require at least `minimumAdvance` of movement.
 func shouldNotifyReset(previousResetAt: Date?, newResetAt: Date?,
-                       previousUtilization: Int, threshold: Int) -> Bool {
+                       previousUtilization: Int, threshold: Int,
+                       minimumAdvance: TimeInterval = 60 * 60) -> Bool {
     guard let previousResetAt, let newResetAt else { return false }
-    guard newResetAt > previousResetAt else { return false }
+    guard newResetAt.timeIntervalSince(previousResetAt) >= minimumAdvance else { return false }
     return previousUtilization >= threshold
 }
 

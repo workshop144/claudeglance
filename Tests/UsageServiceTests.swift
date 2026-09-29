@@ -510,6 +510,17 @@ final class ShouldNotifyResetTests: XCTestCase {
                                          previousUtilization: 95, threshold: threshold))
     }
 
+    func testSubSecondJitterDoesNotNotify() {
+        // The API returns the same boundary with a different fractional second
+        // on each call; that is not a rollover.
+        let jittered = now.addingTimeInterval(0.8)
+        XCTAssertFalse(shouldNotifyReset(previousResetAt: now, newResetAt: jittered,
+                                         previousUtilization: 95, threshold: threshold))
+        // Nor is a drift of a few minutes.
+        XCTAssertFalse(shouldNotifyReset(previousResetAt: now, newResetAt: now.addingTimeInterval(10 * 60),
+                                         previousUtilization: 95, threshold: threshold))
+    }
+
     func testResetWhileConstrainedNotifies() {
         let later = now.addingTimeInterval(5 * 60 * 60)
         XCTAssertTrue(shouldNotifyReset(previousResetAt: now, newResetAt: later,
