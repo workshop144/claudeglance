@@ -695,6 +695,44 @@ final class BuildInfoTests: XCTestCase {
     }
 }
 
+// MARK: - Signed-out menu-bar prompt
+
+final class MenuBarAuthPromptTests: XCTestCase {
+
+    func testSignedInShowsUsage() {
+        XCTAssertNil(menuBarAuthPrompt(for: .signedIn(Date()), hasCredentials: true))
+    }
+
+    func testSignedOutPromptsSignIn() {
+        XCTAssertEqual(menuBarAuthPrompt(for: .signedOut, hasCredentials: false), .signIn)
+    }
+
+    func testBrowserFlowShowsSigningIn() {
+        XCTAssertEqual(menuBarAuthPrompt(for: .awaitingBrowser, hasCredentials: false), .signingIn)
+        XCTAssertEqual(menuBarAuthPrompt(for: .awaitingCode, hasCredentials: true), .signingIn)
+    }
+
+    func testFailedSignInOnlyPromptsWithoutStoredSession() {
+        // A failed re-login while an older session is still stored keeps usage up.
+        XCTAssertNil(menuBarAuthPrompt(for: .error("x"), hasCredentials: true))
+        XCTAssertEqual(menuBarAuthPrompt(for: .error("x"), hasCredentials: false), .signIn)
+    }
+
+    func testSignedInSkipsCredentialLookup() {
+        // The Keychain read is only needed to disambiguate the error state.
+        var looked = false
+        _ = menuBarAuthPrompt(for: .signedOut, hasCredentials: { looked = true; return true }())
+        XCTAssertFalse(looked)
+    }
+
+    func testGlyphIsTemplateAndSized() {
+        for image in [menuBarSignInImage(), menuBarSignInImage(spinnerPhase: 0.3)] {
+            XCTAssertTrue(image.isTemplate)
+            XCTAssertEqual(image.size, NSSize(width: 18, height: 18))
+        }
+    }
+}
+
 // MARK: - Ring gauge fill fraction
 
 final class RingFillFractionTests: XCTestCase {

@@ -28,6 +28,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // Keep Combine subscriptions alive
     private var cancellables = Set<AnyCancellable>()
 
+    // Drives the spinning ring while a browser sign-in is in flight.
+    private var signInSpinner: Timer?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Under XCTest the app is launched only as a test host. Skip all UI /
         // notification / polling bootstrap: the suite tests pure logic and the
@@ -62,6 +65,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // (warning glyph / placeholder dashes vs. numbers) without new usage data.
         usageService.$error
             .combineLatest(usageService.$hasLoaded)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.updateStatusItemAppearance() }
+            .store(in: &cancellables)
+
+        // Signing out (or the session expiring) swaps the frozen numbers for a
+        // sign-in prompt; signing back in restores them.
+        OAuthLoginService.shared.$state
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.updateStatusItemAppearance() }
             .store(in: &cancellables)
@@ -123,6 +133,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.removeAllItems()
 
         let snapshot = usageService.currentUsage
+
+        // When there's no Claude session, the one-tap sign-in leads the menu — the
+        // menu bar is already showing "Sign in", so it's what the click is for.
+        if !OAuthLoginService.shared.isSignedIn {
+            menu.addItem(actionItem(title: "Sign in to Claude…", symbol: "person.crop.circle.badge.plus",
+                                    action: #selector(signInFromMenu)))
+            menu.addItem(.separator())
+        }
 
         // Top "status" cluster: clickable rows with a colored dot that deep-link
         // out to the relevant page (status page / usage-credits settings).
@@ -262,13 +280,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(.separator())
             menu.addItem(linkInfoItem(title: "Today's health: \(grade.letter)",
                                       symbol: "checkmark.seal", tab: .activity))
-        }
-
-        // When there's no Claude session yet, offer a one-tap way into Settings
-        // to start the browser sign-in (otherwise the menu shows only the prompt).
-        if !OAuthLoginService.shared.isSignedIn {
-            menu.addItem(actionItem(title: "Sign in to Claude…", symbol: "person.crop.circle.badge.plus",
-                                    action: #selector(signInFromMenu)))
         }
 
         // When the numbers are stale, say how old they are (the menu bar is also
@@ -788,8 +799,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func updateStatusItemAppearance() {
         guard let button = statusItem.button else { return }
 
-        let snapshot = usageService.currentUsage
         let settings = settingsManager.settings
+
+        // No live session: the last numbers would just sit there looking stalled,
+        // so the item asks for a sign-in instead (see renderAuthPrompt).
+        let auth = OAuthLoginService.shared
+        if let prompt = menuBarAuthPrompt(for: auth.state, hasCredentials: auth.isSignedIn) {
+            renderAuthPrompt(prompt, on: button, showIcon: settings.showMenuBarIcon)
+            return
+        }
+        stopSignInSpinner()
+
+        let snapshot = usageService.currentUsage
 
         // Dim the entire status item (ring, text, and health dot) when the data
         // is stale, so old numbers never read as current. Applies to every render
@@ -900,6 +921,53 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         button.image = nil
         button.attributedTitle = title
+    }
+
+    /// The signed-out menu bar: a locked ring and "Sign in", at full strength (not
+    /// dimmed — it's a call to action, not stale data). While the browser flow is
+    /// in flight the ring spins and the label reads "Signing in…".
+    private func renderAuthPrompt(_ prompt: MenuBarAuthPrompt, on button: NSStatusBarButton, showIcon: Bool) {
+        button.appearsDisabled = false
+        let label = prompt == .signIn ? "Sign in" : "Signing in…"
+        button.toolTip = prompt == .signIn
+            ? "Signed out of Claude — open the menu to sign in"
+            : "Finish signing in to Claude in your browser"
+        button.attributedTitle = NSAttributedString(
+            string: label,
+            attributes: [.font: NSFont.systemFont(ofSize: 11, weight: .medium),
+                         .foregroundColor: NSColor.labelColor])
+
+        guard showIcon else {
+            stopSignInSpinner()
+            button.image = nil
+            return
+        }
+        button.imagePosition = .imageLeading
+        if prompt == .signingIn {
+            startSignInSpinner(on: button)
+        } else {
+            stopSignInSpinner()
+            button.image = menuBarSignInImage()
+        }
+    }
+
+    private func startSignInSpinner(on button: NSStatusBarButton) {
+        guard signInSpinner == nil else { return }
+        let start = Date()
+        let period = 1.2
+        button.image = menuBarSignInImage(spinnerPhase: 0)
+        let timer = Timer(timeInterval: 1.0 / 24, repeats: true) { [weak button] _ in
+            let phase = Date().timeIntervalSince(start) / period
+            button?.image = menuBarSignInImage(spinnerPhase: phase)
+        }
+        // .common so it keeps turning while the menu is open.
+        RunLoop.main.add(timer, forMode: .common)
+        signInSpinner = timer
+    }
+
+    private func stopSignInSpinner() {
+        signInSpinner?.invalidate()
+        signInSpinner = nil
     }
 
     /// Maps a Statuspage indicator to the menu-bar / menu dot color.
