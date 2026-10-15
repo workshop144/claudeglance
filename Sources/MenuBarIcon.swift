@@ -86,3 +86,77 @@ private func drawRing(center: NSPoint, radius: CGFloat, stroke: CGFloat, percent
     NSColor(white: 0, alpha: 1.0).setStroke()
     arc.stroke()
 }
+
+// MARK: - Signed-out menu-bar state
+
+/// What the menu bar shows in place of usage when there's no live Claude session.
+/// Without it, an expired session left the last numbers frozen (merely dimmed),
+/// which read as "usage stalled" rather than "you need to sign in".
+enum MenuBarAuthPrompt: Equatable {
+    case signIn      // no session — the item invites a sign-in
+    case signingIn   // browser flow in flight — the ring spins while we wait
+}
+
+/// Maps the auth state to a menu-bar prompt, or nil when usage should show. A
+/// failed sign-in attempt only prompts if there's no stored session to fall back
+/// on. Pure — unit-tested.
+func menuBarAuthPrompt(for state: OAuthLoginService.AuthState,
+                       hasCredentials: @autoclosure () -> Bool) -> MenuBarAuthPrompt? {
+    switch state {
+    case .signedIn:                       return nil
+    case .awaitingBrowser, .awaitingCode: return .signingIn
+    case .signedOut:                      return .signIn
+    case .error:                          return hasCredentials() ? nil : .signIn
+    }
+}
+
+/// The signed-out glyph: the gauge ring "locked" — a single ring around a keyhole,
+/// so it stays recognizably ClaudeGlance while plainly asking for a sign-in.
+/// With `spinnerPhase` (0...1) the ring becomes a faint track with a rotating arc,
+/// the waiting-for-browser state. Template image, like the usage rings.
+func menuBarSignInImage(spinnerPhase: Double? = nil) -> NSImage {
+    let size: CGFloat = 18
+    let image = NSImage(size: NSSize(width: size, height: size))
+    image.lockFocus()
+
+    let center = NSPoint(x: size / 2, y: size / 2)
+    let stroke: CGFloat = 1.6
+    let radius = size / 2 - stroke / 2 - 0.5
+
+    let track = NSBezierPath()
+    track.appendArc(withCenter: center, radius: radius, startAngle: 0, endAngle: 360)
+    track.lineWidth = stroke
+    if let phase = spinnerPhase {
+        NSColor(white: 0, alpha: 0.28).setStroke()
+        track.stroke()
+        // A quarter-turn arc sweeping clockwise from 12 o'clock.
+        let start = 90 - CGFloat(phase.truncatingRemainder(dividingBy: 1)) * 360
+        let arc = NSBezierPath()
+        arc.appendArc(withCenter: center, radius: radius,
+                      startAngle: start, endAngle: start - 100, clockwise: true)
+        arc.lineWidth = stroke
+        arc.lineCapStyle = .round
+        NSColor(white: 0, alpha: 1.0).setStroke()
+        arc.stroke()
+    } else {
+        NSColor(white: 0, alpha: 1.0).setStroke()
+        track.stroke()
+    }
+
+    // Keyhole: a round head over a tapered slot, optically centered (nudged up).
+    NSColor(white: 0, alpha: 1.0).setFill()
+    let headY = center.y + 1.4
+    NSBezierPath(ovalIn: NSRect(x: center.x - 2.0, y: headY - 2.0, width: 4.0, height: 4.0)).fill()
+    let slot = NSBezierPath()
+    slot.move(to: NSPoint(x: center.x - 0.8, y: headY))
+    slot.line(to: NSPoint(x: center.x + 0.8, y: headY))
+    slot.line(to: NSPoint(x: center.x + 1.4, y: center.y - 3.4))
+    slot.line(to: NSPoint(x: center.x - 1.4, y: center.y - 3.4))
+    slot.close()
+    slot.fill()
+
+    image.unlockFocus()
+    image.isTemplate = true
+    image.accessibilityDescription = spinnerPhase == nil ? "Sign in to Claude" : "Signing in to Claude"
+    return image
+}
