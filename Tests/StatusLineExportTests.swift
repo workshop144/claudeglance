@@ -148,4 +148,114 @@ final class StatusLineExportTests: XCTestCase {
         XCTAssertFalse(StatusLineSetup.hasStatusLine("{}".data(using: .utf8)))
         XCTAssertTrue(StatusLineSetup.hasStatusLine(#"{"statusLine":{}}"#.data(using: .utf8)))
     }
+
+    // MARK: No data / signed out / stale (never shown as live numbers)
+
+    func testPlaceholderBeforeFirstFetchIsNotZeroPercent() {
+        let now = Date()
+        let export = buildStatusExport(usage: .placeholder, burn: nil, metrics: metrics(),
+                                       hasLoaded: false, signedIn: true, now: now)
+        XCTAssertEqual(export.line, statusLineNoDataText)
+        XCTAssertFalse(export.line.contains("0%"))
+        XCTAssertTrue(export.stale)
+    }
+
+    func testSignedOutSaysSignIn() {
+        let now = Date()
+        let export = buildStatusExport(usage: snapshot(lastUpdated: now), burn: nil, metrics: metrics(),
+                                       hasLoaded: true, signedIn: false, now: now)
+        XCTAssertEqual(export.line, statusLineSignedOutText)
+        XCTAssertTrue(export.stale)
+    }
+
+    func testUpdatedIsWhenNumbersWereFetched() {
+        let now = Date()
+        let fetched = now.addingTimeInterval(-30 * 60)
+        let export = buildStatusExport(usage: snapshot(lastUpdated: fetched), burn: nil,
+                                       metrics: metrics(), now: now)
+        let iso = ISO8601DateFormatter()
+        let updated = try! XCTUnwrap(iso.date(from: export.updated))
+        XCTAssertEqual(updated.timeIntervalSince1970, fetched.timeIntervalSince1970, accuracy: 1)
+        XCTAssertTrue(export.stale)
+    }
+
+    // MARK: The bundled script marks stale numbers
+
+    private func runScript(sidecar: StatusExport, modified: Date = Date()) throws -> String {
+        let script = try XCTUnwrap(Bundle.main.url(forResource: StatusLineSetup.scriptResource, withExtension: "sh"))
+        let home = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cg-statusline-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: home) }
+        let dir = home.appendingPathComponent("Library/Application Support/ClaudeGlance", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let file = dir.appendingPathComponent("status.json")
+        StatusLineExporter.write(sidecar, to: file)
+        try FileManager.default.setAttributes([.modificationDate: modified], ofItemAtPath: file.path)
+
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/bin/bash")
+        p.arguments = [script.path]
+        var env = ProcessInfo.processInfo.environment
+        env["HOME"] = home.path
+        p.environment = env
+        let out = Pipe()
+        p.standardOutput = out
+        p.standardInput = FileHandle.nullDevice
+        try p.run()
+        p.waitUntilExit()
+        let text = String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    func testScriptPrintsFreshLineAsIs() throws {
+        let now = Date()
+        let export = buildStatusExport(usage: snapshot(lastUpdated: now), burn: nil, metrics: metrics(), now: now)
+        XCTAssertEqual(try runScript(sidecar: export), "5h 35% · 7d 71%")
+    }
+
+    func testScriptMarksStaleFlag() throws {
+        let now = Date()
+        let export = buildStatusExport(usage: snapshot(lastUpdated: now.addingTimeInterval(-20 * 60)),
+                                       burn: nil, metrics: metrics(), now: now)
+        XCTAssertEqual(try runScript(sidecar: export), "5h 35% · 7d 71% (stale)")
+    }
+
+    func testScriptMarksOldFileAfterAppQuit() throws {
+        let now = Date()
+        let export = buildStatusExport(usage: snapshot(lastUpdated: now), burn: nil, metrics: metrics(), now: now)
+        XCTAssertEqual(try runScript(sidecar: export, modified: now.addingTimeInterval(-3600)),
+                       "5h 35% · 7d 71% (stale)")
+    }
+
+    func testScriptLeavesSignInMessageUnmarked() throws {
+        let export = buildStatusExport(usage: .placeholder, burn: nil, metrics: metrics(),
+                                       hasLoaded: false, signedIn: false)
+        XCTAssertEqual(try runScript(sidecar: export), statusLineSignedOutText)
+    }
+
+    // MARK: Wiring keeps a symlinked settings.json a symlink
+
+    func testWiringWritesThroughASymlinkedSettingsFile() throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent("cg-wire-\(UUID().uuidString)", isDirectory: true)
+        defer { try? fm.removeItem(at: root) }
+        let dotfiles = root.appendingPathComponent("dotfiles", isDirectory: true)
+        let claude = root.appendingPathComponent(".claude", isDirectory: true)
+        try fm.createDirectory(at: dotfiles, withIntermediateDirectories: true)
+        try fm.createDirectory(at: claude, withIntermediateDirectories: true)
+        let target = dotfiles.appendingPathComponent("settings.json")
+        try Data(#"{"theme":"dark"}"#.utf8).write(to: target)
+        let link = claude.appendingPathComponent("settings.json")
+        try fm.createSymbolicLink(at: link, withDestinationURL: target)
+
+        let result = try StatusLineSetup.wireIntoSettings(stamp: "test", settingsURL: link)
+
+        // Still a link, and the change landed in the managed file it points to.
+        let attrs = try fm.attributesOfItem(atPath: link.path)
+        XCTAssertEqual(attrs[.type] as? FileAttributeType, .typeSymbolicLink)
+        let obj = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: target)) as? [String: Any])
+        XCTAssertEqual(obj["theme"] as? String, "dark")
+        XCTAssertNotNil(obj["statusLine"])
+        XCTAssertEqual(result.backup?.deletingLastPathComponent().lastPathComponent, ".claude")
+    }
 }

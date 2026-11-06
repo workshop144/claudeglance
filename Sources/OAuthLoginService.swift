@@ -24,7 +24,8 @@ enum OAuthConfig {
     static let redirectURI = "https://console.anthropic.com/oauth/code/callback"
     /// Loopback redirect for the seamless flow: claude.ai sends the browser back
     /// to a one-shot HTTP server we run on 127.0.0.1 (same mechanism Claude Code
-    /// uses). The port is chosen at sign-in time.
+    /// uses), with [::1] on the same port held too, since `localhost` can resolve
+    /// to either. The port is chosen at sign-in time.
     static func loopbackRedirectURI(port: UInt16) -> String {
         "http://localhost:\(port)/callback"
     }
@@ -162,34 +163,194 @@ private final class ContinuationLatch<T>: @unchecked Sendable {
     }
 }
 
-/// One-shot loopback HTTP listener for the OAuth redirect. Binds 127.0.0.1 on
-/// an ephemeral port, answers exactly one `/callback` hit carrying the state of
-/// the sign-in in progress, then stops. Anything else it sees (other paths, or a
-/// callback with a missing or wrong state, e.g. from another local process) gets
-/// an error page and the listener stays up for the real browser redirect.
-final class OAuthCallbackServer {
-    private var listener: NWListener?
-    private let queue = DispatchQueue(label: "io.github.broots144.ClaudeGlance.oauth-callback")
+/// The callback-handling state the listener queue and the caller both touch,
+/// behind one lock (it used to be written on the main thread and read on the
+/// listener queue unsynchronized).
+private final class CallbackGate: @unchecked Sendable {
+    private let lock = NSLock()
     private var handled = false
     private var expectedState = ""
     private var onCallback: ((String, String?) -> Void)?
 
-    /// Start listening; resolves with the bound port once the socket is ready.
-    func start(expectedState: String, onCallback: @escaping (String, String?) -> Void) async throws -> UInt16 {
-        stop()
+    func arm(expectedState: String, onCallback: @escaping (String, String?) -> Void) {
+        lock.lock(); defer { lock.unlock() }
         handled = false
         self.expectedState = expectedState
         self.onCallback = onCallback
+    }
 
+    func disarm() {
+        lock.lock(); defer { lock.unlock() }
+        onCallback = nil
+    }
+
+    /// The callback to run if `state` is the one in flight and nothing was
+    /// delivered yet; marks it delivered. Nil means refuse.
+    func claim(state: String?) -> ((String, String?) -> Void)? {
+        lock.lock(); defer { lock.unlock() }
+        guard !handled, !expectedState.isEmpty, state == expectedState, let cb = onCallback else { return nil }
+        handled = true
+        return cb
+    }
+}
+
+/// Holds [::1]:<port> with a socket that is bound but never listening.
+///
+/// The redirect URI says `localhost` (what the OAuth client accepts), and
+/// browsers resolve that to ::1 as well as 127.0.0.1, often trying ::1 first.
+/// With only 127.0.0.1 bound, any local process could bind [::1]:<port> and
+/// receive the browser's redirect with the authorization code (useless without
+/// the PKCE verifier, but it blocks the sign-in). Owning the address closes that:
+/// no one else can bind it, and since nothing listens, the browser's ::1 attempt
+/// is refused at once and it falls back to 127.0.0.1.
+///
+/// A plain BSD socket because Network.framework refuses a second listener on the
+/// same port in one process (EADDRINUSE) even though the kernel allows it.
+final class LoopbackV6Reservation {
+    private var fd: Int32
+
+    /// Nil error means reserved, or no IPv6 loopback on this Mac (then the browser
+    /// can't reach ::1 either, so there is nothing to protect). Throws the errno
+    /// as a POSIXError when the address is taken.
+    init(port: UInt16) throws {
+        fd = socket(AF_INET6, SOCK_STREAM, 0)
+        guard fd >= 0 else { fd = -1; return }
+        var on: Int32 = 1
+        setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &on, socklen_t(MemoryLayout<Int32>.size))
+        var addr = sockaddr_in6()
+        addr.sin6_len = UInt8(MemoryLayout<sockaddr_in6>.size)
+        addr.sin6_family = sa_family_t(AF_INET6)
+        addr.sin6_port = port.bigEndian
+        addr.sin6_addr = in6addr_loopback
+        let result = withUnsafePointer(to: &addr) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                Darwin.bind(fd, $0, socklen_t(MemoryLayout<sockaddr_in6>.size))
+            }
+        }
+        guard result == 0 else {
+            let code = errno
+            close(fd)
+            fd = -1
+            if code == EADDRINUSE { throw POSIXError(.EADDRINUSE) }
+            return   // EADDRNOTAVAIL / EAFNOSUPPORT: no IPv6 loopback
+        }
+    }
+
+    var isHeld: Bool { fd >= 0 }
+
+    func release() {
+        if fd >= 0 { close(fd) }
+        fd = -1
+    }
+
+    deinit { release() }
+}
+
+/// One-shot loopback HTTP listener for the OAuth redirect. Binds 127.0.0.1 on
+/// an ephemeral port and reserves [::1] on the same port (see
+/// `LoopbackV6Reservation`), answers exactly one `/callback` hit carrying the
+/// state of the sign-in in progress, then stops. Anything else it sees (other
+/// paths, or a callback with a missing or wrong state, e.g. from another local
+/// process) gets an error page and the listener stays up for the real browser
+/// redirect.
+final class OAuthCallbackServer: @unchecked Sendable {
+    private let queue = DispatchQueue(label: "io.github.broots144.ClaudeGlance.oauth-callback")
+    private let gate = CallbackGate()
+    // `listeners`, `reservation` and `generation` are guarded by `lock`. Each
+    // start() bumps the generation, so a superseded start can tell it was replaced.
+    private let lock = NSLock()
+    private var listeners: [NWListener] = []
+    private var reservation: LoopbackV6Reservation?
+    private var generation = 0
+
+    /// Start listening; resolves with the bound port once the socket is ready.
+    /// Throws `CancellationError` if `stop()` or a newer `start()` replaces it
+    /// before then (a double-click on Sign in), instead of never returning.
+    func start(expectedState: String, onCallback: @escaping (String, String?) -> Void) async throws -> UInt16 {
+        stop()
+        let myGeneration = bumpGeneration()
+        gate.arm(expectedState: expectedState, onCallback: onCallback)
+
+        var lastError: Error = POSIXError(.EADDRINUSE)
+        for _ in 0..<5 {
+            let listener = try makeListener(host: "127.0.0.1", port: .any)
+            try adopt(listener, generation: myGeneration)
+            let port = try await waitUntilReady(listener)
+            do {
+                try hold(LoopbackV6Reservation(port: port), generation: myGeneration)
+                return port
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                // Someone already holds [::1] on this port: drop it and take a new one.
+                lastError = error
+                stopListeners(generation: myGeneration)
+            }
+        }
+        throw lastError
+    }
+
+    /// Keep the reservation for this start, unless it was already superseded.
+    private func hold(_ r: LoopbackV6Reservation, generation expected: Int) throws {
+        lock.lock(); defer { lock.unlock() }
+        guard generation == expected else { r.release(); throw CancellationError() }
+        reservation = r
+    }
+
+    /// Cancel this start's listeners but keep its generation (a retry follows).
+    private func stopListeners(generation expected: Int) {
+        lock.lock()
+        guard generation == expected else { lock.unlock(); return }
+        let old = listeners
+        listeners = []
+        lock.unlock()
+        old.forEach { $0.cancel() }
+    }
+
+    func stop() {
+        lock.lock()
+        let old = listeners
+        let held = reservation
+        listeners = []
+        reservation = nil
+        generation += 1
+        lock.unlock()
+        old.forEach { $0.cancel() }
+        held?.release()
+        gate.disarm()
+    }
+
+    private func bumpGeneration() -> Int {
+        lock.lock(); defer { lock.unlock() }
+        generation += 1
+        return generation
+    }
+
+    /// Track a listener for `stop()`, unless this start was already superseded.
+    private func adopt(_ listener: NWListener, generation expected: Int) throws {
+        lock.lock()
+        guard generation == expected else {
+            lock.unlock()
+            listener.cancel()
+            throw CancellationError()
+        }
+        listeners.append(listener)
+        lock.unlock()
+    }
+
+    private func makeListener(host: NWEndpoint.Host, port: NWEndpoint.Port) throws -> NWListener {
         let params = NWParameters.tcp
-        params.requiredLocalEndpoint = NWEndpoint.hostPort(host: "127.0.0.1", port: .any)
-        params.allowLocalEndpointReuse = true
+        params.requiredLocalEndpoint = NWEndpoint.hostPort(host: host, port: port)
+        // No address reuse: nothing else may share our port.
+        params.allowLocalEndpointReuse = false
         let listener = try NWListener(using: params)
-        self.listener = listener
+        let gate = self.gate, queue = self.queue
+        listener.newConnectionHandler = { conn in OAuthCallbackServer.accept(conn, gate: gate, queue: queue) }
+        return listener
+    }
 
-        listener.newConnectionHandler = { [weak self] conn in self?.accept(conn) }
-
-        return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<UInt16, Error>) in
+    private func waitUntilReady(_ listener: NWListener) async throws -> UInt16 {
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<UInt16, Error>) in
             let latch = ContinuationLatch(cont)
             listener.stateUpdateHandler = { state in
                 switch state {
@@ -200,6 +361,9 @@ final class OAuthCallbackServer {
                     latch.resume(.success(port))
                 case .failed(let err):
                     latch.resume(.failure(err))
+                case .cancelled:
+                    // Stopped (or replaced by a newer start) before it was ready.
+                    latch.resume(.failure(CancellationError()))
                 default:
                     break
                 }
@@ -208,35 +372,26 @@ final class OAuthCallbackServer {
         }
     }
 
-    func stop() {
-        listener?.cancel()
-        listener = nil
-        onCallback = nil
-    }
-
-    private func accept(_ conn: NWConnection) {
+    private static func accept(_ conn: NWConnection, gate: CallbackGate, queue: DispatchQueue) {
         conn.start(queue: queue)
-        conn.receive(minimumIncompleteLength: 1, maximumLength: 16 * 1024) { [weak self] data, _, _, _ in
-            guard let self else { conn.cancel(); return }
+        conn.receive(minimumIncompleteLength: 1, maximumLength: 16 * 1024) { data, _, _, _ in
             let text = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
             let firstLine = text.split(separator: "\r\n", maxSplits: 1, omittingEmptySubsequences: false)
                 .first.map(String.init) ?? text
             guard let parsed = parseLoopbackRequestLine(firstLine) else {
-                self.respond(conn, status: "404 Not Found", html: loopbackResponseHTML(success: false))
+                respond(conn, status: "404 Not Found", html: loopbackResponseHTML(success: false))
                 return
             }
-            guard !self.handled, !self.expectedState.isEmpty, parsed.state == self.expectedState else {
-                self.respond(conn, status: "400 Bad Request", html: loopbackResponseHTML(success: false))
+            guard let cb = gate.claim(state: parsed.state) else {
+                respond(conn, status: "400 Bad Request", html: loopbackResponseHTML(success: false))
                 return
             }
-            self.handled = true
-            self.respond(conn, status: "200 OK", html: loopbackResponseHTML(success: true))
-            let cb = self.onCallback
-            DispatchQueue.main.async { cb?(parsed.code, parsed.state) }
+            respond(conn, status: "200 OK", html: loopbackResponseHTML(success: true))
+            DispatchQueue.main.async { cb(parsed.code, parsed.state) }
         }
     }
 
-    private func respond(_ conn: NWConnection, status: String, html: String) {
+    private static func respond(_ conn: NWConnection, status: String, html: String) {
         let body = Data(html.utf8)
         let head = "HTTP/1.1 \(status)\r\nContent-Type: text/html; charset=utf-8\r\n"
             + "Content-Length: \(body.count)\r\nConnection: close\r\n\r\n"
@@ -297,6 +452,56 @@ struct OAuthTokenResponse: Decodable {
     }
 }
 
+// MARK: - Refresh coordination (pure / testable)
+
+/// Runs one async operation at a time and hands every concurrent caller the same
+/// result. The token endpoint rotates refresh tokens, so two refreshes racing with
+/// the same refresh token end with the loser getting `invalid_grant`; funnelling
+/// them through one task means only one refresh is ever in flight.
+final class SingleFlight<T>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var inFlight: Task<T, Error>?
+
+    func run(_ operation: @escaping () async throws -> T) async throws -> T {
+        let task = joinOrStart(operation)
+        defer { finished(task) }
+        return try await task.value
+    }
+
+    /// The task in flight, or a new one running `operation`. Synchronous so the
+    /// lock is never held across a suspension point.
+    private func joinOrStart(_ operation: @escaping () async throws -> T) -> Task<T, Error> {
+        lock.lock(); defer { lock.unlock() }
+        if let task = inFlight { return task }
+        let task = Task { try await operation() }
+        inFlight = task
+        return task
+    }
+
+    private func finished(_ task: Task<T, Error>) {
+        lock.lock(); defer { lock.unlock() }
+        if inFlight == task { inFlight = nil }
+    }
+}
+
+/// Whether a refresh rejected with 400/401 really means the session is dead.
+/// Not when the stored item holds a different, newer pair: then another refresh
+/// (e.g. a second running copy of the app) already rotated the token and the
+/// stored credentials are the live ones, not something to delete. An older
+/// stored pair (left behind by a failed save) never wins over the rejected one.
+func refreshRejectionEndsSession(rejected: StoredCredentials, stored: StoredCredentials?) -> Bool {
+    guard let stored else { return true }
+    return stored.refreshToken == rejected.refreshToken || stored.expiresAt <= rejected.expiresAt
+}
+
+/// Where the credentials live. Production uses the app's own Keychain item; the
+/// seam exists so tests never read or write a developer's real sign-in.
+struct CredentialStore {
+    var load: () -> StoredCredentials?
+    var save: (StoredCredentials) throws -> Void
+    var delete: () -> Void
+}
+
 // MARK: - OAuthLoginService
 
 final class OAuthLoginService: ObservableObject {
@@ -321,19 +526,39 @@ final class OAuthLoginService: ObservableObject {
     private var pendingRedirectURI: String = OAuthConfig.redirectURI
     private let callbackServer = OAuthCallbackServer()
 
-    // In-memory token cache so each usage poll doesn't hit the Keychain. (Reading
-    // our own item is unprompted and cheap, but the cache also lets a 401 force a
-    // refresh on the next call via `needsRefresh`.)
-    private var cachedAccessToken: String?
-    private var cachedExpiresAt: Date?
+    // In-memory credentials so each usage poll doesn't hit the Keychain, and so a
+    // refreshed pair stays usable even if persisting it failed (the old refresh
+    // token is already spent by then). A 401 forces a refresh via `needsRefresh`.
+    // Guarded by `cacheLock`: callers run on arbitrary tasks.
+    private let cacheLock = NSLock()
+    private var cachedCredentials: StoredCredentials?
     private var needsRefresh = false
+    /// Set when a refreshed pair couldn't be saved; the next call retries the save.
+    private var needsPersist = false
+    /// Bumped by sign-out and sign-in. A token refresh that started under an older
+    /// generation is dropped, so signing out mid-refresh can't write the
+    /// refreshed pair back to the Keychain and sign the user in again.
+    private var sessionGeneration = 0
+    private let refreshFlight = SingleFlight<StoredCredentials>()
+
+    private let store: CredentialStore
 
     private init() {
+        store = CredentialStore(load: OAuthLoginService.keychainLoad,
+                                save: OAuthLoginService.keychainSave,
+                                delete: OAuthLoginService.keychainDelete)
         // Reflect any stored session on launch so the UI starts in the right state,
         // after re-creating the item under this build (see reclaimStoredCredentials).
         if let creds = reclaimStoredCredentials() {
             state = .signedIn(creds.expiresAtDate)
         }
+    }
+
+    /// Test-only: a service over an in-memory store, with no launch-time Keychain work.
+    init(testStore: CredentialStore, urlSession: URLSession) {
+        store = testStore
+        self.urlSession = urlSession
+        if let creds = testStore.load() { state = .signedIn(creds.expiresAtDate) }
     }
 
     /// Launch-time Keychain migration. An item's access list trusts the build that
@@ -351,7 +576,7 @@ final class OAuthLoginService: ObservableObject {
         if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
             return loadCredentials()
         }
-        let (status, data) = copyCredentialsData()
+        let (status, data) = OAuthLoginService.copyCredentialsData()
         let decoded = data.flatMap { try? JSONDecoder().decode(StoredCredentials.self, from: $0) }
         switch launchKeychainAction(status: status, decoded: decoded != nil) {
         case .recreate:
@@ -399,6 +624,9 @@ final class OAuthLoginService: ObservableObject {
                                                 challenge: codeChallenge(for: verifier),
                                                 manualCode: false)
                 NSWorkspace.shared.open(url)
+            } catch is CancellationError {
+                // A newer sign-in (or a cancel) replaced this listener: that flow
+                // owns the UI now, so don't tear it down with the paste fallback.
             } catch {
                 // Couldn't listen locally (sandbox/firewall) — use the paste flow.
                 beginManualLogin()
@@ -463,7 +691,8 @@ final class OAuthLoginService: ObservableObject {
                                                state: expected,
                                                verifier: verifier,
                                                redirectURI: pendingRedirectURI)
-            try saveCredentials(creds)
+            newSessionGeneration()
+            try store.save(creds)
             cache(creds)
             pendingVerifier = nil
             pendingState = nil
@@ -480,8 +709,15 @@ final class OAuthLoginService: ObservableObject {
     @MainActor
     func signOut() {
         callbackServer.stop()
-        deleteCredentials()
-        clearCache()
+        // Bump, delete and clear under one lock so an in-flight refresh can't save
+        // its result in between (see `commitRefreshed`).
+        cacheLock.lock()
+        sessionGeneration += 1
+        store.delete()
+        cachedCredentials = nil
+        needsRefresh = false
+        needsPersist = false
+        cacheLock.unlock()
         pendingVerifier = nil
         pendingState = nil
         state = .signedOut
@@ -489,49 +725,114 @@ final class OAuthLoginService: ObservableObject {
 
     // MARK: Token access (used by UsageService)
 
-    /// Drop the cached access token and force a refresh on the next call — used
-    /// when the usage endpoint returns 401/403 (token rotated or rejected).
+    /// Force a refresh on the next call — used when the usage endpoint returns
+    /// 401/403 (token rotated or rejected). The cached refresh token is kept: it's
+    /// what the forced refresh needs.
     func invalidateCache() {
-        cachedAccessToken = nil
-        cachedExpiresAt = nil
+        cacheLock.lock(); defer { cacheLock.unlock() }
         needsRefresh = true
     }
 
     /// Return a valid bearer token, refreshing first if it's missing or near
     /// expiry. Throws if we're not signed in or the refresh token is dead.
+    /// Concurrent callers share one refresh (see `SingleFlight`).
     func validAccessToken() async throws -> String {
-        if !needsRefresh, let token = cachedAccessToken, let exp = cachedExpiresAt,
-           !shouldRefreshToken(expiresAt: exp) {
-            return token
-        }
-        guard let creds = loadCredentials() else {
+        if let creds = freshCachedCredentials() { return creds.accessToken }
+        return try await refreshFlight.run { [self] in try await loadOrRefresh() }.accessToken
+    }
+
+    /// The cached credentials if they're good to send as-is.
+    private func freshCachedCredentials() -> StoredCredentials? {
+        cacheLock.lock(); defer { cacheLock.unlock() }
+        guard !needsRefresh, !needsPersist, let creds = cachedCredentials,
+              !shouldRefreshToken(expiresAt: creds.expiresAtDate) else { return nil }
+        return creds
+    }
+
+    /// The slow path, only ever run by one task at a time.
+    private func loadOrRefresh() async throws -> StoredCredentials {
+        let generation = currentSessionGeneration()
+        let (cached, forced, unsaved) = cacheSnapshot()
+        if unsaved, let cached { persist(cached) }
+        // Prefer the in-memory pair: it can be newer than the Keychain item when a
+        // save failed.
+        guard let creds = cached ?? store.load() else {
             await setState(.signedOut)
             throw OAuthLoginService.notSignedInError
         }
-        if !needsRefresh, !shouldRefreshToken(expiresAt: creds.expiresAtDate) {
+        if !forced, !shouldRefreshToken(expiresAt: creds.expiresAtDate) {
             cache(creds)
-            return creds.accessToken
+            return creds
         }
-        // Refresh.
         do {
             let fresh = try await refresh(refreshToken: creds.refreshToken)
-            try saveCredentials(fresh)
-            cache(fresh)
-            needsRefresh = false
+            // Signed out (or in again) while the refresh ran: drop its result.
+            guard commitRefreshed(fresh, generation: generation) else {
+                return try sessionChangedResult()
+            }
             await setState(.signedIn(fresh.expiresAtDate))
-            return fresh.accessToken
+            return fresh
         } catch let error as NSError {
             // A 400/401 from the token endpoint means the refresh token is dead —
             // sign out so the UI prompts a fresh login. Transient/network errors
             // (5xx, offline) keep the session so we can retry next poll.
             if error.code == 400 || error.code == 401 {
-                deleteCredentials()
+                if currentSessionGeneration() != generation { return try sessionChangedResult() }
+                // Unless something else already rotated it: then the stored pair is live.
+                let stored = store.load()
+                if !refreshRejectionEndsSession(rejected: creds, stored: stored), let stored {
+                    cache(stored)
+                    return stored
+                }
+                store.delete()
                 clearCache()
                 await setState(.signedOut)
                 throw OAuthLoginService.sessionExpiredError
             }
             throw error
         }
+    }
+
+    /// Cache, then save, a refreshed pair, but only if the session is the one the
+    /// refresh started under. Cache first: the old refresh token is spent now, so
+    /// losing the new pair to a failed save would sign the user out on the next
+    /// refresh. Held under `cacheLock` so `signOut` can't interleave.
+    private func commitRefreshed(_ fresh: StoredCredentials, generation: Int) -> Bool {
+        cacheLock.lock(); defer { cacheLock.unlock() }
+        guard generation == sessionGeneration else { return false }
+        cachedCredentials = fresh
+        needsRefresh = false
+        needsPersist = (try? store.save(fresh)) == nil
+        return true
+    }
+
+    /// What a refresh returns when the session changed under it: the new
+    /// session's pair if there is one, else not signed in.
+    private func sessionChangedResult() throws -> StoredCredentials {
+        cacheLock.lock(); defer { cacheLock.unlock() }
+        if let current = cachedCredentials { return current }
+        throw OAuthLoginService.notSignedInError
+    }
+
+    private func currentSessionGeneration() -> Int {
+        cacheLock.lock(); defer { cacheLock.unlock() }
+        return sessionGeneration
+    }
+
+    private func newSessionGeneration() {
+        cacheLock.lock(); defer { cacheLock.unlock() }
+        sessionGeneration += 1
+    }
+
+    /// Save to the store; on failure keep the pair in memory and retry next call.
+    private func persist(_ creds: StoredCredentials) {
+        let saved = (try? store.save(creds)) != nil
+        cacheLock.lock(); needsPersist = !saved; cacheLock.unlock()
+    }
+
+    private func cacheSnapshot() -> (StoredCredentials?, Bool, Bool) {
+        cacheLock.lock(); defer { cacheLock.unlock() }
+        return (cachedCredentials, needsRefresh, needsPersist)
     }
 
     static let notSignedInError = NSError(
@@ -590,13 +891,15 @@ final class OAuthLoginService: ObservableObject {
 
     // MARK: Keychain (our own item — no cross-app prompt)
 
-    func loadCredentials() -> StoredCredentials? {
+    func loadCredentials() -> StoredCredentials? { store.load() }
+
+    private static func keychainLoad() -> StoredCredentials? {
         let (status, data) = copyCredentialsData()
         guard status == errSecSuccess, let data else { return nil }
         return try? JSONDecoder().decode(StoredCredentials.self, from: data)
     }
 
-    private func copyCredentialsData() -> (OSStatus, Data?) {
+    private static func copyCredentialsData() -> (OSStatus, Data?) {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: OAuthConfig.keychainService,
@@ -613,7 +916,9 @@ final class OAuthLoginService: ObservableObject {
     /// write our tokens into an item another app could have planted under our
     /// service name with an access list that lets it read them back. Delete and
     /// re-add instead; if the old item can't be removed, save nothing.
-    private func saveCredentials(_ creds: StoredCredentials) throws {
+    private func saveCredentials(_ creds: StoredCredentials) throws { try store.save(creds) }
+
+    private static func keychainSave(_ creds: StoredCredentials) throws {
         let data = try JSONEncoder().encode(creds)
         let match: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -636,7 +941,9 @@ final class OAuthLoginService: ObservableObject {
         }
     }
 
-    private func deleteCredentials() {
+    private func deleteCredentials() { store.delete() }
+
+    private static func keychainDelete() {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: OAuthConfig.keychainService
@@ -647,14 +954,16 @@ final class OAuthLoginService: ObservableObject {
     // MARK: Cache helpers
 
     private func cache(_ creds: StoredCredentials) {
-        cachedAccessToken = creds.accessToken
-        cachedExpiresAt = creds.expiresAtDate
+        cacheLock.lock(); defer { cacheLock.unlock() }
+        cachedCredentials = creds
+        needsRefresh = false
     }
 
     private func clearCache() {
-        cachedAccessToken = nil
-        cachedExpiresAt = nil
+        cacheLock.lock(); defer { cacheLock.unlock() }
+        cachedCredentials = nil
         needsRefresh = false
+        needsPersist = false
     }
 
     @MainActor

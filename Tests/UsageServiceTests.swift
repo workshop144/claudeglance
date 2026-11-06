@@ -447,6 +447,22 @@ final class PricingTests: XCTestCase {
         XCTAssertEqual(displayModelName(for: "claude-opus-4-1-20250805"), "Opus 4.1")
     }
 
+    func testOpus4And41UseTheirOwnPrice() {
+        XCTAssertEqual(modelRate(for: "claude-opus-4-20250514"), ModelRate(input: 15, output: 75))
+        XCTAssertEqual(modelRate(for: "claude-opus-4-1-20250805"), ModelRate(input: 15, output: 75))
+        XCTAssertEqual(modelRate(for: "claude-opus-4"), ModelRate(input: 15, output: 75))
+        XCTAssertEqual(modelRate(for: "claude-opus-4-5-20251101"), ModelRate(input: 5, output: 25))
+        XCTAssertEqual(modelRate(for: "claude-opus-4-8"), ModelRate(input: 5, output: 25))
+    }
+
+    func testDatedOpus4IsNotLabelledOpus42() {
+        XCTAssertEqual(displayModelName(for: "claude-opus-4-20250514"), "Opus 4")
+        XCTAssertEqual(displayModelName(for: "claude-opus-4"), "Opus 4")
+        XCTAssertEqual(displayModelName(for: "claude-opus-4-5"), "Opus 4.5")
+        XCTAssertNil(opus4MinorVersion("claude-opus-4-20250514"))
+        XCTAssertEqual(opus4MinorVersion("claude-opus-4-1-20250805"), 1)
+    }
+
     func testDisplayModelNameFamilyFallbacks() {
         XCTAssertEqual(displayModelName(for: "claude-fable-5"), "Fable 5")
         XCTAssertEqual(displayModelName(for: "claude-sonnet-4-6"), "Sonnet")
@@ -1451,6 +1467,17 @@ final class AggregateToolUsageTests: XCTestCase {
         XCTAssertEqual(b.totalCalls, 3)
     }
 
+    func testResumedSessionCopiesAreCountedOnce() {
+        let call = "{\"type\":\"tool_use\",\"id\":\"toolu_01\",\"name\":\"Bash\"}"
+        let mcp = "{\"type\":\"tool_use\",\"id\":\"toolu_02\",\"name\":\"mcp__Gmail__search\"}"
+        let line = assistant(ts: daysAgo(1), blocks: "\(call),\(mcp)")
+        // The original session file and the resumed copy both carry the line.
+        let b = aggregateToolUsage(jsonlContents: [line, line], now: now)
+        XCTAssertEqual(b.totalCalls, 2)
+        XCTAssertEqual(b.toolCounts["Bash"], 1)
+        XCTAssertEqual(b.mcpServerCounts["Gmail"], 1)
+    }
+
     func testSeparatesMcpFromBuiltins() {
         let line = assistant(ts: daysAgo(1), blocks: [tool("Bash"), tool("mcp__Gmail__search_threads")].joined(separator: ","))
         let b = aggregateToolUsage(jsonlContents: [line], now: now)
@@ -1535,5 +1562,221 @@ final class UsageErrorPresentationTests: XCTestCase {
 
         let signIn = OAuthLoginService.notSignedInError
         XCTAssertEqual(usageErrorMessage(for: signIn, retryAt: at), signIn.localizedDescription)
+    }
+}
+
+// MARK: - Weekly threshold alerts re-arm after the week resets
+
+final class UsageAlertTests: XCTestCase {
+
+    func testWarningFiresAgainInTheNextWeek() {
+        var state = UsageAlertState()
+        // Week 1 crosses 80%: one warning, then quiet while still above.
+        XCTAssertEqual(evaluateUsageAlert(usage: 80, warningThreshold: 80, criticalThreshold: 95, state: &state), .warning)
+        XCTAssertNil(evaluateUsageAlert(usage: 85, warningThreshold: 80, criticalThreshold: 95, state: &state))
+        // The 7-day window resets: usage drops to 0.
+        XCTAssertNil(evaluateUsageAlert(usage: 0, warningThreshold: 80, criticalThreshold: 95, state: &state))
+        // Week 2 crosses 80% again: warns again (used to stay silent forever).
+        XCTAssertEqual(evaluateUsageAlert(usage: 80, warningThreshold: 80, criticalThreshold: 95, state: &state), .warning)
+    }
+
+    func testCriticalFiresAgainInTheNextWeek() {
+        var state = UsageAlertState()
+        XCTAssertEqual(evaluateUsageAlert(usage: 96, warningThreshold: 80, criticalThreshold: 95, state: &state), .critical)
+        XCTAssertNil(evaluateUsageAlert(usage: 99, warningThreshold: 80, criticalThreshold: 95, state: &state))
+        XCTAssertNil(evaluateUsageAlert(usage: 3, warningThreshold: 80, criticalThreshold: 95, state: &state))
+        XCTAssertEqual(evaluateUsageAlert(usage: 97, warningThreshold: 80, criticalThreshold: 95, state: &state), .critical)
+    }
+
+    func testSmallDipBelowThresholdDoesNotRearm() {
+        var state = UsageAlertState()
+        XCTAssertEqual(evaluateUsageAlert(usage: 81, warningThreshold: 80, criticalThreshold: 95, state: &state), .warning)
+        // A wobble to 79 then back to 80 within the same week is not a new crossing.
+        XCTAssertNil(evaluateUsageAlert(usage: 79, warningThreshold: 80, criticalThreshold: 95, state: &state))
+        XCTAssertNil(evaluateUsageAlert(usage: 80, warningThreshold: 80, criticalThreshold: 95, state: &state))
+    }
+}
+
+// MARK: - Reset tracking across a null resets_at gap
+
+final class ResetTrackerTests: XCTestCase {
+
+    private let t0 = Date(timeIntervalSince1970: 1_700_000_000)
+    private let hour: TimeInterval = 3600
+
+    func testResetFiresWhenIdleGapReportsNullBoundary() {
+        var tracker = ResetTracker()
+        let boundary = t0.addingTimeInterval(2 * hour)
+        XCTAssertFalse(tracker.observe(resetAt: boundary, utilization: 70, now: t0, threshold: 80))
+        XCTAssertFalse(tracker.observe(resetAt: boundary, utilization: 92, now: t0.addingTimeInterval(hour), threshold: 80))
+        // Window ended, nobody started a new one: the API sends null and 0%.
+        XCTAssertTrue(tracker.observe(resetAt: nil, utilization: 0, now: boundary.addingTimeInterval(60), threshold: 80))
+        // Later the next window opens: no second alert for the same rollover.
+        let next = boundary.addingTimeInterval(6 * hour)
+        XCTAssertFalse(tracker.observe(resetAt: next, utilization: 1, now: boundary.addingTimeInterval(hour), threshold: 80))
+    }
+
+    func testBoundaryAdvanceStillFires() {
+        var tracker = ResetTracker()
+        let boundary = t0.addingTimeInterval(hour)
+        XCTAssertFalse(tracker.observe(resetAt: boundary, utilization: 85, now: t0, threshold: 80))
+        // Asleep across the boundary; the first poll after wake shows the next window.
+        XCTAssertTrue(tracker.observe(resetAt: boundary.addingTimeInterval(5 * hour), utilization: 2,
+                                      now: boundary.addingTimeInterval(2 * hour), threshold: 80))
+    }
+
+    func testJitterAndLowPeakStayQuiet() {
+        var tracker = ResetTracker()
+        let boundary = t0.addingTimeInterval(2 * hour)
+        XCTAssertFalse(tracker.observe(resetAt: boundary, utilization: 90, now: t0, threshold: 80))
+        // Sub-second jitter on the same boundary is not a rollover.
+        XCTAssertFalse(tracker.observe(resetAt: boundary.addingTimeInterval(0.7), utilization: 91,
+                                       now: t0.addingTimeInterval(60), threshold: 80))
+        var quiet = ResetTracker()
+        XCTAssertFalse(quiet.observe(resetAt: boundary, utilization: 10, now: t0, threshold: 80))
+        XCTAssertFalse(quiet.observe(resetAt: nil, utilization: 0, now: boundary.addingTimeInterval(1), threshold: 80))
+    }
+}
+
+// MARK: - One usage fetch at a time
+
+final class FetchGateTests: XCTestCase {
+
+    func testOverlappingRequestIsCoalescedNotRunConcurrently() {
+        var gate = FetchGate()
+        XCTAssertTrue(gate.begin())          // timer poll starts
+        XCTAssertFalse(gate.begin())         // manual Refresh mid-flight: held
+        XCTAssertFalse(gate.begin())         // and a sign-in fetch: same replay
+        XCTAssertTrue(gate.finish())         // one replay once the first finishes
+        XCTAssertTrue(gate.begin())
+        XCTAssertFalse(gate.finish())        // nothing else queued
+        XCTAssertFalse(gate.inFlight)
+    }
+
+    func testRateLimitedFetchDropsTheReplayAndLeavesRetryToTheBackoff() {
+        var gate = FetchGate()
+        XCTAssertTrue(gate.begin())
+        XCTAssertFalse(gate.begin())                      // Refresh lands mid-poll
+        XCTAssertFalse(gate.finish(rateLimited: true))    // poll got 429: no replay
+        XCTAssertFalse(gate.pending)
+        XCTAssertTrue(gate.begin())                       // backoff timer fires later
+        XCTAssertFalse(gate.finish())
+    }
+}
+
+// MARK: - Incremental transcript scan (no full re-read every tick)
+
+final class TranscriptCacheTests: XCTestCase {
+
+    private var dir: URL!
+
+    override func setUpWithError() throws {
+        dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cg-transcripts-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    }
+
+    override func tearDownWithError() throws {
+        try? FileManager.default.removeItem(at: dir)
+    }
+
+    private func usageLine(_ id: String, input: Int = 10) -> String {
+        "{\"timestamp\":\"2026-11-06T10:00:00Z\",\"requestId\":\"r\(id)\",\"sessionId\":\"s\","
+            + "\"message\":{\"id\":\"m\(id)\",\"role\":\"assistant\",\"model\":\"claude-sonnet-4-6\","
+            + "\"usage\":{\"input_tokens\":\(input),\"output_tokens\":1}}}"
+    }
+
+    private func append(_ text: String, to file: URL, modified: Date) throws {
+        if let h = try? FileHandle(forWritingTo: file) {
+            try h.seekToEnd(); try h.write(contentsOf: Data(text.utf8)); try h.close()
+        } else {
+            try Data(text.utf8).write(to: file)
+        }
+        try FileManager.default.setAttributes([.modificationDate: modified], ofItemAtPath: file.path)
+    }
+
+    func testAppendedLinesAreReadIncrementally() throws {
+        let file = dir.appendingPathComponent("a.jsonl")
+        let cache = TranscriptCache()
+        let t = Date()
+        try append(usageLine("1") + "\n" + usageLine("2") + "\n", to: file, modified: t)
+        XCTAssertEqual(cache.entries(in: [dir], modifiedSince: .distantPast).count, 2)
+
+        // Unchanged file: served from the cache.
+        XCTAssertEqual(cache.entries(in: [dir], modifiedSince: .distantPast).count, 2)
+
+        // A line half-written by a live session isn't counted until it's complete.
+        let third = usageLine("3")
+        try append(String(third.prefix(40)), to: file, modified: t.addingTimeInterval(1))
+        XCTAssertEqual(cache.entries(in: [dir], modifiedSince: .distantPast).count, 2)
+        try append(String(third.dropFirst(40)) + "\n", to: file, modified: t.addingTimeInterval(2))
+        let all = cache.entries(in: [dir], modifiedSince: .distantPast)
+        XCTAssertEqual(all.map(\.messageId), ["m1", "m2", "m3"])
+    }
+
+    func testRewrittenFileIsReadAgainInFull() throws {
+        let file = dir.appendingPathComponent("b.jsonl")
+        let cache = TranscriptCache()
+        let t = Date()
+        try append(usageLine("1") + "\n" + usageLine("2") + "\n", to: file, modified: t)
+        XCTAssertEqual(cache.entries(in: [dir], modifiedSince: .distantPast).count, 2)
+        try Data((usageLine("9") + "\n").utf8).write(to: file)
+        try FileManager.default.setAttributes([.modificationDate: t.addingTimeInterval(5)], ofItemAtPath: file.path)
+        XCTAssertEqual(cache.entries(in: [dir], modifiedSince: .distantPast).map(\.messageId), ["m9"])
+    }
+
+    func testFileRewrittenLargerIsReadAgainInFull() throws {
+        let file = dir.appendingPathComponent("b2.jsonl")
+        let cache = TranscriptCache()
+        let t = Date()
+        try append(usageLine("1") + "\n" + usageLine("2") + "\n", to: file, modified: t)
+        XCTAssertEqual(cache.entries(in: [dir], modifiedSince: .distantPast).count, 2)
+        // Truncated and rewritten past the old size before the next scan.
+        let rewritten = [usageLine("7", input: 123_456), usageLine("8", input: 123_456), usageLine("9", input: 123_456)]
+        try Data((rewritten.joined(separator: "\n") + "\n").utf8).write(to: file)
+        try FileManager.default.setAttributes([.modificationDate: t.addingTimeInterval(5)], ofItemAtPath: file.path)
+        XCTAssertEqual(cache.entries(in: [dir], modifiedSince: .distantPast).map(\.messageId), ["m7", "m8", "m9"])
+    }
+
+    func testInvalidUTF8CostsOneLineNotTheFile() throws {
+        let file = dir.appendingPathComponent("c.jsonl")
+        var data = Data((usageLine("1") + "\n").utf8)
+        data.append(contentsOf: [0x7B, 0xC3, 0x28, 0x0A])          // "{" + broken UTF-8 + newline
+        data.append(Data((usageLine("2") + "\n").utf8))
+        try data.write(to: file)
+        let entries = TranscriptCache().entries(in: [dir], modifiedSince: .distantPast)
+        XCTAssertEqual(entries.map(\.messageId), ["m1", "m2"])
+    }
+
+    func testFilesOutsideTheWindowAreSkipped() throws {
+        let file = dir.appendingPathComponent("old.jsonl")
+        try append(usageLine("1") + "\n", to: file, modified: Date().addingTimeInterval(-90 * 86400))
+        XCTAssertTrue(TranscriptCache().entries(in: [dir], modifiedSince: Date().addingTimeInterval(-86400)).isEmpty)
+    }
+
+    func testCachedPathMatchesStringAggregation() throws {
+        let file = dir.appendingPathComponent("d.jsonl")
+        let text = [usageLine("1", input: 100), usageLine("1", input: 100), usageLine("2", input: 50)].joined(separator: "\n") + "\n"
+        try append(text, to: file, modified: Date())
+        let now = ISO8601DateFormatter().date(from: "2026-11-06T12:00:00Z")!
+        let viaCache = aggregateMetrics(entries: TranscriptCache().entries(in: [dir], modifiedSince: .distantPast), now: now)
+        let viaStrings = aggregateMetrics(jsonlContents: [text], now: now)
+        XCTAssertEqual(viaCache.monthInputTokens, 150)   // duplicate counted once
+        XCTAssertEqual(viaCache.monthInputTokens, viaStrings.monthInputTokens)
+    }
+
+    func testScanGateSkipsWhileRunning() {
+        let gate = ScanGate()
+        XCTAssertTrue(gate.tryBegin())
+        XCTAssertFalse(gate.tryBegin())
+        gate.end()
+        XCTAssertTrue(gate.tryBegin())
+    }
+
+    func testContextScanOnlyWhenSomethingShowsIt() {
+        XCTAssertFalse(shouldScanContextWindows(showContextWindow: false, showSessionGrade: false, dashboardVisible: false))
+        XCTAssertTrue(shouldScanContextWindows(showContextWindow: true, showSessionGrade: false, dashboardVisible: false))
+        XCTAssertTrue(shouldScanContextWindows(showContextWindow: false, showSessionGrade: true, dashboardVisible: false))
+        XCTAssertTrue(shouldScanContextWindows(showContextWindow: false, showSessionGrade: false, dashboardVisible: true))
     }
 }

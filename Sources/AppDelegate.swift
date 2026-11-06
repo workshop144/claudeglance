@@ -15,21 +15,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let contextService = ContextWindowService.shared
     private let settingsManager = SettingsManager.shared
 
-    private var lastWarningNotified: Int = 0
-    private var lastCriticalNotified: Int = 0
+    // Weekly warning/critical alerts already sent this week; re-armed on reset.
+    private var usageAlertState = UsageAlertState()
 
-    // Previous window state, to detect a reset (reset time advanced) and how
-    // constrained we were just before it. nil until the first snapshot arrives.
-    private var lastFiveHourReset: Date?
-    private var lastFiveHourUtil: Int = 0
-    private var lastSevenDayReset: Date?
-    private var lastSevenDayUtil: Int = 0
+    // Each window's last boundary and peak, to detect a reset and how
+    // constrained we were just before it.
+    private var fiveHourResets = ResetTracker()
+    private var sevenDayResets = ResetTracker()
 
     // Keep Combine subscriptions alive
     private var cancellables = Set<AnyCancellable>()
 
     // Drives the spinning ring while a browser sign-in is in flight.
     private var signInSpinner: Timer?
+    /// Last `contextService.isNeeded()` seen by settingsDidChange, so a context row
+    /// turned back on refreshes at once instead of showing a paused scan's data.
+    private var contextWasNeeded = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Under XCTest the app is launched only as a test host. Skip all UI /
@@ -66,14 +67,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         usageService.$error
             .combineLatest(usageService.$hasLoaded)
             .receive(on: RunLoop.main)
-            .sink { [weak self] _ in self?.updateStatusItemAppearance() }
+            .sink { [weak self] _ in
+                self?.updateStatusItemAppearance()
+                StatusLineExporter.shared.export()
+            }
             .store(in: &cancellables)
 
         // Signing out (or the session expiring) swaps the frozen numbers for a
-        // sign-in prompt; signing back in restores them.
+        // sign-in prompt; signing back in restores them. The statusline follows.
         OAuthLoginService.shared.$state
             .receive(on: RunLoop.main)
-            .sink { [weak self] _ in self?.updateStatusItemAppearance() }
+            .sink { [weak self] _ in
+                self?.updateStatusItemAppearance()
+                StatusLineExporter.shared.export()
+            }
             .store(in: &cancellables)
 
         // Refresh the menu-bar health dot whenever the service status changes.
@@ -582,7 +589,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         statusService.startPolling()
         metricsService.startPolling()
+        // The context scan only runs while something shows it (opt-in menu rows,
+        // or the dashboard); it used to read the last 24h of transcripts every 30s
+        // for everyone.
+        contextService.isNeeded = { [weak self] in
+            guard let self else { return false }
+            let settings = self.settingsManager.settings
+            return shouldScanContextWindows(showContextWindow: settings.showContextWindow,
+                                            showSessionGrade: settings.showSessionGrade,
+                                            dashboardVisible: self.dashboardWindow?.isVisible == true)
+        }
         contextService.startPolling()
+        contextWasNeeded = contextService.isNeeded()
 
         Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             self?.checkForNotifications()
@@ -650,6 +668,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         NSApp.activate(ignoringOtherApps: true)
         dashboardWindow?.makeKeyAndOrderFront(nil)
+        // The context scan pauses while nothing shows it; catch up on open.
+        contextService.refresh()
     }
 
     /// A usage menu-row label honoring the used-vs-remaining preference [#19],
@@ -794,6 +814,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func settingsDidChange() {
         updateStatusItemAppearance()
+        // Turning on a context option shows data now, not at the next tick: the
+        // scan was paused while nothing showed it, so whatever it holds is stale.
+        let contextNeeded = contextService.isNeeded()
+        if contextNeeded && !contextWasNeeded { contextService.refresh() }
+        contextWasNeeded = contextNeeded
     }
 
     private func updateStatusItemAppearance() {
@@ -1062,34 +1087,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     /// Fire a one-shot "reset" notification when a 5h/7d window rolls over after
-    /// we were near its limit. Comparison/dedup lives in `shouldNotifyReset`; we
-    /// always update the stored previous-state so each boundary pings at most once.
+    /// we were near its limit. Rollover detection lives in `ResetTracker`; every
+    /// snapshot is fed to it so each boundary pings at most once.
     private func checkForResets() {
+        // The placeholder isn't a reading; feeding it would look like an idle window.
+        guard usageService.hasLoaded else { return }
         let snapshot = usageService.currentUsage
         let threshold = Int(settingsManager.settings.warningThreshold)
         let enabled = settingsManager.settings.resetNotificationsEnabled
+        let now = Date()
 
-        if enabled, shouldNotifyReset(previousResetAt: lastFiveHourReset,
-                                      newResetAt: snapshot.fiveHourResetAt,
-                                      previousUtilization: lastFiveHourUtil,
-                                      threshold: threshold) {
+        if fiveHourResets.observe(resetAt: snapshot.fiveHourResetAt,
+                                  utilization: snapshot.fiveHourUtilization,
+                                  now: now, threshold: threshold), enabled {
             sendNotification(title: "5-hour session reset",
                              body: "Your session limit just reset — full quota available again.",
                              isCritical: false)
         }
-        lastFiveHourReset = snapshot.fiveHourResetAt
-        lastFiveHourUtil = snapshot.fiveHourUtilization
-
-        if enabled, shouldNotifyReset(previousResetAt: lastSevenDayReset,
-                                      newResetAt: snapshot.sevenDayResetAt,
-                                      previousUtilization: lastSevenDayUtil,
-                                      threshold: threshold) {
+        if sevenDayResets.observe(resetAt: snapshot.sevenDayResetAt,
+                                  utilization: snapshot.sevenDayUtilization,
+                                  now: now, threshold: threshold), enabled {
             sendNotification(title: "Weekly limit reset",
                              body: "Your weekly limit just reset — full quota available again.",
                              isCritical: false)
         }
-        lastSevenDayReset = snapshot.sevenDayResetAt
-        lastSevenDayUtil = snapshot.sevenDayUtilization
     }
 
     private func checkForNotifications() {
@@ -1099,20 +1120,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let warningThreshold = Int(settingsManager.settings.warningThreshold)
         let criticalThreshold = Int(settingsManager.settings.criticalThreshold)
 
-        if usage >= criticalThreshold && lastCriticalNotified < criticalThreshold {
+        switch evaluateUsageAlert(usage: usage, warningThreshold: warningThreshold,
+                                  criticalThreshold: criticalThreshold, state: &usageAlertState) {
+        case .critical:
             sendNotification(
                 title: "Critical: Claude Usage",
                 body: "You've used \(usage)% of your weekly quota. Consider pausing non-essential tasks.",
                 isCritical: true
             )
-            lastCriticalNotified = criticalThreshold
-        } else if usage >= warningThreshold && lastWarningNotified < warningThreshold && usage < criticalThreshold {
+        case .warning:
             sendNotification(
                 title: "Warning: Claude Usage",
                 body: "You've used \(usage)% of your weekly quota.",
                 isCritical: false
             )
-            lastWarningNotified = warningThreshold
+        case nil:
+            break
         }
     }
 

@@ -9,6 +9,36 @@ func manualRefreshAllowed(last: Date?, now: Date, minInterval: TimeInterval) -> 
     return now.timeIntervalSince(last) >= minInterval
 }
 
+// MARK: - In-flight fetch gate
+
+/// Lets one usage fetch run at a time. A fetch requested while another is in
+/// flight is coalesced: it runs once the current one finishes, so a sign-in or a
+/// manual Refresh that lands mid-poll still gets fresh numbers, without two
+/// overlapping requests racing each other (and, before the token refresh was
+/// single-flight, racing the refresh token).
+struct FetchGate {
+    private(set) var inFlight = false
+    private(set) var pending = false
+
+    /// True when the caller should start a fetch now; false when one is already
+    /// running (the request is remembered and replayed by `finish`).
+    mutating func begin() -> Bool {
+        if inFlight { pending = true; return false }
+        inFlight = true
+        return true
+    }
+
+    /// Ends the current fetch. True when a coalesced request should run next.
+    /// After a 429 (`rateLimited`) the queued request is dropped instead: the
+    /// Retry-After backoff timer just scheduled does the retry, and an immediate
+    /// replay would only hit the throttle again and reset that timer.
+    mutating func finish(rateLimited: Bool = false) -> Bool {
+        inFlight = false
+        defer { pending = false }
+        return pending && !rateLimited
+    }
+}
+
 // MARK: - Fetch error presentation
 
 /// How long to wait after a 429 from the usage endpoint. Honors a numeric
@@ -164,6 +194,83 @@ func shouldNotifyReset(previousResetAt: Date?, newResetAt: Date?,
     return previousUtilization >= threshold
 }
 
+/// Follows one limit window (5h or 7d) across polls and reports when it rolled
+/// over after you were constrained. Pure value type, so the sequence is testable.
+///
+/// It keeps the last real boundary and the peak utilization seen in that window
+/// instead of overwriting both with each poll. After a 5h window ends and no new
+/// message has opened the next one, the API reports `resets_at: null` with 0%
+/// utilization; overwriting with that lost the boundary and the peak, so the
+/// "session reset" alert never fired. A rollover is now either the boundary moving
+/// forward (`shouldNotifyReset`) or the clock passing the stored boundary.
+struct ResetTracker: Equatable {
+    private(set) var boundary: Date?
+    private(set) var peakUtilization = 0
+
+    /// Feed one poll's reading. Returns true when this poll observed a rollover
+    /// that warrants a notification (peak before it at or above `threshold`).
+    mutating func observe(resetAt: Date?, utilization: Int, now: Date, threshold: Int) -> Bool {
+        guard let previous = boundary else {
+            // First reading (or no window open yet): start tracking.
+            boundary = resetAt.flatMap { $0 > now ? $0 : nil }
+            peakUtilization = boundary == nil ? 0 : utilization
+            return false
+        }
+        let advanced = shouldNotifyReset(previousResetAt: previous, newResetAt: resetAt,
+                                         previousUtilization: peakUtilization, threshold: Int.min)
+        let expired = now >= previous
+        guard advanced || expired else {
+            // Same window: remember the highest reading (null boundary keeps the old one).
+            peakUtilization = max(peakUtilization, utilization)
+            return false
+        }
+        let notify = peakUtilization >= threshold
+        // Start the next window, ignoring a boundary that's already in the past.
+        boundary = resetAt.flatMap { $0 > now ? $0 : nil }
+        peakUtilization = boundary == nil ? 0 : utilization
+        return notify
+    }
+}
+
+// MARK: - Weekly threshold alerts (pure, testable)
+
+/// Which weekly-usage alert to post, if any.
+enum UsageAlert: Equatable {
+    case warning
+    case critical
+}
+
+/// The thresholds already alerted on in the current week. An alert fires once per
+/// crossing; it re-arms when usage falls clearly back below its threshold (the
+/// 7-day window reset), so the next week's crossing alerts again.
+struct UsageAlertState: Equatable {
+    var lastWarning = 0
+    var lastCritical = 0
+}
+
+/// Decides the weekly-usage alert for a new reading and updates `state`.
+///
+/// Before re-arming existed, an alert latched for the life of the process: after
+/// the first week's warning, `lastWarning == threshold` forever and no later week
+/// ever warned again. Re-arming needs usage to drop `rearmMargin` points below the
+/// threshold (or to zero), so a reading that wobbles around the line can't alert
+/// twice in one week, while a weekly reset (usage back near 0) always re-arms.
+func evaluateUsageAlert(usage: Int, warningThreshold: Int, criticalThreshold: Int,
+                        state: inout UsageAlertState, rearmMargin: Int = 10) -> UsageAlert? {
+    if usage < max(1, warningThreshold - rearmMargin) { state.lastWarning = 0 }
+    if usage < max(1, criticalThreshold - rearmMargin) { state.lastCritical = 0 }
+
+    if usage >= criticalThreshold && state.lastCritical < criticalThreshold {
+        state.lastCritical = criticalThreshold
+        return .critical
+    }
+    if usage >= warningThreshold && state.lastWarning < warningThreshold && usage < criticalThreshold {
+        state.lastWarning = warningThreshold
+        return .warning
+    }
+    return nil
+}
+
 // MARK: - UsageService
 
 final class UsageService: ObservableObject {
@@ -217,6 +324,10 @@ final class UsageService: ObservableObject {
     private var lastManualRefresh: Date?
     private let minManualRefresh: TimeInterval = 10
 
+    // One fetch at a time; guarded by `gateLock` since callers aren't all on main.
+    private let gateLock = NSLock()
+    private var gate = FetchGate()
+
     /// Whether a manual refresh would be allowed right now (false if one ran within
     /// the throttle window).
     func canRefreshNow(_ now: Date = Date()) -> Bool {
@@ -249,9 +360,16 @@ final class UsageService: ObservableObject {
             guard canRefreshNow() else { return false }
             lastManualRefresh = Date()
         }
+        gateLock.lock()
+        let start = gate.begin()
+        gateLock.unlock()
+        guard start else { return true }   // coalesced into the fetch in flight
+
         DispatchQueue.main.async { self.isLoading = true }
 
         Task {
+            var rateLimited = false
+            defer { self.fetchFinished(rateLimited: rateLimited) }
             do {
                 let token = try await accessToken()
                 let response = try await fetchOAuthUsage(accessToken: token)
@@ -295,6 +413,7 @@ final class UsageService: ObservableObject {
             } catch let error as NSError {
                 let isUsageHTTP = error.domain == "OAuthUsage"
                 let isRateLimit = isUsageHTTP && error.code == 429
+                rateLimited = isRateLimit
                 // A 401/403 means the token we sent is stale or was rotated — the
                 // cached copy is now useless, so drop it and re-read next poll.
                 // (A 429 says nothing about the token, so it's left alone.)
@@ -312,6 +431,15 @@ final class UsageService: ObservableObject {
             }
         }
         return true
+    }
+
+    /// Release the gate and replay a fetch that was requested meanwhile (unless
+    /// this one was rate limited; the backoff timer retries then).
+    private func fetchFinished(rateLimited: Bool) {
+        gateLock.lock()
+        let again = gate.finish(rateLimited: rateLimited)
+        gateLock.unlock()
+        if again { DispatchQueue.main.async { self.fetchUsage() } }
     }
 
     func fetchOAuthUsage(accessToken: String) async throws -> OAuthUsageResponse {

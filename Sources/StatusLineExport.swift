@@ -46,12 +46,35 @@ func statusLineText(fiveHourPct: Int, sevenDayPct: Int, sonnetPct: Int?) -> Stri
     return parts.joined(separator: " · ")
 }
 
+/// The line written when there are no real numbers to show. Errors read as
+/// errors, never as a "0%" that looks like data (see LESSONS.md, 2026-09-17).
+let statusLineSignedOutText = "ClaudeGlance: sign in"
+let statusLineNoDataText = "ClaudeGlance: no data yet"
+
 /// Assembles the sidecar payload from the same snapshots the menu reads. Pure
 /// (no I/O) so the field mapping and the ETA/burn gating are unit-testable.
+///
+/// `hasLoaded` is false until a real snapshot lands (the zeroed placeholder is
+/// not data) and `signedIn` is false once the session is gone; either way the
+/// `line` says so instead of printing the placeholder or frozen numbers. `updated`
+/// is when the usage numbers were fetched, not when this file was written, so a
+/// reader can tell how old they are.
 func buildStatusExport(usage: UsageSnapshot, burn: BurnEstimate?, metrics: UsageMetrics,
+                       hasLoaded: Bool = true, signedIn: Bool = true,
                        now: Date = Date()) -> StatusExport {
     let iso = ISO8601DateFormatter()
     iso.formatOptions = [.withInternetDateTime]
+
+    let line: String
+    if !signedIn {
+        line = statusLineSignedOutText
+    } else if !hasLoaded {
+        line = statusLineNoDataText
+    } else {
+        line = statusLineText(fiveHourPct: usage.fiveHourUtilization,
+                              sevenDayPct: usage.sevenDayUtilization,
+                              sonnetPct: usage.sevenDaySonnetUtilization)
+    }
 
     // ETA only when on pace to hit the 5h cap before it resets (same rule the menu
     // uses for its "On pace for 100% by …" row).
@@ -64,8 +87,8 @@ func buildStatusExport(usage: UsageSnapshot, burn: BurnEstimate?, metrics: Usage
     let burnPerHour = burn.map { Int($0.percentPerHour.rounded()) }.flatMap { $0 >= 1 ? $0 : nil }
 
     return StatusExport(
-        updated: iso.string(from: now),
-        stale: isStale(lastUpdated: usage.lastUpdated, now: now),
+        updated: iso.string(from: hasLoaded ? usage.lastUpdated : now),
+        stale: !signedIn || !hasLoaded || isStale(lastUpdated: usage.lastUpdated, now: now),
         fiveHourPct: usage.fiveHourUtilization,
         sevenDayPct: usage.sevenDayUtilization,
         sonnetPct: usage.sevenDaySonnetUtilization,
@@ -76,9 +99,7 @@ func buildStatusExport(usage: UsageSnapshot, burn: BurnEstimate?, metrics: Usage
         todayCostUSD: metrics.todayCostUSD,
         monthCostUSD: metrics.monthCostUSD,
         todayTokens: metrics.todayTokens,
-        line: statusLineText(fiveHourPct: usage.fiveHourUtilization,
-                             sevenDayPct: usage.sevenDayUtilization,
-                             sonnetPct: usage.sevenDaySonnetUtilization)
+        line: line
     )
 }
 
@@ -92,10 +113,13 @@ final class StatusLineExporter {
 
     /// Snapshot current state from the services and persist it async.
     func export(now: Date = Date()) {
+        let auth = OAuthLoginService.shared
         let payload = buildStatusExport(
             usage: UsageService.shared.currentUsage,
             burn: UsageService.shared.fiveHourBurn,
             metrics: MetricsService.shared.metrics,
+            hasLoaded: UsageService.shared.hasLoaded,
+            signedIn: menuBarAuthPrompt(for: auth.state, hasCredentials: auth.isSignedIn) != .signIn,
             now: now)
         io.async { StatusLineExporter.write(payload, to: StatusLineExporter.fileURL) }
     }

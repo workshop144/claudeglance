@@ -52,12 +52,27 @@ func downsampledHistory(_ samples: [HistorySample], now: Date,
 
 /// Unions two readings of the history, de-duplicated by timestamp. Used to
 /// reconcile the primary and mirror copies on load — whichever survived an
-/// uninstall restores what the other lost.
+/// uninstall restores what the other lost — and to fold in an imported backup.
+///
+/// Samples less than a second apart are the same sample, with `a` winning:
+/// backups written before 1.8.1 stored whole-second timestamps (truncated) and
+/// 1.8.1 stores milliseconds (rounded, so x.9996 can come back as x+1.000), while
+/// live samples carry the full fraction. Exact or same-second matching misses
+/// some of those pairs and the sample comes back twice. Polls are minutes apart,
+/// so two real samples are never within a second of each other.
 func mergedHistory(_ a: [HistorySample], _ b: [HistorySample]) -> [HistorySample] {
-    var byTime: [Date: HistorySample] = [:]
-    for s in a { byTime[s.t] = s }
-    for s in b where byTime[s.t] == nil { byTime[s.t] = s }
-    return byTime.values.sorted { $0.t < $1.t }
+    func second(_ d: Date) -> Int64 { Int64(floor(d.timeIntervalSinceReferenceDate)) }
+    var bySecond: [Int64: HistorySample] = [:]
+    for s in a { bySecond[second(s.t)] = s }
+    for s in b {
+        let k = second(s.t)
+        let known = (k - 1...k + 1).contains { key in
+            guard let other = bySecond[key] else { return false }
+            return abs(other.t.timeIntervalSince(s.t)) < 1
+        }
+        if !known { bySecond[k] = s }
+    }
+    return bySecond.values.sorted { $0.t < $1.t }
 }
 
 /// Records the OAuth 5h/7d utilization on each poll and persists it to both

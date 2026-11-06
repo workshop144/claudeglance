@@ -18,6 +18,7 @@
 		382F373955DE9A5AC38ACC84 /* UsageData.swift in Sources */ = {isa = PBXBuildFile; fileRef = D200048597B4157291EE1A2F /* UsageData.swift */; };
 		3D2E45E18392A07DCD9CA1C3 /* Activity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 235D97063A45F0B54F4B17FF /* Activity.swift */; };
 		4E2D274727CD82AF9428F3B1 /* ContextWindowService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4398E2F05CF55A6F687BA545 /* ContextWindowService.swift */; };
+		4E801F28B4A250803558A0DC /* TranscriptScan.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BABF30F1CE3C275DB59E4C9 /* TranscriptScan.swift */; };
 		502D7CBF94D6EFF980CDC029 /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9C63355792ADD1D751C4F42B /* Security.framework */; };
 		513B1D3A50992861B757990A /* SessionGrade.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F94FF2A4B0577DE427D40BD /* SessionGrade.swift */; };
 		555CE50366E519569631B64A /* claudeglance-statusline.sh in Resources */ = {isa = PBXBuildFile; fileRef = 43285A0918E2B6249471B9C3 /* claudeglance-statusline.sh */; };
@@ -67,6 +68,7 @@
 		15B60109596823E8B3049AE5 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
 		170AE89169EADCDEBB16662E /* StatusLineSetup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusLineSetup.swift; sourceTree = "<group>"; };
 		1949DB119DBBF5FE0F65D2A4 /* UsageServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageServiceTests.swift; sourceTree = "<group>"; };
+		1BABF30F1CE3C275DB59E4C9 /* TranscriptScan.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptScan.swift; sourceTree = "<group>"; };
 		235D97063A45F0B54F4B17FF /* Activity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Activity.swift; sourceTree = "<group>"; };
 		23F3D9F26ACD335A9867053D /* MenuBarIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarIcon.swift; sourceTree = "<group>"; };
 		2C7E88928AD7998BA6955269 /* Pricing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Pricing.swift; sourceTree = "<group>"; };
@@ -164,6 +166,7 @@
 				170AE89169EADCDEBB16662E /* StatusLineSetup.swift */,
 				7CDA3E43B0AD4B7359CF6C39 /* StatusService.swift */,
 				7D669BEFDE86EF5611899941 /* ToolUsage.swift */,
+				1BABF30F1CE3C275DB59E4C9 /* TranscriptScan.swift */,
 				D200048597B4157291EE1A2F /* UsageData.swift */,
 				389B96510CE84AF4DA0D39BF /* UsageService.swift */,
 				CD69DF6900409BF9A03F064A /* WrappedCard.swift */,
@@ -340,6 +343,7 @@
 				2D03BEEECC338E3613DAC90F /* StatusLineSetup.swift in Sources */,
 				88B574542640CD9982279FE6 /* StatusService.swift in Sources */,
 				F132079F85A7CCDD36607874 /* ToolUsage.swift in Sources */,
+				4E801F28B4A250803558A0DC /* TranscriptScan.swift in Sources */,
 				382F373955DE9A5AC38ACC84 /* UsageData.swift in Sources */,
 				D5C6822375FC7952CB358FC6 /* UsageService.swift in Sources */,
 				6E7959CD2F34813603847D4E /* WrappedCard.swift in Sources */,
@@ -416,7 +420,7 @@
 				GIT_BRANCH = "";
 				GIT_COMMIT = "";
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
-				MARKETING_VERSION = 1.8.0;
+				MARKETING_VERSION = 1.8.1;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -543,7 +547,7 @@
 				GIT_BRANCH = "";
 				GIT_COMMIT = "";
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
-				MARKETING_VERSION = 1.8.0;
+				MARKETING_VERSION = 1.8.1;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = NO;

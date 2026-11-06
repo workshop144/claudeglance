@@ -151,9 +151,27 @@ func incidentSeed(incidents: [StatusIncident], now: Date, maxDays: Int,
 
 // MARK: - Incident feed parsing (pure)
 
+/// True only for a 200 response; Statuspage errors, 429s and captive portals
+/// must never be read as data.
+func isUsableStatusResponse(_ response: URLResponse) -> Bool {
+    (response as? HTTPURLResponse)?.statusCode == 200
+}
+
+/// The incidents and 30-day uptime to publish for one fetch of `incidents.json`,
+/// or nil when the fetch failed (non-200 or unparseable) and the last figure
+/// should stay in place. Before this, a failed fetch parsed as an empty incident
+/// list and published 100% uptime, typically during an outage.
+func uptimeUpdate(data: Data, response: URLResponse, now: Date,
+                  window: TimeInterval = 30 * 24 * 3600) -> (incidents: [StatusIncident], percent: Double)? {
+    guard isUsableStatusResponse(response), let incidents = parseIncidents(data) else { return nil }
+    return (incidents, uptimePercent(incidents: incidents, window: window, now: now))
+}
+
 /// Parse Statuspage `incidents.json` into the minimal `StatusIncident` shape.
 /// Tolerates missing fields and either fractional or whole-second timestamps.
-func parseIncidents(_ data: Data) -> [StatusIncident] {
+/// Nil when the payload isn't an incident feed at all (an HTML error or
+/// challenge page): that is "no data", not "no incidents".
+func parseIncidents(_ data: Data) -> [StatusIncident]? {
     struct Response: Decodable {
         let incidents: [Incident]
         struct Incident: Decodable {
@@ -163,7 +181,7 @@ func parseIncidents(_ data: Data) -> [StatusIncident] {
             let resolved_at: String?
         }
     }
-    guard let decoded = try? JSONDecoder().decode(Response.self, from: data) else { return [] }
+    guard let decoded = try? JSONDecoder().decode(Response.self, from: data) else { return nil }
 
     let isoFrac = ISO8601DateFormatter(); isoFrac.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
     let iso = ISO8601DateFormatter(); iso.formatOptions = [.withInternetDateTime]

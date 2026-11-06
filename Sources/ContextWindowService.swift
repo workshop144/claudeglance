@@ -97,25 +97,6 @@ struct ContextWindowMetrics {
 
 // MARK: - Log line shape
 
-/// Minimal transcript shape for context monitoring — top-level `sessionId`/`cwd`/
-/// `isSidechain` plus the assistant message's model and usage. Reuses
-/// `MetricsLogLine.Usage` for the token fields. Internal so the pure aggregation
-/// below is unit-testable.
-struct ContextLogLine: Decodable {
-    let sessionId: String?
-    let timestamp: String?
-    let isSidechain: Bool?
-    let cwd: String?
-    let gitBranch: String?
-    let message: Message?
-
-    struct Message: Decodable {
-        let role: String?
-        let model: String?
-        let usage: MetricsLogLine.Usage?
-    }
-}
-
 // MARK: - Pure aggregation (testable, no I/O)
 
 /// Builds per-session context state from raw `.jsonl` contents relative to `now`.
@@ -126,43 +107,40 @@ struct ContextLogLine: Decodable {
 /// Sessions untouched within `recentWithin` are dropped so only live work shows.
 func aggregateContextWindows(jsonlContents: [String], now: Date,
                              recentWithin: TimeInterval = 24 * 3600) -> ContextWindowMetrics {
-    let isoFrac = ISO8601DateFormatter(); isoFrac.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-    let iso = ISO8601DateFormatter(); iso.formatOptions = [.withInternetDateTime]
-    let decoder = JSONDecoder()
+    aggregateContextWindows(entries: TranscriptParser().entries(in: jsonlContents),
+                            now: now, recentWithin: recentWithin)
+}
 
+/// The aggregation proper, over already-decoded transcript entries (the cached path).
+func aggregateContextWindows(entries: [TranscriptEntry], now: Date,
+                             recentWithin: TimeInterval = 24 * 3600) -> ContextWindowMetrics {
     // Per session: the latest assistant-usage line seen so far.
     struct Latest { var date: Date; var tokens: Int; var cached: Bool; var model: String; var cwd: String?; var branch: String? }
     var latestBySession: [String: Latest] = [:]
 
-    for content in jsonlContents {
-        for line in content.split(separator: "\n") {
-            guard let data = line.data(using: .utf8),
-                  let entry = try? decoder.decode(ContextLogLine.self, from: data),
-                  let sessionId = entry.sessionId,
-                  let msg = entry.message, msg.role == "assistant",
-                  let usage = msg.usage,
-                  let ts = entry.timestamp,
-                  let date = isoFrac.date(from: ts) ?? iso.date(from: ts) else { continue }
+    for entry in entries {
+        guard let sessionId = entry.sessionId, entry.role == "assistant",
+              let usage = entry.usage else { continue }
+        let date = entry.date
 
-            // Subagent sidechains have their own context window; synthetic entries
-            // (compaction markers, etc.) aren't real model turns.
-            if entry.isSidechain == true { continue }
-            let model = msg.model ?? ""
-            if model.isEmpty || model == "<synthetic>" { continue }
+        // Subagent sidechains have their own context window; synthetic entries
+        // (compaction markers, etc.) aren't real model turns.
+        if entry.isSidechain { continue }
+        let model = entry.model
+        if model.isEmpty || model == "<synthetic>" { continue }
 
-            // The prompt size sent to the model = input + both cache sides. Output
-            // tokens are the response, not part of the context that was sent.
-            let cacheR = usage.cache_read_input_tokens ?? 0
-            let cacheC = usage.cache_creation_input_tokens ?? 0
-            let tokens = (usage.input_tokens ?? 0) + cacheR + cacheC
-            if tokens <= 0 { continue }
+        // The prompt size sent to the model = input + both cache sides. Output
+        // tokens are the response, not part of the context that was sent.
+        let cacheR = usage.cache_read_input_tokens ?? 0
+        let cacheC = usage.cache_creation_input_tokens ?? 0
+        let tokens = (usage.input_tokens ?? 0) + cacheR + cacheC
+        if tokens <= 0 { continue }
 
-            // Keep the latest turn by timestamp (ties keep the larger context).
-            if let prev = latestBySession[sessionId],
-               (prev.date > date || (prev.date == date && prev.tokens >= tokens)) { continue }
-            latestBySession[sessionId] = Latest(date: date, tokens: tokens, cached: cacheR + cacheC > 0,
-                                                model: model, cwd: entry.cwd, branch: entry.gitBranch)
-        }
+        // Keep the latest turn by timestamp (ties keep the larger context).
+        if let prev = latestBySession[sessionId],
+           (prev.date > date || (prev.date == date && prev.tokens >= tokens)) { continue }
+        latestBySession[sessionId] = Latest(date: date, tokens: tokens, cached: cacheR + cacheC > 0,
+                                            model: model, cwd: entry.cwd, branch: entry.gitBranch)
     }
 
     let cutoff = now.addingTimeInterval(-recentWithin)
@@ -201,6 +179,12 @@ final class ContextWindowService: ObservableObject {
     /// How recently a session must have been touched to count as "live".
     private let recentWithin: TimeInterval = 24 * 3600
     private let queue = DispatchQueue(label: "io.github.broots144.ClaudeGlance.context", qos: .utility)
+    private let cache = TranscriptCache()   // touched only on `queue`
+    private let gate = ScanGate()
+
+    /// Whether anything shows the result right now (see `shouldScanContextWindows`).
+    /// Read on the main thread at each tick; the scan is skipped when false.
+    var isNeeded: () -> Bool = { true }
 
     private init() {}
 
@@ -218,36 +202,23 @@ final class ContextWindowService: ObservableObject {
     }
 
     func refresh() {
+        guard isNeeded(), gate.tryBegin() else { return }
         queue.async { [weak self] in
             guard let self else { return }
             let result = self.computeMetrics()
+            self.gate.end()
             DispatchQueue.main.async { self.metrics = result }
         }
     }
 
     /// Reads only transcripts touched within `recentWithin` (a much smaller set
-    /// than the cost/activity window), then defers to the pure aggregation.
+    /// than the cost/activity window), and of those only the bytes appended since
+    /// the last scan, then defers to the pure aggregation.
     private func computeMetrics() -> ContextWindowMetrics {
         let now = Date()
-        let fm = FileManager.default
-        let cutoff = now.addingTimeInterval(-recentWithin)
-
         // Scan every configured Claude config dir [#22], not just ~/.claude.
-        var contents: [String] = []
-        for projects in claudeProjectsDirectories() {
-            guard let enumerator = fm.enumerator(
-                at: projects,
-                includingPropertiesForKeys: [.contentModificationDateKey],
-                options: [.skipsHiddenFiles]
-            ) else { continue }
-            for case let url as URL in enumerator where url.pathExtension == "jsonl" {
-                let mod = (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-                if mod < cutoff { continue }
-                guard let content = try? String(contentsOf: url, encoding: .utf8) else { continue }
-                contents.append(content)
-            }
-        }
-
-        return aggregateContextWindows(jsonlContents: contents, now: now, recentWithin: recentWithin)
+        let entries = cache.entries(in: claudeProjectsDirectories(),
+                                    modifiedSince: now.addingTimeInterval(-recentWithin))
+        return aggregateContextWindows(entries: entries, now: now, recentWithin: recentWithin)
     }
 }
