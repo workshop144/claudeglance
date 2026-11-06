@@ -16,6 +16,35 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  state-guard:
+    # Repo-state pattern: a PR that changes code must update STATE.md in the same PR.
+    # Escape hatch: PR titles starting with "chore" or "deps" (Dependabot uses chore(deps)).
+    name: STATE.md updated
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Require STATE.md with code changes
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          case "$TITLE" in chore*|deps*) echo "escape hatch: '$TITLE'"; exit 0 ;; esac
+          changed="$(git diff --name-only "$BASE...$HEAD")"
+          code="$(printf '%s\n' "$changed" | grep -E '^(Sources|Tests|Resources|scripts)/|^project\.yml$|^flake\.nix$' || true)"
+          if [ -n "$code" ] && ! printf '%s\n' "$changed" | grep -qx 'STATE.md'; then
+            echo "::error::Code changed without a STATE.md update:"
+            printf '%s\n' "$code"
+            exit 1
+          fi
+          echo "ok"
+
   test:
     name: Unit tests
     runs-on: macos-15
