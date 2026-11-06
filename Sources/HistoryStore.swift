@@ -95,6 +95,9 @@ final class HistoryStore: ObservableObject {
                                    merging: mergedHistory) ?? []
     }
 
+    /// Blocks until every save queued so far has run (tests).
+    func waitForPendingSaves() { io.sync {} }
+
     /// Append a reading (main thread), thin + prune the in-memory window, persist async.
     func record(fiveHour: Int, sevenDay: Int, sonnet: Int? = nil, at date: Date = Date()) {
         samples.append(HistorySample(t: date, h5: fiveHour, h7: sevenDay, hSonnet: sonnet))

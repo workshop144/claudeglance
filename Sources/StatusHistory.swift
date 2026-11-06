@@ -226,6 +226,9 @@ final class StatusHistoryStore: ObservableObject {
                                    merging: mergedStatusHistory) ?? StatusHistory()
     }
 
+    /// Blocks until every save queued so far has run (tests).
+    func waitForPendingSaves() { io.sync {} }
+
     /// Record the current indicator into today's cell (worst-wins). Ignores
     /// `.unknown` (a failed/parse-less poll shouldn't overwrite real data).
     func record(indicator: ServiceStatusIndicator, at date: Date = Date(), calendar: Calendar = .current) {

@@ -13,6 +13,7 @@
 		08768C509388764D5866CFA3 /* StatusHistoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 054F822A413107C0E6AE613C /* StatusHistoryTests.swift */; };
 		0A5539902838346BC1CC4924 /* MetricsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58363E6825D4E0B111A03DFD /* MetricsService.swift */; };
 		16BF940B052B4A948B9B1147 /* StatusLineExportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7122E4ED4E2E86D4A2CC15E /* StatusLineExportTests.swift */; };
+		227E4B50B0C1AB3D14F120DF /* StorageAndServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20CCC751B4F5DAEC7E624CDE /* StorageAndServiceTests.swift */; };
 		24CEB0FE4706A24ACBB1EDF5 /* PlanFit.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FF3FB76AE9DEBA8DBC22A3F /* PlanFit.swift */; };
 		2D03BEEECC338E3613DAC90F /* StatusLineSetup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 170AE89169EADCDEBB16662E /* StatusLineSetup.swift */; };
 		382F373955DE9A5AC38ACC84 /* UsageData.swift in Sources */ = {isa = PBXBuildFile; fileRef = D200048597B4157291EE1A2F /* UsageData.swift */; };
@@ -69,6 +70,7 @@
 		170AE89169EADCDEBB16662E /* StatusLineSetup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusLineSetup.swift; sourceTree = "<group>"; };
 		1949DB119DBBF5FE0F65D2A4 /* UsageServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageServiceTests.swift; sourceTree = "<group>"; };
 		1BABF30F1CE3C275DB59E4C9 /* TranscriptScan.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptScan.swift; sourceTree = "<group>"; };
+		20CCC751B4F5DAEC7E624CDE /* StorageAndServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageAndServiceTests.swift; sourceTree = "<group>"; };
 		235D97063A45F0B54F4B17FF /* Activity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Activity.swift; sourceTree = "<group>"; };
 		23F3D9F26ACD335A9867053D /* MenuBarIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarIcon.swift; sourceTree = "<group>"; };
 		2C7E88928AD7998BA6955269 /* Pricing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Pricing.swift; sourceTree = "<group>"; };
@@ -202,6 +204,7 @@
 				F4F0004C2C97093175FCCF74 /* PlanFitTests.swift */,
 				054F822A413107C0E6AE613C /* StatusHistoryTests.swift */,
 				B7122E4ED4E2E86D4A2CC15E /* StatusLineExportTests.swift */,
+				20CCC751B4F5DAEC7E624CDE /* StorageAndServiceTests.swift */,
 				1949DB119DBBF5FE0F65D2A4 /* UsageServiceTests.swift */,
 				D3FF9EBD17B7B96B3A223C27 /* WrappedCardTests.swift */,
 			);
@@ -310,6 +313,7 @@
 				CE3D6DABD601B48FB4D64469 /* PlanFitTests.swift in Sources */,
 				08768C509388764D5866CFA3 /* StatusHistoryTests.swift in Sources */,
 				16BF940B052B4A948B9B1147 /* StatusLineExportTests.swift in Sources */,
+				227E4B50B0C1AB3D14F120DF /* StorageAndServiceTests.swift in Sources */,
 				641791CDCB279ABBC08D042E /* UsageServiceTests.swift in Sources */,
 				FB58AC8C346887E986EF1C21 /* WrappedCardTests.swift in Sources */,
 			);

@@ -42,11 +42,11 @@ enum StatusLineSetup {
     /// Copy the bundled script into `~/.claude` and mark it executable. Returns the
     /// install path. Overwrites any prior copy so re-running picks up updates.
     @discardableResult
-    static func installScript() throws -> URL {
-        guard let src = Bundle.main.url(forResource: scriptResource, withExtension: "sh") else {
+    static func installScript(to dst: URL = StatusLineSetup.installURL,
+                              bundle: Bundle = .main) throws -> URL {
+        guard let src = bundle.url(forResource: scriptResource, withExtension: "sh") else {
             throw err("The statusline script is missing from the app bundle.")
         }
-        let dst = installURL
         let fm = FileManager.default
         try fm.createDirectory(at: dst.deletingLastPathComponent(), withIntermediateDirectories: true)
         if fm.fileExists(atPath: dst.path) { try fm.removeItem(at: dst) }
