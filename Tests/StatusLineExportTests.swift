@@ -232,4 +232,30 @@ final class StatusLineExportTests: XCTestCase {
                                        hasLoaded: false, signedIn: false)
         XCTAssertEqual(try runScript(sidecar: export), statusLineSignedOutText)
     }
+
+    // MARK: Wiring keeps a symlinked settings.json a symlink
+
+    func testWiringWritesThroughASymlinkedSettingsFile() throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent("cg-wire-\(UUID().uuidString)", isDirectory: true)
+        defer { try? fm.removeItem(at: root) }
+        let dotfiles = root.appendingPathComponent("dotfiles", isDirectory: true)
+        let claude = root.appendingPathComponent(".claude", isDirectory: true)
+        try fm.createDirectory(at: dotfiles, withIntermediateDirectories: true)
+        try fm.createDirectory(at: claude, withIntermediateDirectories: true)
+        let target = dotfiles.appendingPathComponent("settings.json")
+        try Data(#"{"theme":"dark"}"#.utf8).write(to: target)
+        let link = claude.appendingPathComponent("settings.json")
+        try fm.createSymbolicLink(at: link, withDestinationURL: target)
+
+        let result = try StatusLineSetup.wireIntoSettings(stamp: "test", settingsURL: link)
+
+        // Still a link, and the change landed in the managed file it points to.
+        let attrs = try fm.attributesOfItem(atPath: link.path)
+        XCTAssertEqual(attrs[.type] as? FileAttributeType, .typeSymbolicLink)
+        let obj = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: target)) as? [String: Any])
+        XCTAssertEqual(obj["theme"] as? String, "dark")
+        XCTAssertNotNil(obj["statusLine"])
+        XCTAssertEqual(result.backup?.deletingLastPathComponent().lastPathComponent, ".claude")
+    }
 }

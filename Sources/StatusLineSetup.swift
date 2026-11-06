@@ -101,8 +101,15 @@ enum StatusLineSetup {
 
     /// Back up settings.json (if present) then merge in the statusLine. Throws with
     /// a friendly message when the file isn't a JSON object.
-    static func wireIntoSettings(stamp: String = StatusLineSetup.timestamp()) throws -> WireResult {
+    ///
+    /// A symlinked settings.json (stow, chezmoi, home-manager) is written through
+    /// to its target. An atomic write renames a temp file over the path, which
+    /// would replace the link with a plain file and quietly detach the user's
+    /// managed config.
+    static func wireIntoSettings(stamp: String = StatusLineSetup.timestamp(),
+                                 settingsURL linkURL: URL = StatusLineSetup.settingsURL) throws -> WireResult {
         let fm = FileManager.default
+        let settingsURL = linkURL.resolvingSymlinksInPath()
         let existing = try? Data(contentsOf: settingsURL)
         let replaced = hasStatusLine(existing)
 
@@ -113,7 +120,8 @@ enum StatusLineSetup {
         try fm.createDirectory(at: settingsURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         var backup: URL? = nil
         if fm.fileExists(atPath: settingsURL.path) {
-            let b = settingsURL.deletingLastPathComponent()
+            // The backup sits next to the path the user knows (~/.claude), not the target.
+            let b = linkURL.deletingLastPathComponent()
                 .appendingPathComponent("settings.json.claudeglance-backup-\(stamp)")
             try? fm.removeItem(at: b)
             try fm.copyItem(at: settingsURL, to: b)
