@@ -1467,6 +1467,17 @@ final class AggregateToolUsageTests: XCTestCase {
         XCTAssertEqual(b.totalCalls, 3)
     }
 
+    func testResumedSessionCopiesAreCountedOnce() {
+        let call = "{\"type\":\"tool_use\",\"id\":\"toolu_01\",\"name\":\"Bash\"}"
+        let mcp = "{\"type\":\"tool_use\",\"id\":\"toolu_02\",\"name\":\"mcp__Gmail__search\"}"
+        let line = assistant(ts: daysAgo(1), blocks: "\(call),\(mcp)")
+        // The original session file and the resumed copy both carry the line.
+        let b = aggregateToolUsage(jsonlContents: [line, line], now: now)
+        XCTAssertEqual(b.totalCalls, 2)
+        XCTAssertEqual(b.toolCounts["Bash"], 1)
+        XCTAssertEqual(b.mcpServerCounts["Gmail"], 1)
+    }
+
     func testSeparatesMcpFromBuiltins() {
         let line = assistant(ts: daysAgo(1), blocks: [tool("Bash"), tool("mcp__Gmail__search_threads")].joined(separator: ","))
         let b = aggregateToolUsage(jsonlContents: [line], now: now)

@@ -42,6 +42,8 @@ struct ToolLogLine: Decodable {
         struct Block: Decodable {
             let type: String?
             let name: String?
+            /// The tool_use id ("toolu_…"), unique per call.
+            let id: String?
         }
 
         private enum CodingKeys: String, CodingKey { case role, content }
@@ -59,6 +61,10 @@ struct ToolLogLine: Decodable {
 
 /// Counts `tool_use` calls in assistant turns from this calendar month, split into
 /// built-in tools and MCP servers. Pure — feed it strings and a clock.
+///
+/// Resumed and forked sessions copy earlier lines into a new jsonl file, so the
+/// same call can appear in several files. Calls are counted once per tool_use id,
+/// the way `aggregateMetrics` counts usage once per message/request.
 func aggregateToolUsage(jsonlContents: [String], now: Date) -> ToolBreakdown {
     let cal = Calendar.current
     let startMonth = cal.date(from: cal.dateComponents([.year, .month], from: now)) ?? cal.startOfDay(for: now)
@@ -69,6 +75,7 @@ func aggregateToolUsage(jsonlContents: [String], now: Date) -> ToolBreakdown {
     var toolCounts: [String: Int] = [:]
     var mcpServerCounts: [String: Int] = [:]
     var total = 0
+    var seen = Set<String>()
 
     for content in jsonlContents {
         for line in content.split(separator: "\n") {
@@ -82,6 +89,9 @@ func aggregateToolUsage(jsonlContents: [String], now: Date) -> ToolBreakdown {
 
             for block in blocks where block.type == "tool_use" {
                 guard let name = block.name, !name.isEmpty else { continue }
+                if let id = block.id, !id.isEmpty {
+                    guard seen.insert(id).inserted else { continue }
+                }
                 total += 1
                 if let server = mcpServerName(from: name) {
                     mcpServerCounts[server, default: 0] += 1
