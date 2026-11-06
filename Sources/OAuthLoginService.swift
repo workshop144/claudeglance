@@ -463,20 +463,24 @@ final class SingleFlight<T>: @unchecked Sendable {
     private var inFlight: Task<T, Error>?
 
     func run(_ operation: @escaping () async throws -> T) async throws -> T {
-        lock.lock()
-        if let task = inFlight {
-            lock.unlock()
-            return try await task.value
-        }
+        let task = joinOrStart(operation)
+        defer { finished(task) }
+        return try await task.value
+    }
+
+    /// The task in flight, or a new one running `operation`. Synchronous so the
+    /// lock is never held across a suspension point.
+    private func joinOrStart(_ operation: @escaping () async throws -> T) -> Task<T, Error> {
+        lock.lock(); defer { lock.unlock() }
+        if let task = inFlight { return task }
         let task = Task { try await operation() }
         inFlight = task
-        lock.unlock()
-        defer {
-            lock.lock()
-            inFlight = nil
-            lock.unlock()
-        }
-        return try await task.value
+        return task
+    }
+
+    private func finished(_ task: Task<T, Error>) {
+        lock.lock(); defer { lock.unlock() }
+        if inFlight == task { inFlight = nil }
     }
 }
 
