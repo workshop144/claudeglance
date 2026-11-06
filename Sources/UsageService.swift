@@ -164,6 +164,45 @@ func shouldNotifyReset(previousResetAt: Date?, newResetAt: Date?,
     return previousUtilization >= threshold
 }
 
+// MARK: - Weekly threshold alerts (pure, testable)
+
+/// Which weekly-usage alert to post, if any.
+enum UsageAlert: Equatable {
+    case warning
+    case critical
+}
+
+/// The thresholds already alerted on in the current week. An alert fires once per
+/// crossing; it re-arms when usage falls clearly back below its threshold (the
+/// 7-day window reset), so the next week's crossing alerts again.
+struct UsageAlertState: Equatable {
+    var lastWarning = 0
+    var lastCritical = 0
+}
+
+/// Decides the weekly-usage alert for a new reading and updates `state`.
+///
+/// Before re-arming existed, an alert latched for the life of the process: after
+/// the first week's warning, `lastWarning == threshold` forever and no later week
+/// ever warned again. Re-arming needs usage to drop `rearmMargin` points below the
+/// threshold (or to zero), so a reading that wobbles around the line can't alert
+/// twice in one week, while a weekly reset (usage back near 0) always re-arms.
+func evaluateUsageAlert(usage: Int, warningThreshold: Int, criticalThreshold: Int,
+                        state: inout UsageAlertState, rearmMargin: Int = 10) -> UsageAlert? {
+    if usage < max(1, warningThreshold - rearmMargin) { state.lastWarning = 0 }
+    if usage < max(1, criticalThreshold - rearmMargin) { state.lastCritical = 0 }
+
+    if usage >= criticalThreshold && state.lastCritical < criticalThreshold {
+        state.lastCritical = criticalThreshold
+        return .critical
+    }
+    if usage >= warningThreshold && state.lastWarning < warningThreshold && usage < criticalThreshold {
+        state.lastWarning = warningThreshold
+        return .warning
+    }
+    return nil
+}
+
 // MARK: - UsageService
 
 final class UsageService: ObservableObject {

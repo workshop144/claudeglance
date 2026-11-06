@@ -1537,3 +1537,35 @@ final class UsageErrorPresentationTests: XCTestCase {
         XCTAssertEqual(usageErrorMessage(for: signIn, retryAt: at), signIn.localizedDescription)
     }
 }
+
+// MARK: - Weekly threshold alerts re-arm after the week resets
+
+final class UsageAlertTests: XCTestCase {
+
+    func testWarningFiresAgainInTheNextWeek() {
+        var state = UsageAlertState()
+        // Week 1 crosses 80%: one warning, then quiet while still above.
+        XCTAssertEqual(evaluateUsageAlert(usage: 80, warningThreshold: 80, criticalThreshold: 95, state: &state), .warning)
+        XCTAssertNil(evaluateUsageAlert(usage: 85, warningThreshold: 80, criticalThreshold: 95, state: &state))
+        // The 7-day window resets: usage drops to 0.
+        XCTAssertNil(evaluateUsageAlert(usage: 0, warningThreshold: 80, criticalThreshold: 95, state: &state))
+        // Week 2 crosses 80% again: warns again (used to stay silent forever).
+        XCTAssertEqual(evaluateUsageAlert(usage: 80, warningThreshold: 80, criticalThreshold: 95, state: &state), .warning)
+    }
+
+    func testCriticalFiresAgainInTheNextWeek() {
+        var state = UsageAlertState()
+        XCTAssertEqual(evaluateUsageAlert(usage: 96, warningThreshold: 80, criticalThreshold: 95, state: &state), .critical)
+        XCTAssertNil(evaluateUsageAlert(usage: 99, warningThreshold: 80, criticalThreshold: 95, state: &state))
+        XCTAssertNil(evaluateUsageAlert(usage: 3, warningThreshold: 80, criticalThreshold: 95, state: &state))
+        XCTAssertEqual(evaluateUsageAlert(usage: 97, warningThreshold: 80, criticalThreshold: 95, state: &state), .critical)
+    }
+
+    func testSmallDipBelowThresholdDoesNotRearm() {
+        var state = UsageAlertState()
+        XCTAssertEqual(evaluateUsageAlert(usage: 81, warningThreshold: 80, criticalThreshold: 95, state: &state), .warning)
+        // A wobble to 79 then back to 80 within the same week is not a new crossing.
+        XCTAssertNil(evaluateUsageAlert(usage: 79, warningThreshold: 80, criticalThreshold: 95, state: &state))
+        XCTAssertNil(evaluateUsageAlert(usage: 80, warningThreshold: 80, criticalThreshold: 95, state: &state))
+    }
+}

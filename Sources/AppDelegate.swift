@@ -15,8 +15,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let contextService = ContextWindowService.shared
     private let settingsManager = SettingsManager.shared
 
-    private var lastWarningNotified: Int = 0
-    private var lastCriticalNotified: Int = 0
+    // Weekly warning/critical alerts already sent this week; re-armed on reset.
+    private var usageAlertState = UsageAlertState()
 
     // Previous window state, to detect a reset (reset time advanced) and how
     // constrained we were just before it. nil until the first snapshot arrives.
@@ -1099,20 +1099,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let warningThreshold = Int(settingsManager.settings.warningThreshold)
         let criticalThreshold = Int(settingsManager.settings.criticalThreshold)
 
-        if usage >= criticalThreshold && lastCriticalNotified < criticalThreshold {
+        switch evaluateUsageAlert(usage: usage, warningThreshold: warningThreshold,
+                                  criticalThreshold: criticalThreshold, state: &usageAlertState) {
+        case .critical:
             sendNotification(
                 title: "Critical: Claude Usage",
                 body: "You've used \(usage)% of your weekly quota. Consider pausing non-essential tasks.",
                 isCritical: true
             )
-            lastCriticalNotified = criticalThreshold
-        } else if usage >= warningThreshold && lastWarningNotified < warningThreshold && usage < criticalThreshold {
+        case .warning:
             sendNotification(
                 title: "Warning: Claude Usage",
                 body: "You've used \(usage)% of your weekly quota.",
                 isCritical: false
             )
-            lastWarningNotified = warningThreshold
+        case nil:
+            break
         }
     }
 
