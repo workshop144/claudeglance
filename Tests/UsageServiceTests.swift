@@ -447,6 +447,22 @@ final class PricingTests: XCTestCase {
         XCTAssertEqual(displayModelName(for: "claude-opus-4-1-20250805"), "Opus 4.1")
     }
 
+    func testOpus4And41UseTheirOwnPrice() {
+        XCTAssertEqual(modelRate(for: "claude-opus-4-20250514"), ModelRate(input: 15, output: 75))
+        XCTAssertEqual(modelRate(for: "claude-opus-4-1-20250805"), ModelRate(input: 15, output: 75))
+        XCTAssertEqual(modelRate(for: "claude-opus-4"), ModelRate(input: 15, output: 75))
+        XCTAssertEqual(modelRate(for: "claude-opus-4-5-20251101"), ModelRate(input: 5, output: 25))
+        XCTAssertEqual(modelRate(for: "claude-opus-4-8"), ModelRate(input: 5, output: 25))
+    }
+
+    func testDatedOpus4IsNotLabelledOpus42() {
+        XCTAssertEqual(displayModelName(for: "claude-opus-4-20250514"), "Opus 4")
+        XCTAssertEqual(displayModelName(for: "claude-opus-4"), "Opus 4")
+        XCTAssertEqual(displayModelName(for: "claude-opus-4-5"), "Opus 4.5")
+        XCTAssertNil(opus4MinorVersion("claude-opus-4-20250514"))
+        XCTAssertEqual(opus4MinorVersion("claude-opus-4-1-20250805"), 1)
+    }
+
     func testDisplayModelNameFamilyFallbacks() {
         XCTAssertEqual(displayModelName(for: "claude-fable-5"), "Fable 5")
         XCTAssertEqual(displayModelName(for: "claude-sonnet-4-6"), "Sonnet")

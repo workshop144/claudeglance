@@ -16,12 +16,30 @@ struct ModelRate: Equatable {
 func modelRate(for model: String) -> ModelRate {
     let m = model.lowercased()
     if m.contains("fable")                            { return ModelRate(input: 10, output: 50) }
-    if m.contains("opus-4") || m.contains("opus4")    { return ModelRate(input: 5, output: 25) }
+    if m.contains("opus-4") || m.contains("opus4") {
+        // Opus 4 and 4.1 kept the Opus 3 price; 4.5 and later are $5/$25.
+        let minor = opus4MinorVersion(m) ?? 0
+        return minor >= 5 ? ModelRate(input: 5, output: 25) : ModelRate(input: 15, output: 75)
+    }
     if m.contains("opus")                             { return ModelRate(input: 15, output: 75) }   // Opus 3 (legacy)
     if m.contains("sonnet")                           { return ModelRate(input: 3, output: 15) }    // Sonnet 3.5–4.x
     if m.contains("haiku-4") || m.contains("haiku4")  { return ModelRate(input: 1, output: 5) }     // Haiku 4.5
     if m.contains("haiku")                            { return ModelRate(input: 0.8, output: 4) }   // Haiku 3.5 (legacy)
     return ModelRate(input: 3, output: 15)                                                          // unknown → Sonnet-class
+}
+
+/// The minor version of an Opus 4 id: 8 for "claude-opus-4-8", 1 for
+/// "claude-opus-4-1-20250805". Nil for plain Opus 4, including the dated
+/// "claude-opus-4-20250514", whose next digits are a date, not a version. A minor
+/// is one digit followed by "-" or the end of the id.
+func opus4MinorVersion(_ model: String) -> Int? {
+    let m = model.lowercased()
+    guard let r = m.range(of: "opus-4-") ?? m.range(of: "opus4-") else { return nil }
+    let rest = m[r.upperBound...]
+    guard let first = rest.first, first.isASCII, let digit = first.wholeNumberValue else { return nil }
+    let after = rest.dropFirst().first
+    guard after == nil || after == "-" else { return nil }
+    return digit
 }
 
 /// A short, human label for a raw model id from the logs — used to group the
@@ -32,10 +50,7 @@ func displayModelName(for model: String) -> String {
     let m = model.lowercased()
     if m.contains("fable") { return "Fable 5" }
     if m.contains("opus") {
-        if let r = m.range(of: "opus-4-") ?? m.range(of: "opus4-"),
-           let minor = m[r.upperBound...].first, minor.isNumber {
-            return "Opus 4.\(minor)"
-        }
+        if let minor = opus4MinorVersion(m) { return "Opus 4.\(minor)" }
         if m.contains("opus-4") || m.contains("opus4") { return "Opus 4" }
         return "Opus 3"
     }
