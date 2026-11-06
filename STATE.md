@@ -1,6 +1,6 @@
 # Current Build State
 
-Last updated: 2026-11-06 by Claude: retrofit of the repo-state pattern (STATE, LESSONS, DECISIONS, justfile, CI guard).
+Last updated: 2026-11-06 by Claude: v1.8.1 bug sweep (13 verified bugs fixed on branch fix/bugs-2026-11-06, PR to main).
 
 ## Phases (release lines)
 
@@ -12,13 +12,25 @@ Last updated: 2026-11-06 by Claude: retrofit of the repo-state pattern (STATE, L
 - [x] v1.6 Reach (v1.6.5)
 - [x] v1.7 Standalone sign-in and hardening (v1.7.0 to v1.7.7)
 - [x] v1.8 Signed-out menu bar (v1.8.0, released 2026-10-15)
+- [ ] v1.8.1 Bug sweep: fixes merged by PR, then tag v1.8.1 and re-pin the flake.
 - [ ] Signing cluster: notarize [6], Sparkle auto-update [13], WidgetKit [25]. BLOCKED, see below.
 - [ ] Exploratory: real prepaid balance [23], multi-account [24]. Not started, demand unvalidated.
 
 ## What is true now
 
-- Shipped version: 1.8.0 (project.yml `MARKETING_VERSION`, tag v1.8.0, GitHub release
-  "Latest" on workshop144/claudeglance). flake.nix pins 1.8.0 (PR #17).
+- Shipped version: 1.8.0 (tag v1.8.0, GitHub release "Latest" on workshop144/claudeglance).
+  flake.nix pins 1.8.0 (PR #17). project.yml says 1.8.1 on the bug-sweep branch; after it
+  merges, tag v1.8.1 and run `scripts/update-flake.sh 1.8.1` in a follow-up PR.
+- v1.8.1 bug sweep (2026-11-06): token refresh is single-flight (SingleFlight) and a
+  rejected refresh signs out only if the stored pair isn't newer; usage fetches run one at
+  a time (FetchGate); weekly alerts re-arm after the reset; ResetTracker keeps the 5h
+  boundary across null `resets_at`; statusline sidecar never shows placeholder or stale
+  numbers as live and the script marks "(stale)"; failed incidents fetch keeps the last
+  uptime; backups keep milliseconds and history merges per second; Opus 4/4.1 priced
+  $15/$75; tool calls de-duplicated by tool_use id; TranscriptCache reads only appended
+  transcript bytes and the context scan runs only while shown; symlinked settings.json
+  kept; archive saves ordered; loopback sign-in reserves [::1] on its port and a replaced
+  listener no longer hangs. OAuthLoginService has a `CredentialStore` seam for tests.
 - Sign-in: own OAuth 2.0 PKCE browser flow with a loopback listener bound to the
   request state (v1.7.4, PR #1 / #5). Tokens live in the app's own Keychain item
   `ClaudeGlance-credentials`, re-created under the running build at each launch (v1.7.6, PR #11).
@@ -45,14 +57,18 @@ Last updated: 2026-11-06 by Claude: retrofit of the repo-state pattern (STATE, L
 - Branch `develop` (last commit 2026-09-28) has no diff against main; all work since
   v1.7.4 lands by PR to main.
 
-Verified 2026-11-06 on this Mac, `just verify-release` at 85a2b0e plus this change:
+Verified 2026-11-06 on this Mac, `just verify-release` on fix/bugs-2026-11-06:
 
 ```
-Executed 243 tests, with 0 failures (0 unexpected)
+Executed 282 tests, with 0 failures (0 unexpected)
 ** TEST SUCCEEDED **
 build/dd/Build/Products/Release/ClaudeGlance.app: flags=0x10002(adhoc,runtime)
-release 1.8.0: check passed, CHANGELOG entry present
+release 1.8.1: check passed, CHANGELOG entry present
 ```
+
+Not verified by hand: a real browser sign-in against claude.ai after the loopback change
+(tests cover `localhost` reaching the listener via the ::1 fallback). Try one sign-in
+with `scripts/dev-install.sh` before or right after tagging.
 
 `just verify-flake`: `flake pinned to 1.8.0`.
 
@@ -69,7 +85,8 @@ release 1.8.0: check passed, CHANGELOG entry present
 
 ## Next
 
+0. Merge the v1.8.1 PR, tag v1.8.1, then the flake re-pin PR (`scripts/update-flake.sh 1.8.1`).
 1. Delete or retire `develop` and update the dev-install.sh comment (small chore PR).
 2. Roadmap [31] copy-usage-to-clipboard is the only small unbuilt item that fits the aesthetic.
-3. Hardening list in ROADMAP.md (timezone correctness, multi-monitor placement, big-jsonl
-   streaming) has no tests yet; pick one and add a test first.
+3. Hardening list in ROADMAP.md (timezone correctness, multi-monitor placement) has no
+   tests yet; pick one and add a test first. Big-jsonl streaming is done (TranscriptCache).

@@ -4,6 +4,52 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.1] — Bug sweep
+
+### Fixed
+- **Staying signed in when refreshes overlap.** A manual Refresh, the sign-in
+  fetch and the timer poll could each refresh the token with the same refresh
+  token; the token endpoint rotates it, so the loser was rejected and the app
+  signed you out. Refreshes now run one at a time, a refreshed token is kept in
+  memory if saving it fails, and only one usage fetch runs at once.
+- **Weekly usage warnings fire every week.** The 80% warning and critical alert
+  used to fire once per app launch and never again after the week reset.
+- **The "5-hour session reset" alert survives an idle gap.** When a window ended
+  and no new one had started, the API's empty reset time wiped the record of
+  how close you had been, so the alert was skipped.
+- **The Claude Code statusline no longer shows placeholder or frozen numbers.**
+  Before the first fetch it printed "5h 0% · 7d 0%", and after sign-out or
+  failed fetches it kept the old numbers as if live. It now says "ClaudeGlance:
+  sign in" or "no data yet", and marks old numbers "(stale)", including when
+  the app has quit. Re-copy the script from Settings to get the new marker.
+- **A failed status-page fetch no longer shows 100% uptime.** An error or
+  challenge page used to read as "no incidents".
+- **Importing a history backup no longer doubles recent samples.** Backups now
+  keep milliseconds, and older backups merge cleanly too.
+- **Opus 4 and 4.1 are priced at $15/$75**, not the Opus 4.5+ rate, and
+  `claude-opus-4-20250514` is labelled "Opus 4", not "Opus 4.2".
+- **Tool and MCP counts no longer double-count resumed sessions.**
+- **Wiring the statusline keeps a symlinked `~/.claude/settings.json` a
+  symlink**, writing through to your dotfiles instead of replacing the link.
+- **An import can no longer be lost on disk** when it races the background
+  activity scan.
+- **Double-clicking Sign in no longer leaves a hung sign-in attempt behind.**
+
+### Changed
+- **Much lighter background scanning.** Cost, activity and tool figures used to
+  re-read and re-decode every transcript from the last 30 days each minute
+  (hundreds of MB to GBs). Decoded entries are now cached per file and only new
+  lines are read; one bad byte no longer drops a whole file; the context-window
+  scan only runs while the context row, the session grade or the dashboard
+  shows it.
+
+### Security
+- **The sign-in listener also holds the IPv6 loopback port.** The redirect goes
+  to `localhost`, which browsers may resolve to `::1` first, and only
+  `127.0.0.1` was bound, so another local process could take `::1` and catch
+  the redirect (blocking sign-in; PKCE kept the code from being used). The
+  `::1` side is now reserved for the duration of sign-in.
+
 ## [1.8.0] — Signed-out menu bar
 
 ### Added
