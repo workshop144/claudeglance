@@ -29,10 +29,13 @@ struct FetchGate {
     }
 
     /// Ends the current fetch. True when a coalesced request should run next.
-    mutating func finish() -> Bool {
+    /// After a 429 (`rateLimited`) the queued request is dropped instead: the
+    /// Retry-After backoff timer just scheduled does the retry, and an immediate
+    /// replay would only hit the throttle again and reset that timer.
+    mutating func finish(rateLimited: Bool = false) -> Bool {
         inFlight = false
         defer { pending = false }
-        return pending
+        return pending && !rateLimited
     }
 }
 
@@ -365,7 +368,8 @@ final class UsageService: ObservableObject {
         DispatchQueue.main.async { self.isLoading = true }
 
         Task {
-            defer { self.fetchFinished() }
+            var rateLimited = false
+            defer { self.fetchFinished(rateLimited: rateLimited) }
             do {
                 let token = try await accessToken()
                 let response = try await fetchOAuthUsage(accessToken: token)
@@ -409,6 +413,7 @@ final class UsageService: ObservableObject {
             } catch let error as NSError {
                 let isUsageHTTP = error.domain == "OAuthUsage"
                 let isRateLimit = isUsageHTTP && error.code == 429
+                rateLimited = isRateLimit
                 // A 401/403 means the token we sent is stale or was rotated — the
                 // cached copy is now useless, so drop it and re-read next poll.
                 // (A 429 says nothing about the token, so it's left alone.)
@@ -428,10 +433,11 @@ final class UsageService: ObservableObject {
         return true
     }
 
-    /// Release the gate and replay a fetch that was requested meanwhile.
-    private func fetchFinished() {
+    /// Release the gate and replay a fetch that was requested meanwhile (unless
+    /// this one was rate limited; the backoff timer retries then).
+    private func fetchFinished(rateLimited: Bool) {
         gateLock.lock()
-        let again = gate.finish()
+        let again = gate.finish(rateLimited: rateLimited)
         gateLock.unlock()
         if again { DispatchQueue.main.async { self.fetchUsage() } }
     }

@@ -25,7 +25,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **A failed status-page fetch no longer shows 100% uptime.** An error or
   challenge page used to read as "no incidents".
 - **Importing a history backup no longer doubles recent samples.** Backups now
-  keep milliseconds, and older backups merge cleanly too.
+  keep milliseconds, and older backups merge cleanly too. Backups exported by
+  1.8.1 need 1.8.1 or later to import; an older build can't read them.
 - **Opus 4 and 4.1 are priced at $15/$75**, not the Opus 4.5+ rate, and
   `claude-opus-4-20250514` is labelled "Opus 4", not "Opus 4.2".
 - **Tool and MCP counts no longer double-count resumed sessions.**
@@ -34,6 +35,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **An import can no longer be lost on disk** when it races the background
   activity scan.
 - **Double-clicking Sign in no longer leaves a hung sign-in attempt behind.**
+- **Signing out while a token refresh is running stays signed out.** The
+  refreshed tokens used to be saved back afterwards.
+- **A Refresh during a throttled check waits for the retry time** instead of
+  sending another request straight away.
+- **The statusline's "(stale)" check works with GNU `stat` first on PATH**
+  (Nix or Homebrew coreutils).
 
 ### Changed
 - **Much lighter background scanning.** Cost, activity and tool figures used to

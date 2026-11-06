@@ -535,6 +535,10 @@ final class OAuthLoginService: ObservableObject {
     private var needsRefresh = false
     /// Set when a refreshed pair couldn't be saved; the next call retries the save.
     private var needsPersist = false
+    /// Bumped by sign-out and sign-in. A token refresh that started under an older
+    /// generation is dropped, so signing out mid-refresh can't write the
+    /// refreshed pair back to the Keychain and sign the user in again.
+    private var sessionGeneration = 0
     private let refreshFlight = SingleFlight<StoredCredentials>()
 
     private let store: CredentialStore
@@ -687,6 +691,7 @@ final class OAuthLoginService: ObservableObject {
                                                state: expected,
                                                verifier: verifier,
                                                redirectURI: pendingRedirectURI)
+            newSessionGeneration()
             try store.save(creds)
             cache(creds)
             pendingVerifier = nil
@@ -704,8 +709,15 @@ final class OAuthLoginService: ObservableObject {
     @MainActor
     func signOut() {
         callbackServer.stop()
+        // Bump, delete and clear under one lock so an in-flight refresh can't save
+        // its result in between (see `commitRefreshed`).
+        cacheLock.lock()
+        sessionGeneration += 1
         store.delete()
-        clearCache()
+        cachedCredentials = nil
+        needsRefresh = false
+        needsPersist = false
+        cacheLock.unlock()
         pendingVerifier = nil
         pendingState = nil
         state = .signedOut
@@ -739,6 +751,7 @@ final class OAuthLoginService: ObservableObject {
 
     /// The slow path, only ever run by one task at a time.
     private func loadOrRefresh() async throws -> StoredCredentials {
+        let generation = currentSessionGeneration()
         let (cached, forced, unsaved) = cacheSnapshot()
         if unsaved, let cached { persist(cached) }
         // Prefer the in-memory pair: it can be newer than the Keychain item when a
@@ -753,10 +766,10 @@ final class OAuthLoginService: ObservableObject {
         }
         do {
             let fresh = try await refresh(refreshToken: creds.refreshToken)
-            // Cache before saving: the old refresh token is spent now, so losing the
-            // new pair to a failed save would sign the user out on the next refresh.
-            cache(fresh)
-            persist(fresh)
+            // Signed out (or in again) while the refresh ran: drop its result.
+            guard commitRefreshed(fresh, generation: generation) else {
+                return try sessionChangedResult()
+            }
             await setState(.signedIn(fresh.expiresAtDate))
             return fresh
         } catch let error as NSError {
@@ -764,6 +777,7 @@ final class OAuthLoginService: ObservableObject {
             // sign out so the UI prompts a fresh login. Transient/network errors
             // (5xx, offline) keep the session so we can retry next poll.
             if error.code == 400 || error.code == 401 {
+                if currentSessionGeneration() != generation { return try sessionChangedResult() }
                 // Unless something else already rotated it: then the stored pair is live.
                 let stored = store.load()
                 if !refreshRejectionEndsSession(rejected: creds, stored: stored), let stored {
@@ -777,6 +791,37 @@ final class OAuthLoginService: ObservableObject {
             }
             throw error
         }
+    }
+
+    /// Cache, then save, a refreshed pair, but only if the session is the one the
+    /// refresh started under. Cache first: the old refresh token is spent now, so
+    /// losing the new pair to a failed save would sign the user out on the next
+    /// refresh. Held under `cacheLock` so `signOut` can't interleave.
+    private func commitRefreshed(_ fresh: StoredCredentials, generation: Int) -> Bool {
+        cacheLock.lock(); defer { cacheLock.unlock() }
+        guard generation == sessionGeneration else { return false }
+        cachedCredentials = fresh
+        needsRefresh = false
+        needsPersist = (try? store.save(fresh)) == nil
+        return true
+    }
+
+    /// What a refresh returns when the session changed under it: the new
+    /// session's pair if there is one, else not signed in.
+    private func sessionChangedResult() throws -> StoredCredentials {
+        cacheLock.lock(); defer { cacheLock.unlock() }
+        if let current = cachedCredentials { return current }
+        throw OAuthLoginService.notSignedInError
+    }
+
+    private func currentSessionGeneration() -> Int {
+        cacheLock.lock(); defer { cacheLock.unlock() }
+        return sessionGeneration
+    }
+
+    private func newSessionGeneration() {
+        cacheLock.lock(); defer { cacheLock.unlock() }
+        sessionGeneration += 1
     }
 
     /// Save to the store; on failure keep the pair in memory and retry next call.

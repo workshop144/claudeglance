@@ -122,6 +122,9 @@ final class TranscriptCache {
         var modified: Date
         /// Bytes consumed so far (through the last complete line).
         var offset: UInt64
+        /// The byte at `offset - 1` when it was read. If it differs on the next
+        /// scan, the file was rewritten rather than appended to.
+        var lastByte: UInt8?
         var entries: [TranscriptEntry]
     }
 
@@ -159,13 +162,22 @@ final class TranscriptCache {
         var file = files[key]
         // Grew: append from the last complete line. Otherwise start over.
         if file == nil || size < file!.size || size == file!.size {
-            file = File(size: 0, modified: .distantPast, offset: 0, entries: [])
+            file = File(size: 0, modified: .distantPast, offset: 0, lastByte: nil, entries: [])
         }
         guard var current = file, let handle = try? FileHandle(forReadingFrom: url) else { return [] }
         defer { try? handle.close() }
         do {
+            // A file truncated and rewritten past its old size also "grew"; Claude
+            // Code only appends, but if the byte before the offset changed, reread.
+            if current.offset > 0 {
+                try handle.seek(toOffset: current.offset - 1)
+                if try handle.read(upToCount: 1)?.first != current.lastByte {
+                    current = File(size: 0, modified: .distantPast, offset: 0, lastByte: nil, entries: [])
+                }
+            }
             try handle.seek(toOffset: current.offset)
             let data = try handle.readToEnd() ?? Data()
+            let before = current.offset
             if let lastNewline = data.lastIndex(of: 0x0A) {
                 current.entries += parser.entries(in: data[data.startIndex..<lastNewline])
                 current.offset += UInt64(data.distance(from: data.startIndex, to: lastNewline) + 1)
@@ -173,6 +185,9 @@ final class TranscriptCache {
                 current.offset += consumeTrailingLine(rest, into: &current.entries)
             } else {
                 current.offset += consumeTrailingLine(data[...], into: &current.entries)
+            }
+            if current.offset > before {
+                current.lastByte = data[data.startIndex + Int(current.offset - before) - 1]
             }
         } catch {
             return file?.entries ?? []

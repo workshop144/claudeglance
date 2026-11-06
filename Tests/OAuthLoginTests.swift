@@ -354,6 +354,22 @@ final class TokenRefreshRaceTests: XCTestCase {
         XCTAssertEqual(box.current?.refreshToken, "rt-2")
     }
 
+    func testSignOutDuringRefreshIsNotUndone() async throws {
+        RotatingTokenEndpoint.reset(validRefreshToken: "rt-0")
+        let box = MemoryCredentialBox(expired("rt-0"))
+        let service = OAuthLoginService(testStore: box.store, urlSession: RotatingTokenEndpoint.session())
+
+        let refresh = Task { try await service.validAccessToken() }
+        try await Task.sleep(nanoseconds: 50_000_000)   // endpoint answers after 0.2s
+        await MainActor.run { service.signOut() }
+        _ = try? await refresh.value
+
+        XCTAssertEqual(RotatingTokenEndpoint.refreshCalls, 1)
+        XCTAssertNil(box.current, "the refreshed pair must not be written back after sign-out")
+        let state = await MainActor.run { service.state }
+        XCTAssertEqual(state, .signedOut)
+    }
+
     func testRejectionEndsSessionOnlyForTheStoredToken() {
         let rejected = StoredCredentials(accessToken: "a", refreshToken: "rt-1", expiresAt: 100)
         XCTAssertTrue(refreshRejectionEndsSession(rejected: rejected, stored: nil))

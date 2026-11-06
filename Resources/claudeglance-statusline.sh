@@ -37,7 +37,12 @@ if [ -f "$SIDECAR" ]; then
   # ClaudeGlance rewrites the file every minute while it runs. An old file means
   # the app quit or hung, so its numbers are no longer current either.
   max_age="${CLAUDEGLANCE_STALE_SECONDS:-900}"
-  mtime="$(stat -f %m "$SIDECAR" 2>/dev/null || stat -c %Y "$SIDECAR" 2>/dev/null)"
+  # BSD stat first by absolute path: a GNU stat earlier on PATH (Nix, Homebrew
+  # coreutils) treats -f as "filesystem", prints junk and fails, and capturing
+  # both commands in one $(...) kept that junk. Only a plain epoch is used.
+  mtime="$(/usr/bin/stat -f %m "$SIDECAR" 2>/dev/null)" || mtime="$(stat -c %Y "$SIDECAR" 2>/dev/null)"
+  case "$mtime" in ''|*[!0-9]*) mtime="" ;; esac
+  case "$max_age" in ''|*[!0-9]*) max_age=900 ;; esac
   if [ -n "$mtime" ] && [ $(( $(date +%s) - mtime )) -gt "$max_age" ]; then
     stale="true"
   fi

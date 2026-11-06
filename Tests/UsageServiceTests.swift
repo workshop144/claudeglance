@@ -1652,6 +1652,16 @@ final class FetchGateTests: XCTestCase {
         XCTAssertFalse(gate.finish())        // nothing else queued
         XCTAssertFalse(gate.inFlight)
     }
+
+    func testRateLimitedFetchDropsTheReplayAndLeavesRetryToTheBackoff() {
+        var gate = FetchGate()
+        XCTAssertTrue(gate.begin())
+        XCTAssertFalse(gate.begin())                      // Refresh lands mid-poll
+        XCTAssertFalse(gate.finish(rateLimited: true))    // poll got 429: no replay
+        XCTAssertFalse(gate.pending)
+        XCTAssertTrue(gate.begin())                       // backoff timer fires later
+        XCTAssertFalse(gate.finish())
+    }
 }
 
 // MARK: - Incremental transcript scan (no full re-read every tick)
@@ -1713,6 +1723,19 @@ final class TranscriptCacheTests: XCTestCase {
         try Data((usageLine("9") + "\n").utf8).write(to: file)
         try FileManager.default.setAttributes([.modificationDate: t.addingTimeInterval(5)], ofItemAtPath: file.path)
         XCTAssertEqual(cache.entries(in: [dir], modifiedSince: .distantPast).map(\.messageId), ["m9"])
+    }
+
+    func testFileRewrittenLargerIsReadAgainInFull() throws {
+        let file = dir.appendingPathComponent("b2.jsonl")
+        let cache = TranscriptCache()
+        let t = Date()
+        try append(usageLine("1") + "\n" + usageLine("2") + "\n", to: file, modified: t)
+        XCTAssertEqual(cache.entries(in: [dir], modifiedSince: .distantPast).count, 2)
+        // Truncated and rewritten past the old size before the next scan.
+        let rewritten = [usageLine("7", input: 123_456), usageLine("8", input: 123_456), usageLine("9", input: 123_456)]
+        try Data((rewritten.joined(separator: "\n") + "\n").utf8).write(to: file)
+        try FileManager.default.setAttributes([.modificationDate: t.addingTimeInterval(5)], ofItemAtPath: file.path)
+        XCTAssertEqual(cache.entries(in: [dir], modifiedSince: .distantPast).map(\.messageId), ["m7", "m8", "m9"])
     }
 
     func testInvalidUTF8CostsOneLineNotTheFile() throws {

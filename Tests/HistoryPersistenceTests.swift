@@ -229,6 +229,17 @@ final class HistoryPersistenceTests: XCTestCase {
                        live[0].t.timeIntervalSinceReferenceDate, accuracy: 0.001)
     }
 
+    func testSampleRoundedIntoTheNextSecondStillMatchesItsLiveTwin() throws {
+        // x.9996 s encodes as (x+1).000: a different whole second than the live copy.
+        let live = [HistorySample(t: Date(timeIntervalSinceReferenceDate: 815_000_000.9996), h5: 3, h7: 1, hSonnet: nil)]
+        let data = try HistoryBackupService.encoder().encode(
+            HistoryBackup(usage: live, status: StatusHistory(), activity: ActivityArchive()))
+        let restored = try HistoryBackupService.decoder().decode(HistoryBackup.self, from: data)
+        XCTAssertNotEqual(floor(restored.usage[0].t.timeIntervalSinceReferenceDate),
+                          floor(live[0].t.timeIntervalSinceReferenceDate))
+        XCTAssertEqual(mergedHistory(live, restored.usage), live)
+    }
+
     func testLegacyWholeSecondExportStillMergesWithoutDuplicates() throws {
         let base = Date(timeIntervalSinceReferenceDate: 815_000_000.437)
         let live = (0..<5).map { HistorySample(t: base.addingTimeInterval(Double($0) * 300.123), h5: $0, h7: 1, hSonnet: nil) }

@@ -54,15 +54,24 @@ func downsampledHistory(_ samples: [HistorySample], now: Date,
 /// reconcile the primary and mirror copies on load — whichever survived an
 /// uninstall restores what the other lost — and to fold in an imported backup.
 ///
-/// Samples match on the whole second, with `a` winning: backups written before
-/// 1.8.1 stored whole-second timestamps while live samples carry a fraction, so
-/// exact matching never paired them and every recent sample came back twice.
-/// Polls are minutes apart, so two real samples never share a second.
+/// Samples less than a second apart are the same sample, with `a` winning:
+/// backups written before 1.8.1 stored whole-second timestamps (truncated) and
+/// 1.8.1 stores milliseconds (rounded, so x.9996 can come back as x+1.000), while
+/// live samples carry the full fraction. Exact or same-second matching misses
+/// some of those pairs and the sample comes back twice. Polls are minutes apart,
+/// so two real samples are never within a second of each other.
 func mergedHistory(_ a: [HistorySample], _ b: [HistorySample]) -> [HistorySample] {
     func second(_ d: Date) -> Int64 { Int64(floor(d.timeIntervalSinceReferenceDate)) }
     var bySecond: [Int64: HistorySample] = [:]
     for s in a { bySecond[second(s.t)] = s }
-    for s in b where bySecond[second(s.t)] == nil { bySecond[second(s.t)] = s }
+    for s in b {
+        let k = second(s.t)
+        let known = (k - 1...k + 1).contains { key in
+            guard let other = bySecond[key] else { return false }
+            return abs(other.t.timeIntervalSince(s.t)) < 1
+        }
+        if !known { bySecond[k] = s }
+    }
     return bySecond.values.sorted { $0.t < $1.t }
 }
 

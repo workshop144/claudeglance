@@ -31,6 +31,13 @@ Last updated: 2026-11-06 by Claude: v1.8.1 bug sweep (13 verified bugs fixed on 
   transcript bytes and the context scan runs only while shown; symlinked settings.json
   kept; archive saves ordered; loopback sign-in reserves [::1] on its port and a replaced
   listener no longer hangs. OAuthLoginService has a `CredentialStore` seam for tests.
+  Review follow-ups on PR #25: a 429 drops the coalesced fetch (backoff timer retries);
+  history merge treats samples under 1s apart as one; a sign-out generation drops a
+  refresh that finished after sign-out; TranscriptCache rereads a file whose byte before
+  the cached offset changed; context row refreshes when it turns back on; statusline
+  stale check uses /usr/bin/stat and digit-checks mtime. Still untested: a real browser
+  sign-in with the [::1] reservation (Safari and Chrome) on a dev install; if it fails,
+  revert 58dfb8e alone.
 - Sign-in: own OAuth 2.0 PKCE browser flow with a loopback listener bound to the
   request state (v1.7.4, PR #1 / #5). Tokens live in the app's own Keychain item
   `ClaudeGlance-credentials`, re-created under the running build at each launch (v1.7.6, PR #11).

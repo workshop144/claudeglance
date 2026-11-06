@@ -28,6 +28,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // Drives the spinning ring while a browser sign-in is in flight.
     private var signInSpinner: Timer?
+    /// Last `contextService.isNeeded()` seen by settingsDidChange, so a context row
+    /// turned back on refreshes at once instead of showing a paused scan's data.
+    private var contextWasNeeded = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Under XCTest the app is launched only as a test host. Skip all UI /
@@ -597,6 +600,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                                             dashboardVisible: self.dashboardWindow?.isVisible == true)
         }
         contextService.startPolling()
+        contextWasNeeded = contextService.isNeeded()
 
         Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             self?.checkForNotifications()
@@ -810,8 +814,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func settingsDidChange() {
         updateStatusItemAppearance()
-        // Turning on a context option shows data now, not at the next tick.
-        if contextService.metrics.sessions.isEmpty { contextService.refresh() }
+        // Turning on a context option shows data now, not at the next tick: the
+        // scan was paused while nothing showed it, so whatever it holds is stale.
+        let contextNeeded = contextService.isNeeded()
+        if contextNeeded && !contextWasNeeded { contextService.refresh() }
+        contextWasNeeded = contextNeeded
     }
 
     private func updateStatusItemAppearance() {
