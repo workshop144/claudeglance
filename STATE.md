@@ -1,6 +1,6 @@
 # Current Build State
 
-Last updated: 2026-11-06 by Claude: v1.8.1 bug sweep (13 verified bugs fixed on branch fix/bugs-2026-11-06, PR to main).
+Last updated: 2026-11-06 by Claude: v1.8.1 released (PR #25, tag v1.8.1), flake re-pinned to 1.8.1.
 
 ## Phases (release lines)
 
@@ -12,15 +12,15 @@ Last updated: 2026-11-06 by Claude: v1.8.1 bug sweep (13 verified bugs fixed on 
 - [x] v1.6 Reach (v1.6.5)
 - [x] v1.7 Standalone sign-in and hardening (v1.7.0 to v1.7.7)
 - [x] v1.8 Signed-out menu bar (v1.8.0, released 2026-10-15)
-- [ ] v1.8.1 Bug sweep: fixes merged by PR, then tag v1.8.1 and re-pin the flake.
+- [x] v1.8.1 Bug sweep (v1.8.1, released 2026-11-06, PR #25)
 - [ ] Signing cluster: notarize [6], Sparkle auto-update [13], WidgetKit [25]. BLOCKED, see below.
 - [ ] Exploratory: real prepaid balance [23], multi-account [24]. Not started, demand unvalidated.
 
 ## What is true now
 
-- Shipped version: 1.8.0 (tag v1.8.0, GitHub release "Latest" on workshop144/claudeglance).
-  flake.nix pins 1.8.0 (PR #17). project.yml says 1.8.1 on the bug-sweep branch; after it
-  merges, tag v1.8.1 and run `scripts/update-flake.sh 1.8.1` in a follow-up PR.
+- Shipped version: 1.8.1 (tag v1.8.1 on 7ff07d4, GitHub release "Latest" on
+  workshop144/claudeglance, ad-hoc signed DMG). Homebrew cask updated to 1.8.1 by the
+  release workflow. flake.nix pins 1.8.1 (this follow-up PR).
 - v1.8.1 bug sweep (2026-11-06): token refresh is single-flight (SingleFlight) and a
   rejected refresh signs out only if the stored pair isn't newer; usage fetches run one at
   a time (FetchGate); weekly alerts re-arm after the reset; ResetTracker keeps the 5h
@@ -51,7 +51,7 @@ Last updated: 2026-11-06 by Claude: v1.8.1 bug sweep (13 verified bugs fixed on 
   flake, and (from this change) the STATE.md guard on PRs.
 - CI and release run on the `macos-26` runner (Xcode 26.6 default) since 2026-11-06; they were
   on `macos-15` (Xcode 16). Swift language mode stays 5.9 (Swift 6 strict concurrency not adopted).
-  release.yml has not yet run on macos-26 (first run is the next `v*` tag). make-dmg.sh bounds
+  release.yml ran green on macos-26 for v1.8.1 (run 42239907454). make-dmg.sh bounds
   the Finder osascript with a watchdog (OSA_TIMEOUT, default 120s) and the Build DMG step has
   timeout-minutes: 15, so an Apple Events hang falls back to an unstyled DMG. If the tagged
   release fails on macos-26, set runs-on back to macos-15 and re-tag (it fails before publishing).
@@ -77,7 +77,7 @@ Not verified by hand: a real browser sign-in against claude.ai after the loopbac
 (tests cover `localhost` reaching the listener via the ::1 fallback). Try one sign-in
 with `scripts/dev-install.sh` before or right after tagging.
 
-`just verify-flake`: `flake pinned to 1.8.0`.
+`just verify-flake`: `flake pinned to 1.8.1`.
 
 ## Open / BLOCKED
 
@@ -92,7 +92,7 @@ with `scripts/dev-install.sh` before or right after tagging.
 
 ## Next
 
-0. Merge the v1.8.1 PR, tag v1.8.1, then the flake re-pin PR (`scripts/update-flake.sh 1.8.1`).
+0. Manual check still open: one real browser sign-in on v1.8.1 (loopback ::1 change).
 1. Delete or retire `develop` and update the dev-install.sh comment (small chore PR).
 2. Roadmap [31] copy-usage-to-clipboard is the only small unbuilt item that fits the aesthetic.
 3. Hardening list in ROADMAP.md (timezone correctness, multi-monitor placement) has no
