@@ -19,10 +19,26 @@ enum HistoryStorage {
     /// Bumped only when a payload changes shape in a way older builds can't read.
     static let currentVersion = 1
 
+    /// Under XCTest the app runs only as a test host: every store reads and writes
+    /// a throwaway folder instead of the developer's real history, so a test that
+    /// touches a shared store (or the restore path) can never overwrite it.
+    static let testSandbox: URL? = {
+        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil else { return nil }
+        return FileManager.default.temporaryDirectory
+            .appendingPathComponent("ClaudeGlanceTests-history-\(ProcessInfo.processInfo.processIdentifier)",
+                                    isDirectory: true)
+    }()
+
     static var primaryDirectory: URL? {
         let fm = FileManager.default
-        guard let base = try? fm.url(for: .applicationSupportDirectory, in: .userDomainMask,
-                                     appropriateFor: nil, create: true) else { return nil }
+        let base: URL
+        if let testSandbox {
+            base = testSandbox.appendingPathComponent("Application Support", isDirectory: true)
+        } else {
+            guard let real = try? fm.url(for: .applicationSupportDirectory, in: .userDomainMask,
+                                         appropriateFor: nil, create: true) else { return nil }
+            base = real
+        }
         let dir = base.appendingPathComponent("ClaudeGlance", isDirectory: true)
         try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
@@ -30,7 +46,8 @@ enum HistoryStorage {
 
     static var mirrorDirectory: URL? {
         let fm = FileManager.default
-        let dir = fm.homeDirectoryForCurrentUser.appendingPathComponent(".claudeglance", isDirectory: true)
+        let home = testSandbox ?? fm.homeDirectoryForCurrentUser
+        let dir = home.appendingPathComponent(".claudeglance", isDirectory: true)
         guard (try? fm.createDirectory(at: dir, withIntermediateDirectories: true)) != nil else { return nil }
         return dir
     }

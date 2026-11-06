@@ -65,51 +65,57 @@ final class StatusService: ObservableObject {
     }
 
     func fetch() {
-        Task {
-            do {
-                var request = URLRequest(url: endpoint)
-                request.timeoutInterval = 15
-                let (data, response) = try await urlSession.data(for: request)
-                guard isUsableStatusResponse(response) else { throw URLError(.badServerResponse) }
-                let decoded = try JSONDecoder().decode(StatusResponse.self, from: data)
-                let indicator = ServiceStatusIndicator(rawValue: decoded.status.indicator) ?? .unknown
-                let result = ServiceStatus(indicator: indicator, description: decoded.status.description)
-                await MainActor.run {
-                    self.status = result
-                    // Record today's worst status for the uptime history [#29].
-                    StatusHistoryStore.shared.record(indicator: indicator)
-                }
-            } catch {
-                #if DEBUG
-                print("[StatusService] fetch failed: \(error)")
-                #endif
-                // Keep the last known status on a transient failure rather than
-                // flapping the badge to gray.
+        Task { await refreshStatus() }
+    }
+
+    /// One status poll, awaitable so tests can drive it deterministically.
+    func refreshStatus() async {
+        do {
+            var request = URLRequest(url: endpoint)
+            request.timeoutInterval = 15
+            let (data, response) = try await urlSession.data(for: request)
+            guard isUsableStatusResponse(response) else { throw URLError(.badServerResponse) }
+            let decoded = try JSONDecoder().decode(StatusResponse.self, from: data)
+            let indicator = ServiceStatusIndicator(rawValue: decoded.status.indicator) ?? .unknown
+            let result = ServiceStatus(indicator: indicator, description: decoded.status.description)
+            await MainActor.run {
+                self.status = result
+                // Record today's worst status for the uptime history [#29].
+                StatusHistoryStore.shared.record(indicator: indicator)
             }
+        } catch {
+            #if DEBUG
+            print("[StatusService] fetch failed: \(error)")
+            #endif
+            // Keep the last known status on a transient failure rather than
+            // flapping the badge to gray.
         }
     }
 
     /// Fetch the incident feed to compute the 30-day uptime % and seed the history
     /// store [#29]. Best-effort: a transient failure leaves the last numbers in place.
     func fetchIncidents() {
-        Task {
-            do {
-                var request = URLRequest(url: incidentsEndpoint)
-                request.timeoutInterval = 15
-                let (data, response) = try await urlSession.data(for: request)
-                let now = Date()
-                guard let update = uptimeUpdate(data: data, response: response, now: now) else {
-                    throw URLError(.badServerResponse)
-                }
-                await MainActor.run {
-                    self.uptime30dPercent = update.percent
-                    StatusHistoryStore.shared.seed(incidents: update.incidents, now: now)
-                }
-            } catch {
-                #if DEBUG
-                print("[StatusService] incidents fetch failed: \(error)")
-                #endif
+        Task { await refreshIncidents() }
+    }
+
+    /// One incident-feed poll, awaitable so tests can drive it deterministically.
+    func refreshIncidents() async {
+        do {
+            var request = URLRequest(url: incidentsEndpoint)
+            request.timeoutInterval = 15
+            let (data, response) = try await urlSession.data(for: request)
+            let now = Date()
+            guard let update = uptimeUpdate(data: data, response: response, now: now) else {
+                throw URLError(.badServerResponse)
             }
+            await MainActor.run {
+                self.uptime30dPercent = update.percent
+                StatusHistoryStore.shared.seed(incidents: update.incidents, now: now)
+            }
+        } catch {
+            #if DEBUG
+            print("[StatusService] incidents fetch failed: \(error)")
+            #endif
         }
     }
 }

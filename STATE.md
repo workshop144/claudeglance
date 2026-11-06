@@ -1,6 +1,6 @@
 # Current Build State
 
-Last updated: 2026-11-06 by Claude: v1.8.1 bug sweep (13 verified bugs fixed on branch fix/bugs-2026-11-06, PR to main).
+Last updated: 2026-11-06 by Claude: test coverage pass (branch tests/coverage-2026-11-06c, PR to main).
 
 ## Phases (release lines)
 
@@ -38,6 +38,16 @@ Last updated: 2026-11-06 by Claude: v1.8.1 bug sweep (13 verified bugs fixed on 
   stale check uses /usr/bin/stat and digit-checks mtime. Still untested: a real browser
   sign-in with the [::1] reservation (Safari and Chrome) on a dev install; if it fails,
   revert 58dfb8e alone.
+- Tests (2026-11-06 coverage pass): 310 tests. App line coverage 32.45% to 35.46%; excluding
+  the AppKit/SwiftUI files (AppDelegate, SettingsView, DashboardView, main) 66.96% to 73.41%.
+  Under XCTest, HistoryStorage reads and writes a per-process temp folder
+  (`HistoryStorage.testSandbox`), never ~/Library/Application Support/ClaudeGlance or
+  ~/.claudeglance, so tests of the shared stores and the restore path cannot touch real history.
+  StatusService exposes awaitable `refreshStatus()` / `refreshIncidents()`;
+  `StatusLineSetup.installScript(to:bundle:)` takes a destination. Still untested: UsageService
+  `fetchUsage` end to end (needs a token seam on OAuthLoginService.shared), SettingsManager
+  (writes the host app's real UserDefaults domain), MetricsService / ContextWindowService
+  refresh (read real ~/.claude/projects), and the UI files.
 - Sign-in: own OAuth 2.0 PKCE browser flow with a loopback listener bound to the
   request state (v1.7.4, PR #1 / #5). Tokens live in the app's own Keychain item
   `ClaudeGlance-credentials`, re-created under the running build at each launch (v1.7.6, PR #11).

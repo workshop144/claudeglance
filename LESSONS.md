@@ -2,6 +2,7 @@
 
 One line per lesson, newest first.
 
+- 2026-11-06: Tests run inside a host copy of the app, so any test touching a shared history store or the backup restore would have written the developer's real ~/.claudeglance and Application Support history. Rule: file-backed stores resolve to a temp sandbox when XCTestConfigurationFilePath is set.
 - 2026-11-06: Two usage fetches could each refresh the OAuth token with the same refresh token; the server rotates it, the loser got invalid_grant and deleted the winner's credentials (v1.8.1). Rule: token refresh is single-flight, and a rejected refresh only signs out if the stored pair is not newer.
 - 2026-11-06: Network.framework refuses a second NWListener on the same port in one process (EADDRINUSE) even across 127.0.0.1 and ::1, though the kernel allows it. Rule: reserve the other loopback address with a plain BSD socket.
 - 2026-11-06: Metrics re-read every transcript in the 30 day window every minute, so memory tracked total transcript size (v1.8.1). Rule: cache decoded entries per file and read only appended bytes; decode lines from bytes so one bad byte costs one line.
