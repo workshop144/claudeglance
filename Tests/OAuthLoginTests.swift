@@ -403,3 +403,58 @@ final class CallbackServerRestartTests: XCTestCase {
         await fulfillment(of: [done], timeout: 3)
     }
 }
+
+// MARK: - `localhost` resolves to sockets the app owns
+
+final class LoopbackDualStackTests: XCTestCase {
+
+    /// Try to bind [::1]:port the way another local process would.
+    private func otherProcessCanBindIPv6(_ port: UInt16) -> Bool {
+        let fd = socket(AF_INET6, SOCK_STREAM, 0)
+        defer { close(fd) }
+        var addr = sockaddr_in6()
+        addr.sin6_len = UInt8(MemoryLayout<sockaddr_in6>.size)
+        addr.sin6_family = sa_family_t(AF_INET6)
+        addr.sin6_port = port.bigEndian
+        addr.sin6_addr = in6addr_loopback
+        return withUnsafePointer(to: &addr) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                Darwin.bind(fd, $0, socklen_t(MemoryLayout<sockaddr_in6>.size)) == 0
+            }
+        }
+    }
+
+    func testIPv6LoopbackPortIsHeldWhileSignInRuns() async throws {
+        let server = OAuthCallbackServer()
+        let port = try await server.start(expectedState: "S") { _, _ in }
+        XCTAssertEqual(OAuthConfig.loopbackRedirectURI(port: port), "http://localhost:\(port)/callback")
+        // Another process can't take the ::1 side of `localhost` from us...
+        XCTAssertFalse(otherProcessCanBindIPv6(port))
+        server.stop()
+        // ...and it's released with the listener.
+        XCTAssertTrue(otherProcessCanBindIPv6(port))
+    }
+
+    func testLocalhostRedirectStillReachesTheListener() async throws {
+        let server = OAuthCallbackServer()
+        let got = expectation(description: "callback via localhost")
+        let port = try await server.start(expectedState: "S6") { code, _ in
+            XCTAssertEqual(code, "LH")
+            got.fulfill()
+        }
+        // ::1 is refused at once (reserved, not listening); the client falls back to 127.0.0.1.
+        let url = URL(string: "http://localhost:\(port)/callback?code=LH&state=S6")!
+        let (_, response) = try await URLSession.shared.data(from: url)
+        XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
+        await fulfillment(of: [got], timeout: 3)
+        server.stop()
+    }
+
+    func testTakenIPv6PortIsReported() async throws {
+        let server = OAuthCallbackServer()
+        let port = try await server.start(expectedState: "S") { _, _ in }
+        defer { server.stop() }
+        // A squatter already on [::1]:port makes the reservation fail (start() then retries).
+        XCTAssertThrowsError(try LoopbackV6Reservation(port: port))
+    }
+}

@@ -24,7 +24,8 @@ enum OAuthConfig {
     static let redirectURI = "https://console.anthropic.com/oauth/code/callback"
     /// Loopback redirect for the seamless flow: claude.ai sends the browser back
     /// to a one-shot HTTP server we run on 127.0.0.1 (same mechanism Claude Code
-    /// uses). The port is chosen at sign-in time.
+    /// uses), with [::1] on the same port held too, since `localhost` can resolve
+    /// to either. The port is chosen at sign-in time.
     static func loopbackRedirectURI(port: UInt16) -> String {
         "http://localhost:\(port)/callback"
     }
@@ -193,18 +194,73 @@ private final class CallbackGate: @unchecked Sendable {
     }
 }
 
+/// Holds [::1]:<port> with a socket that is bound but never listening.
+///
+/// The redirect URI says `localhost` (what the OAuth client accepts), and
+/// browsers resolve that to ::1 as well as 127.0.0.1, often trying ::1 first.
+/// With only 127.0.0.1 bound, any local process could bind [::1]:<port> and
+/// receive the browser's redirect with the authorization code (useless without
+/// the PKCE verifier, but it blocks the sign-in). Owning the address closes that:
+/// no one else can bind it, and since nothing listens, the browser's ::1 attempt
+/// is refused at once and it falls back to 127.0.0.1.
+///
+/// A plain BSD socket because Network.framework refuses a second listener on the
+/// same port in one process (EADDRINUSE) even though the kernel allows it.
+final class LoopbackV6Reservation {
+    private var fd: Int32
+
+    /// Nil error means reserved, or no IPv6 loopback on this Mac (then the browser
+    /// can't reach ::1 either, so there is nothing to protect). Throws the errno
+    /// as a POSIXError when the address is taken.
+    init(port: UInt16) throws {
+        fd = socket(AF_INET6, SOCK_STREAM, 0)
+        guard fd >= 0 else { fd = -1; return }
+        var on: Int32 = 1
+        setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &on, socklen_t(MemoryLayout<Int32>.size))
+        var addr = sockaddr_in6()
+        addr.sin6_len = UInt8(MemoryLayout<sockaddr_in6>.size)
+        addr.sin6_family = sa_family_t(AF_INET6)
+        addr.sin6_port = port.bigEndian
+        addr.sin6_addr = in6addr_loopback
+        let result = withUnsafePointer(to: &addr) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                Darwin.bind(fd, $0, socklen_t(MemoryLayout<sockaddr_in6>.size))
+            }
+        }
+        guard result == 0 else {
+            let code = errno
+            close(fd)
+            fd = -1
+            if code == EADDRINUSE { throw POSIXError(.EADDRINUSE) }
+            return   // EADDRNOTAVAIL / EAFNOSUPPORT: no IPv6 loopback
+        }
+    }
+
+    var isHeld: Bool { fd >= 0 }
+
+    func release() {
+        if fd >= 0 { close(fd) }
+        fd = -1
+    }
+
+    deinit { release() }
+}
+
 /// One-shot loopback HTTP listener for the OAuth redirect. Binds 127.0.0.1 on
-/// an ephemeral port, answers exactly one `/callback` hit carrying the state of
-/// the sign-in in progress, then stops. Anything else it sees (other paths, or a
-/// callback with a missing or wrong state, e.g. from another local process) gets
-/// an error page and the listener stays up for the real browser redirect.
+/// an ephemeral port and reserves [::1] on the same port (see
+/// `LoopbackV6Reservation`), answers exactly one `/callback` hit carrying the
+/// state of the sign-in in progress, then stops. Anything else it sees (other
+/// paths, or a callback with a missing or wrong state, e.g. from another local
+/// process) gets an error page and the listener stays up for the real browser
+/// redirect.
 final class OAuthCallbackServer: @unchecked Sendable {
     private let queue = DispatchQueue(label: "io.github.broots144.ClaudeGlance.oauth-callback")
     private let gate = CallbackGate()
-    // `listeners` and `generation` are guarded by `lock`. Each start() bumps the
-    // generation, so a superseded start can tell it was replaced.
+    // `listeners`, `reservation` and `generation` are guarded by `lock`. Each
+    // start() bumps the generation, so a superseded start can tell it was replaced.
     private let lock = NSLock()
     private var listeners: [NWListener] = []
+    private var reservation: LoopbackV6Reservation?
     private var generation = 0
 
     /// Start listening; resolves with the bound port once the socket is ready.
@@ -215,18 +271,52 @@ final class OAuthCallbackServer: @unchecked Sendable {
         let myGeneration = bumpGeneration()
         gate.arm(expectedState: expectedState, onCallback: onCallback)
 
-        let listener = try makeListener(host: "127.0.0.1", port: .any)
-        try adopt(listener, generation: myGeneration)
-        return try await waitUntilReady(listener)
+        var lastError: Error = POSIXError(.EADDRINUSE)
+        for _ in 0..<5 {
+            let listener = try makeListener(host: "127.0.0.1", port: .any)
+            try adopt(listener, generation: myGeneration)
+            let port = try await waitUntilReady(listener)
+            do {
+                try hold(LoopbackV6Reservation(port: port), generation: myGeneration)
+                return port
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                // Someone already holds [::1] on this port: drop it and take a new one.
+                lastError = error
+                stopListeners(generation: myGeneration)
+            }
+        }
+        throw lastError
+    }
+
+    /// Keep the reservation for this start, unless it was already superseded.
+    private func hold(_ r: LoopbackV6Reservation, generation expected: Int) throws {
+        lock.lock(); defer { lock.unlock() }
+        guard generation == expected else { r.release(); throw CancellationError() }
+        reservation = r
+    }
+
+    /// Cancel this start's listeners but keep its generation (a retry follows).
+    private func stopListeners(generation expected: Int) {
+        lock.lock()
+        guard generation == expected else { lock.unlock(); return }
+        let old = listeners
+        listeners = []
+        lock.unlock()
+        old.forEach { $0.cancel() }
     }
 
     func stop() {
         lock.lock()
         let old = listeners
+        let held = reservation
         listeners = []
+        reservation = nil
         generation += 1
         lock.unlock()
         old.forEach { $0.cancel() }
+        held?.release()
         gate.disarm()
     }
 
@@ -251,7 +341,8 @@ final class OAuthCallbackServer: @unchecked Sendable {
     private func makeListener(host: NWEndpoint.Host, port: NWEndpoint.Port) throws -> NWListener {
         let params = NWParameters.tcp
         params.requiredLocalEndpoint = NWEndpoint.hostPort(host: host, port: port)
-        params.allowLocalEndpointReuse = true
+        // No address reuse: nothing else may share our port.
+        params.allowLocalEndpointReuse = false
         let listener = try NWListener(using: params)
         let gate = self.gate, queue = self.queue
         listener.newConnectionHandler = { conn in OAuthCallbackServer.accept(conn, gate: gate, queue: queue) }
