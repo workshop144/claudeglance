@@ -1610,3 +1610,19 @@ final class ResetTrackerTests: XCTestCase {
         XCTAssertFalse(quiet.observe(resetAt: nil, utilization: 0, now: boundary.addingTimeInterval(1), threshold: 80))
     }
 }
+
+// MARK: - One usage fetch at a time
+
+final class FetchGateTests: XCTestCase {
+
+    func testOverlappingRequestIsCoalescedNotRunConcurrently() {
+        var gate = FetchGate()
+        XCTAssertTrue(gate.begin())          // timer poll starts
+        XCTAssertFalse(gate.begin())         // manual Refresh mid-flight: held
+        XCTAssertFalse(gate.begin())         // and a sign-in fetch: same replay
+        XCTAssertTrue(gate.finish())         // one replay once the first finishes
+        XCTAssertTrue(gate.begin())
+        XCTAssertFalse(gate.finish())        // nothing else queued
+        XCTAssertFalse(gate.inFlight)
+    }
+}

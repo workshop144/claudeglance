@@ -297,6 +297,52 @@ struct OAuthTokenResponse: Decodable {
     }
 }
 
+// MARK: - Refresh coordination (pure / testable)
+
+/// Runs one async operation at a time and hands every concurrent caller the same
+/// result. The token endpoint rotates refresh tokens, so two refreshes racing with
+/// the same refresh token end with the loser getting `invalid_grant`; funnelling
+/// them through one task means only one refresh is ever in flight.
+final class SingleFlight<T>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var inFlight: Task<T, Error>?
+
+    func run(_ operation: @escaping () async throws -> T) async throws -> T {
+        lock.lock()
+        if let task = inFlight {
+            lock.unlock()
+            return try await task.value
+        }
+        let task = Task { try await operation() }
+        inFlight = task
+        lock.unlock()
+        defer {
+            lock.lock()
+            inFlight = nil
+            lock.unlock()
+        }
+        return try await task.value
+    }
+}
+
+/// Whether a refresh rejected with 400/401 really means the session is dead.
+/// Not when the stored item holds a different, newer pair: then another refresh
+/// (e.g. a second running copy of the app) already rotated the token and the
+/// stored credentials are the live ones, not something to delete. An older
+/// stored pair (left behind by a failed save) never wins over the rejected one.
+func refreshRejectionEndsSession(rejected: StoredCredentials, stored: StoredCredentials?) -> Bool {
+    guard let stored else { return true }
+    return stored.refreshToken == rejected.refreshToken || stored.expiresAt <= rejected.expiresAt
+}
+
+/// Where the credentials live. Production uses the app's own Keychain item; the
+/// seam exists so tests never read or write a developer's real sign-in.
+struct CredentialStore {
+    var load: () -> StoredCredentials?
+    var save: (StoredCredentials) throws -> Void
+    var delete: () -> Void
+}
+
 // MARK: - OAuthLoginService
 
 final class OAuthLoginService: ObservableObject {
@@ -321,19 +367,35 @@ final class OAuthLoginService: ObservableObject {
     private var pendingRedirectURI: String = OAuthConfig.redirectURI
     private let callbackServer = OAuthCallbackServer()
 
-    // In-memory token cache so each usage poll doesn't hit the Keychain. (Reading
-    // our own item is unprompted and cheap, but the cache also lets a 401 force a
-    // refresh on the next call via `needsRefresh`.)
-    private var cachedAccessToken: String?
-    private var cachedExpiresAt: Date?
+    // In-memory credentials so each usage poll doesn't hit the Keychain, and so a
+    // refreshed pair stays usable even if persisting it failed (the old refresh
+    // token is already spent by then). A 401 forces a refresh via `needsRefresh`.
+    // Guarded by `cacheLock`: callers run on arbitrary tasks.
+    private let cacheLock = NSLock()
+    private var cachedCredentials: StoredCredentials?
     private var needsRefresh = false
+    /// Set when a refreshed pair couldn't be saved; the next call retries the save.
+    private var needsPersist = false
+    private let refreshFlight = SingleFlight<StoredCredentials>()
+
+    private let store: CredentialStore
 
     private init() {
+        store = CredentialStore(load: OAuthLoginService.keychainLoad,
+                                save: OAuthLoginService.keychainSave,
+                                delete: OAuthLoginService.keychainDelete)
         // Reflect any stored session on launch so the UI starts in the right state,
         // after re-creating the item under this build (see reclaimStoredCredentials).
         if let creds = reclaimStoredCredentials() {
             state = .signedIn(creds.expiresAtDate)
         }
+    }
+
+    /// Test-only: a service over an in-memory store, with no launch-time Keychain work.
+    init(testStore: CredentialStore, urlSession: URLSession) {
+        store = testStore
+        self.urlSession = urlSession
+        if let creds = testStore.load() { state = .signedIn(creds.expiresAtDate) }
     }
 
     /// Launch-time Keychain migration. An item's access list trusts the build that
@@ -351,7 +413,7 @@ final class OAuthLoginService: ObservableObject {
         if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
             return loadCredentials()
         }
-        let (status, data) = copyCredentialsData()
+        let (status, data) = OAuthLoginService.copyCredentialsData()
         let decoded = data.flatMap { try? JSONDecoder().decode(StoredCredentials.self, from: $0) }
         switch launchKeychainAction(status: status, decoded: decoded != nil) {
         case .recreate:
@@ -463,7 +525,7 @@ final class OAuthLoginService: ObservableObject {
                                                state: expected,
                                                verifier: verifier,
                                                redirectURI: pendingRedirectURI)
-            try saveCredentials(creds)
+            try store.save(creds)
             cache(creds)
             pendingVerifier = nil
             pendingState = nil
@@ -480,7 +542,7 @@ final class OAuthLoginService: ObservableObject {
     @MainActor
     func signOut() {
         callbackServer.stop()
-        deleteCredentials()
+        store.delete()
         clearCache()
         pendingVerifier = nil
         pendingState = nil
@@ -489,49 +551,81 @@ final class OAuthLoginService: ObservableObject {
 
     // MARK: Token access (used by UsageService)
 
-    /// Drop the cached access token and force a refresh on the next call — used
-    /// when the usage endpoint returns 401/403 (token rotated or rejected).
+    /// Force a refresh on the next call — used when the usage endpoint returns
+    /// 401/403 (token rotated or rejected). The cached refresh token is kept: it's
+    /// what the forced refresh needs.
     func invalidateCache() {
-        cachedAccessToken = nil
-        cachedExpiresAt = nil
+        cacheLock.lock(); defer { cacheLock.unlock() }
         needsRefresh = true
     }
 
     /// Return a valid bearer token, refreshing first if it's missing or near
     /// expiry. Throws if we're not signed in or the refresh token is dead.
+    /// Concurrent callers share one refresh (see `SingleFlight`).
     func validAccessToken() async throws -> String {
-        if !needsRefresh, let token = cachedAccessToken, let exp = cachedExpiresAt,
-           !shouldRefreshToken(expiresAt: exp) {
-            return token
-        }
-        guard let creds = loadCredentials() else {
+        if let creds = freshCachedCredentials() { return creds.accessToken }
+        return try await refreshFlight.run { [self] in try await loadOrRefresh() }.accessToken
+    }
+
+    /// The cached credentials if they're good to send as-is.
+    private func freshCachedCredentials() -> StoredCredentials? {
+        cacheLock.lock(); defer { cacheLock.unlock() }
+        guard !needsRefresh, !needsPersist, let creds = cachedCredentials,
+              !shouldRefreshToken(expiresAt: creds.expiresAtDate) else { return nil }
+        return creds
+    }
+
+    /// The slow path, only ever run by one task at a time.
+    private func loadOrRefresh() async throws -> StoredCredentials {
+        let (cached, forced, unsaved) = cacheSnapshot()
+        if unsaved, let cached { persist(cached) }
+        // Prefer the in-memory pair: it can be newer than the Keychain item when a
+        // save failed.
+        guard let creds = cached ?? store.load() else {
             await setState(.signedOut)
             throw OAuthLoginService.notSignedInError
         }
-        if !needsRefresh, !shouldRefreshToken(expiresAt: creds.expiresAtDate) {
+        if !forced, !shouldRefreshToken(expiresAt: creds.expiresAtDate) {
             cache(creds)
-            return creds.accessToken
+            return creds
         }
-        // Refresh.
         do {
             let fresh = try await refresh(refreshToken: creds.refreshToken)
-            try saveCredentials(fresh)
+            // Cache before saving: the old refresh token is spent now, so losing the
+            // new pair to a failed save would sign the user out on the next refresh.
             cache(fresh)
-            needsRefresh = false
+            persist(fresh)
             await setState(.signedIn(fresh.expiresAtDate))
-            return fresh.accessToken
+            return fresh
         } catch let error as NSError {
             // A 400/401 from the token endpoint means the refresh token is dead —
             // sign out so the UI prompts a fresh login. Transient/network errors
             // (5xx, offline) keep the session so we can retry next poll.
             if error.code == 400 || error.code == 401 {
-                deleteCredentials()
+                // Unless something else already rotated it: then the stored pair is live.
+                let stored = store.load()
+                if !refreshRejectionEndsSession(rejected: creds, stored: stored), let stored {
+                    cache(stored)
+                    return stored
+                }
+                store.delete()
                 clearCache()
                 await setState(.signedOut)
                 throw OAuthLoginService.sessionExpiredError
             }
             throw error
         }
+    }
+
+    /// Save to the store; on failure keep the pair in memory and retry next call.
+    private func persist(_ creds: StoredCredentials) {
+        let saved = (try? store.save(creds)) != nil
+        cacheLock.lock(); needsPersist = !saved; cacheLock.unlock()
+    }
+
+    private func cacheSnapshot() -> (StoredCredentials?, Bool, Bool) {
+        cacheLock.lock(); defer { cacheLock.unlock() }
+        return (cachedCredentials, needsRefresh, needsPersist)
     }
 
     static let notSignedInError = NSError(
@@ -590,13 +684,15 @@ final class OAuthLoginService: ObservableObject {
 
     // MARK: Keychain (our own item — no cross-app prompt)
 
-    func loadCredentials() -> StoredCredentials? {
+    func loadCredentials() -> StoredCredentials? { store.load() }
+
+    private static func keychainLoad() -> StoredCredentials? {
         let (status, data) = copyCredentialsData()
         guard status == errSecSuccess, let data else { return nil }
         return try? JSONDecoder().decode(StoredCredentials.self, from: data)
     }
 
-    private func copyCredentialsData() -> (OSStatus, Data?) {
+    private static func copyCredentialsData() -> (OSStatus, Data?) {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: OAuthConfig.keychainService,
@@ -613,7 +709,9 @@ final class OAuthLoginService: ObservableObject {
     /// write our tokens into an item another app could have planted under our
     /// service name with an access list that lets it read them back. Delete and
     /// re-add instead; if the old item can't be removed, save nothing.
-    private func saveCredentials(_ creds: StoredCredentials) throws {
+    private func saveCredentials(_ creds: StoredCredentials) throws { try store.save(creds) }
+
+    private static func keychainSave(_ creds: StoredCredentials) throws {
         let data = try JSONEncoder().encode(creds)
         let match: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -636,7 +734,9 @@ final class OAuthLoginService: ObservableObject {
         }
     }
 
-    private func deleteCredentials() {
+    private func deleteCredentials() { store.delete() }
+
+    private static func keychainDelete() {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: OAuthConfig.keychainService
@@ -647,14 +747,16 @@ final class OAuthLoginService: ObservableObject {
     // MARK: Cache helpers
 
     private func cache(_ creds: StoredCredentials) {
-        cachedAccessToken = creds.accessToken
-        cachedExpiresAt = creds.expiresAtDate
+        cacheLock.lock(); defer { cacheLock.unlock() }
+        cachedCredentials = creds
+        needsRefresh = false
     }
 
     private func clearCache() {
-        cachedAccessToken = nil
-        cachedExpiresAt = nil
+        cacheLock.lock(); defer { cacheLock.unlock() }
+        cachedCredentials = nil
         needsRefresh = false
+        needsPersist = false
     }
 
     @MainActor

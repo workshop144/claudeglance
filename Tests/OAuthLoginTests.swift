@@ -236,3 +236,133 @@ final class LaunchKeychainActionTests: XCTestCase {
         XCTAssertEqual(launchKeychainAction(status: errSecInteractionNotAllowed, decoded: false), .keep)
     }
 }
+
+// MARK: - Token refresh is single-flight (refresh-token reuse race)
+
+/// A token endpoint that rotates refresh tokens like the real one: each refresh
+/// token works once; reusing it gets 400 invalid_grant.
+final class RotatingTokenEndpoint: URLProtocol {
+    private static let lock = NSLock()
+    private static var valid: Set<String> = []
+    private static var issued = 0
+    static var refreshCalls = 0
+
+    static func reset(validRefreshToken: String) {
+        lock.lock(); defer { lock.unlock() }
+        valid = [validRefreshToken]; issued = 0; refreshCalls = 0
+    }
+
+    static func session() -> URLSession {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [RotatingTokenEndpoint.self]
+        return URLSession(configuration: config)
+    }
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func stopLoading() {}
+
+    override func startLoading() {
+        let body = request.httpBody ?? request.httpBodyStream.map { stream -> Data in
+            stream.open(); defer { stream.close() }
+            var data = Data(); var buf = [UInt8](repeating: 0, count: 4096)
+            while stream.hasBytesAvailable { let n = stream.read(&buf, maxLength: buf.count); if n <= 0 { break }; data.append(buf, count: n) }
+            return data
+        } ?? Data()
+        let json = (try? JSONSerialization.jsonObject(with: body)) as? [String: String] ?? [:]
+        let presented = json["refresh_token"] ?? ""
+
+        Self.lock.lock()
+        Self.refreshCalls += 1
+        let ok = Self.valid.remove(presented) != nil
+        var payload = Data(#"{"error":"invalid_grant"}"#.utf8)
+        if ok {
+            Self.issued += 1
+            let next = "rt-\(Self.issued)"
+            Self.valid.insert(next)
+            payload = Data(#"{"access_token":"at-\#(Self.issued)","refresh_token":"\#(next)","expires_in":3600}"#.utf8)
+        }
+        Self.lock.unlock()
+
+        // Answer a little later so concurrent callers really overlap.
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.2) {
+            let response = HTTPURLResponse(url: self.request.url!, statusCode: ok ? 200 : 400,
+                                           httpVersion: nil, headerFields: nil)!
+            self.client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            self.client?.urlProtocol(self, didLoad: payload)
+            self.client?.urlProtocolDidFinishLoading(self)
+        }
+    }
+}
+
+/// In-memory stand-in for the Keychain item.
+final class MemoryCredentialBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var creds: StoredCredentials?
+    var failSaves = false
+    init(_ creds: StoredCredentials?) { self.creds = creds }
+    var current: StoredCredentials? { lock.lock(); defer { lock.unlock() }; return creds }
+    var store: CredentialStore {
+        CredentialStore(
+            load: { [self] in current },
+            save: { [self] c in
+                if failSaves { throw NSError(domain: "Keychain", code: -25299) }
+                lock.lock(); creds = c; lock.unlock()
+            },
+            delete: { [self] in lock.lock(); creds = nil; lock.unlock() })
+    }
+}
+
+final class TokenRefreshRaceTests: XCTestCase {
+
+    private func expired(_ refresh: String) -> StoredCredentials {
+        StoredCredentials(accessToken: "old", refreshToken: refresh,
+                          expiresAt: Date().addingTimeInterval(-60).timeIntervalSince1970)
+    }
+
+    func testConcurrentCallersShareOneRefreshAndStaySignedIn() async throws {
+        RotatingTokenEndpoint.reset(validRefreshToken: "rt-0")
+        let box = MemoryCredentialBox(expired("rt-0"))
+        let service = OAuthLoginService(testStore: box.store, urlSession: RotatingTokenEndpoint.session())
+
+        let tokens = try await withThrowingTaskGroup(of: String.self) { group -> [String] in
+            for _ in 0..<5 { group.addTask { try await service.validAccessToken() } }
+            return try await group.reduce(into: []) { $0.append($1) }
+        }
+
+        XCTAssertEqual(Set(tokens), ["at-1"])
+        XCTAssertEqual(RotatingTokenEndpoint.refreshCalls, 1)
+        XCTAssertEqual(box.current?.refreshToken, "rt-1")
+        let state = await MainActor.run { service.state }
+        XCTAssertNotEqual(state, .signedOut)
+    }
+
+    func testFailedSaveKeepsRotatedTokensInMemory() async throws {
+        RotatingTokenEndpoint.reset(validRefreshToken: "rt-0")
+        let box = MemoryCredentialBox(expired("rt-0"))
+        box.failSaves = true
+        let service = OAuthLoginService(testStore: box.store, urlSession: RotatingTokenEndpoint.session())
+
+        let first = try await service.validAccessToken()
+        XCTAssertEqual(first, "at-1")
+        // The save failed, so the Keychain still holds the spent rt-0. A forced
+        // refresh must use the in-memory rt-1 rather than sign the user out.
+        service.invalidateCache()
+        box.failSaves = false
+        let second = try await service.validAccessToken()
+        XCTAssertEqual(second, "at-2")
+        XCTAssertEqual(box.current?.refreshToken, "rt-2")
+    }
+
+    func testRejectionEndsSessionOnlyForTheStoredToken() {
+        let rejected = StoredCredentials(accessToken: "a", refreshToken: "rt-1", expiresAt: 100)
+        XCTAssertTrue(refreshRejectionEndsSession(rejected: rejected, stored: nil))
+        XCTAssertTrue(refreshRejectionEndsSession(rejected: rejected, stored: rejected))
+        // A different, newer pair in the store means someone else rotated it.
+        let newer = StoredCredentials(accessToken: "b", refreshToken: "rt-2", expiresAt: 200)
+        XCTAssertFalse(refreshRejectionEndsSession(rejected: rejected, stored: newer))
+        // An older leftover never wins.
+        let older = StoredCredentials(accessToken: "c", refreshToken: "rt-0", expiresAt: 50)
+        XCTAssertTrue(refreshRejectionEndsSession(rejected: rejected, stored: older))
+    }
+}

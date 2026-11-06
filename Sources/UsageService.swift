@@ -9,6 +9,33 @@ func manualRefreshAllowed(last: Date?, now: Date, minInterval: TimeInterval) -> 
     return now.timeIntervalSince(last) >= minInterval
 }
 
+// MARK: - In-flight fetch gate
+
+/// Lets one usage fetch run at a time. A fetch requested while another is in
+/// flight is coalesced: it runs once the current one finishes, so a sign-in or a
+/// manual Refresh that lands mid-poll still gets fresh numbers, without two
+/// overlapping requests racing each other (and, before the token refresh was
+/// single-flight, racing the refresh token).
+struct FetchGate {
+    private(set) var inFlight = false
+    private(set) var pending = false
+
+    /// True when the caller should start a fetch now; false when one is already
+    /// running (the request is remembered and replayed by `finish`).
+    mutating func begin() -> Bool {
+        if inFlight { pending = true; return false }
+        inFlight = true
+        return true
+    }
+
+    /// Ends the current fetch. True when a coalesced request should run next.
+    mutating func finish() -> Bool {
+        inFlight = false
+        defer { pending = false }
+        return pending
+    }
+}
+
 // MARK: - Fetch error presentation
 
 /// How long to wait after a 429 from the usage endpoint. Honors a numeric
@@ -294,6 +321,10 @@ final class UsageService: ObservableObject {
     private var lastManualRefresh: Date?
     private let minManualRefresh: TimeInterval = 10
 
+    // One fetch at a time; guarded by `gateLock` since callers aren't all on main.
+    private let gateLock = NSLock()
+    private var gate = FetchGate()
+
     /// Whether a manual refresh would be allowed right now (false if one ran within
     /// the throttle window).
     func canRefreshNow(_ now: Date = Date()) -> Bool {
@@ -326,9 +357,15 @@ final class UsageService: ObservableObject {
             guard canRefreshNow() else { return false }
             lastManualRefresh = Date()
         }
+        gateLock.lock()
+        let start = gate.begin()
+        gateLock.unlock()
+        guard start else { return true }   // coalesced into the fetch in flight
+
         DispatchQueue.main.async { self.isLoading = true }
 
         Task {
+            defer { self.fetchFinished() }
             do {
                 let token = try await accessToken()
                 let response = try await fetchOAuthUsage(accessToken: token)
@@ -389,6 +426,14 @@ final class UsageService: ObservableObject {
             }
         }
         return true
+    }
+
+    /// Release the gate and replay a fetch that was requested meanwhile.
+    private func fetchFinished() {
+        gateLock.lock()
+        let again = gate.finish()
+        gateLock.unlock()
+        if again { DispatchQueue.main.async { self.fetchUsage() } }
     }
 
     func fetchOAuthUsage(accessToken: String) async throws -> OAuthUsageResponse {
