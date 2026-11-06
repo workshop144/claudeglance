@@ -32,6 +32,10 @@ Last updated: 2026-11-06 by Claude: retrofit of the repo-state pattern (STATE, L
   flake, and (from this change) the STATE.md guard on PRs.
 - CI and release run on the `macos-26` runner (Xcode 26.6 default) since 2026-11-06; they were
   on `macos-15` (Xcode 16). Swift language mode stays 5.9 (Swift 6 strict concurrency not adopted).
+  release.yml has not yet run on macos-26 (first run is the next `v*` tag). make-dmg.sh bounds
+  the Finder osascript with a watchdog (OSA_TIMEOUT, default 120s) and the Build DMG step has
+  timeout-minutes: 15, so an Apple Events hang falls back to an unstyled DMG. If the tagged
+  release fails on macos-26, set runs-on back to macos-15 and re-tag (it fails before publishing).
 - Dependabot: weekly, grouped minor+patch and majors per ecosystem with a 3 day cooldown;
   n0's hourly merger squash-merges green PRs (ADR-089 in workshop144/sublevel, PRs #18 to #20).
 - Local history persists in the app's own stores (daily-activity.json and utilization

@@ -50,7 +50,13 @@ MOUNT_POINT="$(printf '%s\n' "$ATTACH_OUT" | grep -Eo '/Volumes/.*$' | head -1)"
 [ -n "$MOUNT_POINT" ] || { echo "error: could not determine DMG mount point"; exit 1; }
 DISK_NAME="$(basename "$MOUNT_POINT")"
 
-osascript <<OSA || echo "warning: could not set DMG window layout (Apple Events not authorized?) — shipping unstyled"
+# Bound the Finder call: on a fresh CI image Finder can block on an Apple Events
+# permission prompt nobody will answer. perl's alarm (stock on macOS, unlike
+# coreutils timeout) kills osascript after OSA_TIMEOUT seconds so we fall back
+# to the unstyled warning instead of stalling the release job.
+OSA_TIMEOUT="${OSA_TIMEOUT:-120}"
+perl -e 'alarm shift; exec @ARGV or die "exec: $!"' "$OSA_TIMEOUT" osascript <<OSA \
+  || echo "warning: could not set DMG window layout (Apple Events not authorized or timed out after ${OSA_TIMEOUT}s), shipping unstyled"
 tell application "Finder"
   tell disk "$DISK_NAME"
     open

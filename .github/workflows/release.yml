@@ -140,6 +140,7 @@ jobs:
 
       - name: Build DMG
         id: dmg
+        timeout-minutes: 15
         run: |
           VOL_NAME="ClaudeGlance" scripts/make-dmg.sh \
             build/export/ClaudeGlance.app \
