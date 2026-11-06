@@ -198,6 +198,31 @@ final class HistoryPersistenceTests: XCTestCase {
         XCTAssertEqual(restored.activity, backup.activity)
     }
 
+    func testReimportingAnExportDoesNotDuplicateLiveSamples() throws {
+        // Live samples come from Date(): sub-second fractions.
+        let base = Date(timeIntervalSinceReferenceDate: 815_000_000.437)
+        let live = (0..<5).map { HistorySample(t: base.addingTimeInterval(Double($0) * 300.123), h5: $0, h7: 1, hSonnet: nil) }
+        let backup = HistoryBackup(usage: live, status: StatusHistory(), activity: ActivityArchive())
+
+        let data = try HistoryBackupService.encoder().encode(backup)
+        let restored = try HistoryBackupService.decoder().decode(HistoryBackup.self, from: data)
+        XCTAssertEqual(mergedHistory(live, restored.usage).count, live.count)
+        // Milliseconds survive the round trip now.
+        XCTAssertEqual(restored.usage[0].t.timeIntervalSinceReferenceDate,
+                       live[0].t.timeIntervalSinceReferenceDate, accuracy: 0.001)
+    }
+
+    func testLegacyWholeSecondExportStillMergesWithoutDuplicates() throws {
+        let base = Date(timeIntervalSinceReferenceDate: 815_000_000.437)
+        let live = (0..<5).map { HistorySample(t: base.addingTimeInterval(Double($0) * 300.123), h5: $0, h7: 1, hSonnet: nil) }
+        let legacy = JSONEncoder(); legacy.dateEncodingStrategy = .iso8601
+        let data = try legacy.encode(HistoryBackup(usage: live, status: StatusHistory(), activity: ActivityArchive()))
+        let restored = try HistoryBackupService.decoder().decode(HistoryBackup.self, from: data)
+        XCTAssertEqual(mergedHistory(live, restored.usage).count, live.count)
+        // The live copy (with its fraction) is the one kept.
+        XCTAssertEqual(mergedHistory(live, restored.usage), live)
+    }
+
     func testBackupSummaryCountsWhatCameBack() {
         let backup = HistoryBackup(usage: [], status: StatusHistory(days: ["2026-09-01": "none"]),
                                    activity: ActivityArchive(days: ["2026-09-01": day(1)]))
