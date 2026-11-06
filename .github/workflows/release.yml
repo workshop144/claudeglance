@@ -9,7 +9,7 @@ permissions: {}
 
 jobs:
   release:
-    runs-on: macos-15
+    runs-on: macos-26
     permissions:
       contents: write
     # The tap job gets the DMG hash from here, computed before any third-party
@@ -176,7 +176,7 @@ jobs:
   # environment with the build or with a third-party action.
   homebrew-tap:
     needs: release
-    runs-on: macos-15
+    runs-on: macos-26
     permissions: {}
     env:
       HAS_SIGNING: ${{ needs.release.outputs.signed }}
