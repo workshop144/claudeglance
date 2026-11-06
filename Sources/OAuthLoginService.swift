@@ -162,34 +162,104 @@ private final class ContinuationLatch<T>: @unchecked Sendable {
     }
 }
 
+/// The callback-handling state the listener queue and the caller both touch,
+/// behind one lock (it used to be written on the main thread and read on the
+/// listener queue unsynchronized).
+private final class CallbackGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var handled = false
+    private var expectedState = ""
+    private var onCallback: ((String, String?) -> Void)?
+
+    func arm(expectedState: String, onCallback: @escaping (String, String?) -> Void) {
+        lock.lock(); defer { lock.unlock() }
+        handled = false
+        self.expectedState = expectedState
+        self.onCallback = onCallback
+    }
+
+    func disarm() {
+        lock.lock(); defer { lock.unlock() }
+        onCallback = nil
+    }
+
+    /// The callback to run if `state` is the one in flight and nothing was
+    /// delivered yet; marks it delivered. Nil means refuse.
+    func claim(state: String?) -> ((String, String?) -> Void)? {
+        lock.lock(); defer { lock.unlock() }
+        guard !handled, !expectedState.isEmpty, state == expectedState, let cb = onCallback else { return nil }
+        handled = true
+        return cb
+    }
+}
+
 /// One-shot loopback HTTP listener for the OAuth redirect. Binds 127.0.0.1 on
 /// an ephemeral port, answers exactly one `/callback` hit carrying the state of
 /// the sign-in in progress, then stops. Anything else it sees (other paths, or a
 /// callback with a missing or wrong state, e.g. from another local process) gets
 /// an error page and the listener stays up for the real browser redirect.
-final class OAuthCallbackServer {
-    private var listener: NWListener?
+final class OAuthCallbackServer: @unchecked Sendable {
     private let queue = DispatchQueue(label: "io.github.broots144.ClaudeGlance.oauth-callback")
-    private var handled = false
-    private var expectedState = ""
-    private var onCallback: ((String, String?) -> Void)?
+    private let gate = CallbackGate()
+    // `listeners` and `generation` are guarded by `lock`. Each start() bumps the
+    // generation, so a superseded start can tell it was replaced.
+    private let lock = NSLock()
+    private var listeners: [NWListener] = []
+    private var generation = 0
 
     /// Start listening; resolves with the bound port once the socket is ready.
+    /// Throws `CancellationError` if `stop()` or a newer `start()` replaces it
+    /// before then (a double-click on Sign in), instead of never returning.
     func start(expectedState: String, onCallback: @escaping (String, String?) -> Void) async throws -> UInt16 {
         stop()
-        handled = false
-        self.expectedState = expectedState
-        self.onCallback = onCallback
+        let myGeneration = bumpGeneration()
+        gate.arm(expectedState: expectedState, onCallback: onCallback)
 
+        let listener = try makeListener(host: "127.0.0.1", port: .any)
+        try adopt(listener, generation: myGeneration)
+        return try await waitUntilReady(listener)
+    }
+
+    func stop() {
+        lock.lock()
+        let old = listeners
+        listeners = []
+        generation += 1
+        lock.unlock()
+        old.forEach { $0.cancel() }
+        gate.disarm()
+    }
+
+    private func bumpGeneration() -> Int {
+        lock.lock(); defer { lock.unlock() }
+        generation += 1
+        return generation
+    }
+
+    /// Track a listener for `stop()`, unless this start was already superseded.
+    private func adopt(_ listener: NWListener, generation expected: Int) throws {
+        lock.lock()
+        guard generation == expected else {
+            lock.unlock()
+            listener.cancel()
+            throw CancellationError()
+        }
+        listeners.append(listener)
+        lock.unlock()
+    }
+
+    private func makeListener(host: NWEndpoint.Host, port: NWEndpoint.Port) throws -> NWListener {
         let params = NWParameters.tcp
-        params.requiredLocalEndpoint = NWEndpoint.hostPort(host: "127.0.0.1", port: .any)
+        params.requiredLocalEndpoint = NWEndpoint.hostPort(host: host, port: port)
         params.allowLocalEndpointReuse = true
         let listener = try NWListener(using: params)
-        self.listener = listener
+        let gate = self.gate, queue = self.queue
+        listener.newConnectionHandler = { conn in OAuthCallbackServer.accept(conn, gate: gate, queue: queue) }
+        return listener
+    }
 
-        listener.newConnectionHandler = { [weak self] conn in self?.accept(conn) }
-
-        return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<UInt16, Error>) in
+    private func waitUntilReady(_ listener: NWListener) async throws -> UInt16 {
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<UInt16, Error>) in
             let latch = ContinuationLatch(cont)
             listener.stateUpdateHandler = { state in
                 switch state {
@@ -200,6 +270,9 @@ final class OAuthCallbackServer {
                     latch.resume(.success(port))
                 case .failed(let err):
                     latch.resume(.failure(err))
+                case .cancelled:
+                    // Stopped (or replaced by a newer start) before it was ready.
+                    latch.resume(.failure(CancellationError()))
                 default:
                     break
                 }
@@ -208,35 +281,26 @@ final class OAuthCallbackServer {
         }
     }
 
-    func stop() {
-        listener?.cancel()
-        listener = nil
-        onCallback = nil
-    }
-
-    private func accept(_ conn: NWConnection) {
+    private static func accept(_ conn: NWConnection, gate: CallbackGate, queue: DispatchQueue) {
         conn.start(queue: queue)
-        conn.receive(minimumIncompleteLength: 1, maximumLength: 16 * 1024) { [weak self] data, _, _, _ in
-            guard let self else { conn.cancel(); return }
+        conn.receive(minimumIncompleteLength: 1, maximumLength: 16 * 1024) { data, _, _, _ in
             let text = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
             let firstLine = text.split(separator: "\r\n", maxSplits: 1, omittingEmptySubsequences: false)
                 .first.map(String.init) ?? text
             guard let parsed = parseLoopbackRequestLine(firstLine) else {
-                self.respond(conn, status: "404 Not Found", html: loopbackResponseHTML(success: false))
+                respond(conn, status: "404 Not Found", html: loopbackResponseHTML(success: false))
                 return
             }
-            guard !self.handled, !self.expectedState.isEmpty, parsed.state == self.expectedState else {
-                self.respond(conn, status: "400 Bad Request", html: loopbackResponseHTML(success: false))
+            guard let cb = gate.claim(state: parsed.state) else {
+                respond(conn, status: "400 Bad Request", html: loopbackResponseHTML(success: false))
                 return
             }
-            self.handled = true
-            self.respond(conn, status: "200 OK", html: loopbackResponseHTML(success: true))
-            let cb = self.onCallback
-            DispatchQueue.main.async { cb?(parsed.code, parsed.state) }
+            respond(conn, status: "200 OK", html: loopbackResponseHTML(success: true))
+            DispatchQueue.main.async { cb(parsed.code, parsed.state) }
         }
     }
 
-    private func respond(_ conn: NWConnection, status: String, html: String) {
+    private static func respond(_ conn: NWConnection, status: String, html: String) {
         let body = Data(html.utf8)
         let head = "HTTP/1.1 \(status)\r\nContent-Type: text/html; charset=utf-8\r\n"
             + "Content-Length: \(body.count)\r\nConnection: close\r\n\r\n"
@@ -461,6 +525,9 @@ final class OAuthLoginService: ObservableObject {
                                                 challenge: codeChallenge(for: verifier),
                                                 manualCode: false)
                 NSWorkspace.shared.open(url)
+            } catch is CancellationError {
+                // A newer sign-in (or a cancel) replaced this listener: that flow
+                // owns the UI now, so don't tear it down with the paste fallback.
             } catch {
                 // Couldn't listen locally (sandbox/firewall) — use the paste flow.
                 beginManualLogin()

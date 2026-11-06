@@ -366,3 +366,40 @@ final class TokenRefreshRaceTests: XCTestCase {
         XCTAssertTrue(refreshRejectionEndsSession(rejected: rejected, stored: older))
     }
 }
+
+// MARK: - Restarting the loopback sign-in never strands the first listener
+
+final class CallbackServerRestartTests: XCTestCase {
+
+    func testSupersededStartFinishesInsteadOfHanging() async throws {
+        let server = OAuthCallbackServer()
+        // Double-click on Sign in: two start() calls overlap. Whichever runs last
+        // wins; the other must return (CancellationError), never hang.
+        let results = await withTaskGroup(of: Result<UInt16, Error>.self) { group -> [Result<UInt16, Error>] in
+            for state in ["A", "B"] {
+                group.addTask {
+                    do { return .success(try await server.start(expectedState: state) { _, _ in }) }
+                    catch { return .failure(error) }
+                }
+            }
+            return await group.reduce(into: []) { $0.append($1) }
+        }
+        XCTAssertEqual(results.count, 2)
+        XCTAssertTrue(results.contains { if case .success = $0 { return true } else { return false } })
+        for case .failure(let error) in results {
+            XCTAssertTrue(error is CancellationError, "\(error)")
+        }
+        server.stop()
+    }
+
+    func testStopBeforeReadyCancelsTheWait() async throws {
+        let server = OAuthCallbackServer()
+        let done = expectation(description: "start() returns after stop()")
+        Task {
+            _ = try? await server.start(expectedState: "A") { _, _ in }
+            done.fulfill()
+        }
+        server.stop()
+        await fulfillment(of: [done], timeout: 3)
+    }
+}
