@@ -586,6 +586,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         statusService.startPolling()
         metricsService.startPolling()
+        // The context scan only runs while something shows it (opt-in menu rows,
+        // or the dashboard); it used to read the last 24h of transcripts every 30s
+        // for everyone.
+        contextService.isNeeded = { [weak self] in
+            guard let self else { return false }
+            let settings = self.settingsManager.settings
+            return shouldScanContextWindows(showContextWindow: settings.showContextWindow,
+                                            showSessionGrade: settings.showSessionGrade,
+                                            dashboardVisible: self.dashboardWindow?.isVisible == true)
+        }
         contextService.startPolling()
 
         Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
@@ -654,6 +664,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         NSApp.activate(ignoringOtherApps: true)
         dashboardWindow?.makeKeyAndOrderFront(nil)
+        // The context scan pauses while nothing shows it; catch up on open.
+        contextService.refresh()
     }
 
     /// A usage menu-row label honoring the used-vs-remaining preference [#19],
@@ -798,6 +810,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func settingsDidChange() {
         updateStatusItemAppearance()
+        // Turning on a context option shows data now, not at the next tick.
+        if contextService.metrics.sessions.isEmpty { contextService.refresh() }
     }
 
     private func updateStatusItemAppearance() {

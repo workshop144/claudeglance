@@ -116,15 +116,17 @@ func activeSeconds(_ times: [Date]) -> Int {
 /// with no filesystem access. This is the heart of the "Today" section and the
 /// part most worth testing (dedup, token sums, cache %, the day boundary).
 func aggregateMetrics(jsonlContents: [String], now: Date) -> UsageMetrics {
+    aggregateMetrics(entries: TranscriptParser().entries(in: jsonlContents), now: now)
+}
+
+/// The aggregation proper, over already-decoded transcript entries (the cached path).
+func aggregateMetrics(entries: [TranscriptEntry], now: Date) -> UsageMetrics {
     let cal = Calendar.current
     let startToday = cal.startOfDay(for: now)
     guard let startYesterday = cal.date(byAdding: .day, value: -1, to: startToday) else { return .empty }
     let startMonth = cal.date(from: cal.dateComponents([.year, .month], from: now)) ?? startToday
     // Per-day window for streaks / the activity strip (last 30 days incl. today).
     let lookbackStart = cal.date(byAdding: .day, value: -29, to: startToday) ?? startToday
-
-    let isoFrac = ISO8601DateFormatter(); isoFrac.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-    let iso = ISO8601DateFormatter(); iso.formatOptions = [.withInternetDateTime]
 
     var seen = Set<String>()
     var tIn = 0, tOut = 0, tCacheR = 0, tCacheC = 0, tMsgs = 0
@@ -139,73 +141,67 @@ func aggregateMetrics(jsonlContents: [String], now: Date) -> UsageMetrics {
     // day needs to get its own active-time figure (not just today's).
     var detail: [String: DailyActivity] = [:]
     var timesByDay: [String: [Date]] = [:]
-    let decoder = JSONDecoder()
 
-    for content in jsonlContents {
-        for line in content.split(separator: "\n") {
-            guard let data = line.data(using: .utf8),
-                  let entry = try? decoder.decode(MetricsLogLine.self, from: data),
-                  let usage = entry.message?.usage,
-                  let ts = entry.timestamp,
-                  let date = isoFrac.date(from: ts) ?? iso.date(from: ts) else { continue }
+    for entry in entries {
+        guard let usage = entry.usage else { continue }
+        let date = entry.date
 
-            // Dedupe resumed/duplicated entries the way ccusage does.
-            let key = "\(entry.message?.id ?? ""):\(entry.requestId ?? "")"
-            if key != ":" {
-                if seen.contains(key) { continue }
-                seen.insert(key)
+        // Dedupe resumed/duplicated entries the way ccusage does.
+        let key = "\(entry.messageId ?? ""):\(entry.requestId ?? "")"
+        if key != ":" {
+            if seen.contains(key) { continue }
+            seen.insert(key)
+        }
+
+        let total = (usage.input_tokens ?? 0) + (usage.output_tokens ?? 0)
+            + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0)
+
+        let model = entry.model
+        let input = usage.input_tokens ?? 0
+        let output = usage.output_tokens ?? 0
+        let cacheC = usage.cache_creation_input_tokens ?? 0
+        let cacheR = usage.cache_read_input_tokens ?? 0
+
+        if date >= lookbackStart {
+            let day = cal.startOfDay(for: date)
+            let dayCost = tokenCostUSD(model: model, input: input,
+                output: output, cacheCreation: cacheC, cacheRead: cacheR)
+            dailyTokens[day, default: 0] += total
+            dailyCost[day, default: 0] += dayCost
+
+            let key = statusDayKey(day, calendar: cal)
+            var roll = detail[key] ?? .zero
+            roll.tokens += total
+            roll.input += input
+            roll.output += output
+            roll.cacheRead += cacheR
+            roll.cacheCreation += cacheC
+            roll.cost += dayCost
+            roll.messages += 1
+            detail[key] = roll
+            timesByDay[key, default: []].append(date)
+        }
+
+        if date >= startMonth {
+            let cost = tokenCostUSD(model: model, input: input, output: output,
+                                    cacheCreation: cacheC, cacheRead: cacheR)
+            monthCost += cost
+            mIn += input; mOut += output; mCacheR += cacheR; mCacheC += cacheC
+            costByModel[displayModelName(for: model), default: 0] += cost
+            monthSavings += tokenCostUncachedUSD(model: model, input: input, output: output,
+                cacheCreation: cacheC, cacheRead: cacheR) - cost
+            if date >= startToday {
+                tIn += input
+                tOut += output
+                tCacheR += cacheR
+                tCacheC += cacheC
+                tMsgs += 1
+                todayCost += cost
+                todayTimes.append(date)
             }
-
-            let total = (usage.input_tokens ?? 0) + (usage.output_tokens ?? 0)
-                + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0)
-
-            let model = entry.message?.model ?? ""
-            let input = usage.input_tokens ?? 0
-            let output = usage.output_tokens ?? 0
-            let cacheC = usage.cache_creation_input_tokens ?? 0
-            let cacheR = usage.cache_read_input_tokens ?? 0
-
-            if date >= lookbackStart {
-                let day = cal.startOfDay(for: date)
-                let dayCost = tokenCostUSD(model: model, input: input,
-                    output: output, cacheCreation: cacheC, cacheRead: cacheR)
-                dailyTokens[day, default: 0] += total
-                dailyCost[day, default: 0] += dayCost
-
-                let key = statusDayKey(day, calendar: cal)
-                var roll = detail[key] ?? .zero
-                roll.tokens += total
-                roll.input += input
-                roll.output += output
-                roll.cacheRead += cacheR
-                roll.cacheCreation += cacheC
-                roll.cost += dayCost
-                roll.messages += 1
-                detail[key] = roll
-                timesByDay[key, default: []].append(date)
-            }
-
-            if date >= startMonth {
-                let cost = tokenCostUSD(model: model, input: input, output: output,
-                                        cacheCreation: cacheC, cacheRead: cacheR)
-                monthCost += cost
-                mIn += input; mOut += output; mCacheR += cacheR; mCacheC += cacheC
-                costByModel[displayModelName(for: model), default: 0] += cost
-                monthSavings += tokenCostUncachedUSD(model: model, input: input, output: output,
-                    cacheCreation: cacheC, cacheRead: cacheR) - cost
-                if date >= startToday {
-                    tIn += input
-                    tOut += output
-                    tCacheR += cacheR
-                    tCacheC += cacheC
-                    tMsgs += 1
-                    todayCost += cost
-                    todayTimes.append(date)
-                }
-            }
-            if date >= startYesterday && date < startToday {
-                yesterdayTokens += total
-            }
+        }
+        if date >= startYesterday && date < startToday {
+            yesterdayTokens += total
         }
     }
 
@@ -248,6 +244,8 @@ final class MetricsService: ObservableObject {
     private var timer: Timer?
     private let interval: TimeInterval = 60
     private let queue = DispatchQueue(label: "io.github.broots144.ClaudeGlance.metrics", qos: .utility)
+    private let cache = TranscriptCache()   // touched only on `queue`
+    private let gate = ScanGate()
 
     private init() {}
 
@@ -265,9 +263,12 @@ final class MetricsService: ObservableObject {
     }
 
     func refresh() {
+        // A scan still running from the last tick: skip rather than queue another.
+        guard gate.tryBegin() else { return }
         queue.async { [weak self] in
             guard let self else { return }
             let (metrics, tools) = self.computeMetrics()
+            self.gate.end()
             DispatchQueue.main.async {
                 self.metrics = metrics
                 self.tools = tools
@@ -275,11 +276,10 @@ final class MetricsService: ObservableObject {
         }
     }
 
-    /// Gathers the relevant transcript file contents (the only I/O), then defers
-    /// all parsing/aggregation to the pure `aggregateMetrics`.
+    /// Brings the cached transcript entries up to date (the only I/O: new bytes
+    /// of changed files), then defers all aggregation to the pure functions.
     private func computeMetrics() -> (UsageMetrics, ToolBreakdown) {
         let now = Date()
-        let fm = FileManager.default
 
         let cal = Calendar.current
         let startToday = cal.startOfDay(for: now)
@@ -291,22 +291,9 @@ final class MetricsService: ObservableObject {
         let cutoff = min(startMonth, startYesterday, lookbackStart)
 
         // Scan every configured Claude config dir [#22], not just ~/.claude.
-        var contents: [String] = []
-        for projects in claudeProjectsDirectories() {
-            guard let enumerator = fm.enumerator(
-                at: projects,
-                includingPropertiesForKeys: [.contentModificationDateKey],
-                options: [.skipsHiddenFiles]
-            ) else { continue }
-            for case let url as URL in enumerator where url.pathExtension == "jsonl" {
-                let mod = (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-                if mod < cutoff { continue }
-                guard let content = try? String(contentsOf: url, encoding: .utf8) else { continue }
-                contents.append(content)
-            }
-        }
+        let entries = cache.entries(in: claudeProjectsDirectories(), modifiedSince: cutoff)
 
-        var metrics = aggregateMetrics(jsonlContents: contents, now: now)
+        var metrics = aggregateMetrics(entries: entries, now: now)
 
         // Fold this scan into the persisted archive and read the charts back out
         // of it. Claude Code deletes transcripts after `cleanupPeriodDays` (30 by
@@ -317,6 +304,6 @@ final class MetricsService: ObservableObject {
         metrics.dailyCost = archiveDailyCost(archive, since: lookbackStart, calendar: cal)
         metrics.archivedDailyTokens = archiveDailyTokens(archive, calendar: cal)
 
-        return (metrics, aggregateToolUsage(jsonlContents: contents, now: now))
+        return (metrics, aggregateToolUsage(entries: entries, now: now))
     }
 }

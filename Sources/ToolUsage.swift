@@ -66,38 +66,29 @@ struct ToolLogLine: Decodable {
 /// same call can appear in several files. Calls are counted once per tool_use id,
 /// the way `aggregateMetrics` counts usage once per message/request.
 func aggregateToolUsage(jsonlContents: [String], now: Date) -> ToolBreakdown {
+    aggregateToolUsage(entries: TranscriptParser().entries(in: jsonlContents), now: now)
+}
+
+/// The aggregation proper, over already-decoded transcript entries (the cached path).
+func aggregateToolUsage(entries: [TranscriptEntry], now: Date) -> ToolBreakdown {
     let cal = Calendar.current
     let startMonth = cal.date(from: cal.dateComponents([.year, .month], from: now)) ?? cal.startOfDay(for: now)
-    let isoFrac = ISO8601DateFormatter(); isoFrac.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-    let iso = ISO8601DateFormatter(); iso.formatOptions = [.withInternetDateTime]
-    let decoder = JSONDecoder()
 
     var toolCounts: [String: Int] = [:]
     var mcpServerCounts: [String: Int] = [:]
     var total = 0
     var seen = Set<String>()
 
-    for content in jsonlContents {
-        for line in content.split(separator: "\n") {
-            guard let data = line.data(using: .utf8),
-                  let entry = try? decoder.decode(ToolLogLine.self, from: data),
-                  let msg = entry.message, msg.role == "assistant",
-                  let blocks = msg.content,
-                  let ts = entry.timestamp,
-                  let date = isoFrac.date(from: ts) ?? iso.date(from: ts),
-                  date >= startMonth else { continue }
-
-            for block in blocks where block.type == "tool_use" {
-                guard let name = block.name, !name.isEmpty else { continue }
-                if let id = block.id, !id.isEmpty {
-                    guard seen.insert(id).inserted else { continue }
-                }
-                total += 1
-                if let server = mcpServerName(from: name) {
-                    mcpServerCounts[server, default: 0] += 1
-                } else {
-                    toolCounts[name, default: 0] += 1
-                }
+    for entry in entries where entry.role == "assistant" && entry.date >= startMonth {
+        for call in entry.toolUses {
+            if let id = call.id, !id.isEmpty {
+                guard seen.insert(id).inserted else { continue }
+            }
+            total += 1
+            if let server = mcpServerName(from: call.name) {
+                mcpServerCounts[server, default: 0] += 1
+            } else {
+                toolCounts[call.name, default: 0] += 1
             }
         }
     }

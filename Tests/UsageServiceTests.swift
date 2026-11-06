@@ -1653,3 +1653,107 @@ final class FetchGateTests: XCTestCase {
         XCTAssertFalse(gate.inFlight)
     }
 }
+
+// MARK: - Incremental transcript scan (no full re-read every tick)
+
+final class TranscriptCacheTests: XCTestCase {
+
+    private var dir: URL!
+
+    override func setUpWithError() throws {
+        dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cg-transcripts-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    }
+
+    override func tearDownWithError() throws {
+        try? FileManager.default.removeItem(at: dir)
+    }
+
+    private func usageLine(_ id: String, input: Int = 10) -> String {
+        "{\"timestamp\":\"2026-11-06T10:00:00Z\",\"requestId\":\"r\(id)\",\"sessionId\":\"s\","
+            + "\"message\":{\"id\":\"m\(id)\",\"role\":\"assistant\",\"model\":\"claude-sonnet-4-6\","
+            + "\"usage\":{\"input_tokens\":\(input),\"output_tokens\":1}}}"
+    }
+
+    private func append(_ text: String, to file: URL, modified: Date) throws {
+        if let h = try? FileHandle(forWritingTo: file) {
+            try h.seekToEnd(); try h.write(contentsOf: Data(text.utf8)); try h.close()
+        } else {
+            try Data(text.utf8).write(to: file)
+        }
+        try FileManager.default.setAttributes([.modificationDate: modified], ofItemAtPath: file.path)
+    }
+
+    func testAppendedLinesAreReadIncrementally() throws {
+        let file = dir.appendingPathComponent("a.jsonl")
+        let cache = TranscriptCache()
+        let t = Date()
+        try append(usageLine("1") + "\n" + usageLine("2") + "\n", to: file, modified: t)
+        XCTAssertEqual(cache.entries(in: [dir], modifiedSince: .distantPast).count, 2)
+
+        // Unchanged file: served from the cache.
+        XCTAssertEqual(cache.entries(in: [dir], modifiedSince: .distantPast).count, 2)
+
+        // A line half-written by a live session isn't counted until it's complete.
+        let third = usageLine("3")
+        try append(String(third.prefix(40)), to: file, modified: t.addingTimeInterval(1))
+        XCTAssertEqual(cache.entries(in: [dir], modifiedSince: .distantPast).count, 2)
+        try append(String(third.dropFirst(40)) + "\n", to: file, modified: t.addingTimeInterval(2))
+        let all = cache.entries(in: [dir], modifiedSince: .distantPast)
+        XCTAssertEqual(all.map(\.messageId), ["m1", "m2", "m3"])
+    }
+
+    func testRewrittenFileIsReadAgainInFull() throws {
+        let file = dir.appendingPathComponent("b.jsonl")
+        let cache = TranscriptCache()
+        let t = Date()
+        try append(usageLine("1") + "\n" + usageLine("2") + "\n", to: file, modified: t)
+        XCTAssertEqual(cache.entries(in: [dir], modifiedSince: .distantPast).count, 2)
+        try Data((usageLine("9") + "\n").utf8).write(to: file)
+        try FileManager.default.setAttributes([.modificationDate: t.addingTimeInterval(5)], ofItemAtPath: file.path)
+        XCTAssertEqual(cache.entries(in: [dir], modifiedSince: .distantPast).map(\.messageId), ["m9"])
+    }
+
+    func testInvalidUTF8CostsOneLineNotTheFile() throws {
+        let file = dir.appendingPathComponent("c.jsonl")
+        var data = Data((usageLine("1") + "\n").utf8)
+        data.append(contentsOf: [0x7B, 0xC3, 0x28, 0x0A])          // "{" + broken UTF-8 + newline
+        data.append(Data((usageLine("2") + "\n").utf8))
+        try data.write(to: file)
+        let entries = TranscriptCache().entries(in: [dir], modifiedSince: .distantPast)
+        XCTAssertEqual(entries.map(\.messageId), ["m1", "m2"])
+    }
+
+    func testFilesOutsideTheWindowAreSkipped() throws {
+        let file = dir.appendingPathComponent("old.jsonl")
+        try append(usageLine("1") + "\n", to: file, modified: Date().addingTimeInterval(-90 * 86400))
+        XCTAssertTrue(TranscriptCache().entries(in: [dir], modifiedSince: Date().addingTimeInterval(-86400)).isEmpty)
+    }
+
+    func testCachedPathMatchesStringAggregation() throws {
+        let file = dir.appendingPathComponent("d.jsonl")
+        let text = [usageLine("1", input: 100), usageLine("1", input: 100), usageLine("2", input: 50)].joined(separator: "\n") + "\n"
+        try append(text, to: file, modified: Date())
+        let now = ISO8601DateFormatter().date(from: "2026-11-06T12:00:00Z")!
+        let viaCache = aggregateMetrics(entries: TranscriptCache().entries(in: [dir], modifiedSince: .distantPast), now: now)
+        let viaStrings = aggregateMetrics(jsonlContents: [text], now: now)
+        XCTAssertEqual(viaCache.monthInputTokens, 150)   // duplicate counted once
+        XCTAssertEqual(viaCache.monthInputTokens, viaStrings.monthInputTokens)
+    }
+
+    func testScanGateSkipsWhileRunning() {
+        let gate = ScanGate()
+        XCTAssertTrue(gate.tryBegin())
+        XCTAssertFalse(gate.tryBegin())
+        gate.end()
+        XCTAssertTrue(gate.tryBegin())
+    }
+
+    func testContextScanOnlyWhenSomethingShowsIt() {
+        XCTAssertFalse(shouldScanContextWindows(showContextWindow: false, showSessionGrade: false, dashboardVisible: false))
+        XCTAssertTrue(shouldScanContextWindows(showContextWindow: true, showSessionGrade: false, dashboardVisible: false))
+        XCTAssertTrue(shouldScanContextWindows(showContextWindow: false, showSessionGrade: true, dashboardVisible: false))
+        XCTAssertTrue(shouldScanContextWindows(showContextWindow: false, showSessionGrade: false, dashboardVisible: true))
+    }
+}
