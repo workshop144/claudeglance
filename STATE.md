@@ -30,6 +30,8 @@ Last updated: 2026-11-06 by Claude: retrofit of the repo-state pattern (STATE, L
   until the Apple secrets are set.
 - CI (`.github/workflows/ci.yml`): unit tests, hardened Release build, `nix build` of the
   flake, and (from this change) the STATE.md guard on PRs.
+- CI and release run on the `macos-26` runner (Xcode 26.6 default) since 2026-11-06; they were
+  on `macos-15` (Xcode 16). Swift language mode stays 5.9 (Swift 6 strict concurrency not adopted).
 - Dependabot: weekly, grouped minor+patch and majors per ecosystem with a 3 day cooldown;
   n0's hourly merger squash-merges green PRs (ADR-089 in workshop144/sublevel, PRs #18 to #20).
 - Local history persists in the app's own stores (daily-activity.json and utilization
