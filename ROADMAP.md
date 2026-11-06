@@ -10,6 +10,25 @@
 > not a dashboard. Most items are **opt-in** so the default view stays minimal.
 > The "Deliberately not doing" list at the bottom is as important as the rest.
 
+## At a glance
+
+Status detail lives in [STATE.md](STATE.md); decisions in [docs/DECISIONS.md](docs/DECISIONS.md).
+
+| Phase | Title | Status | Gate / blocker |
+|---|---|---|---|
+| v1.1 | Sharper glance | ✅ | shipped v1.1.4 |
+| v1.2 | Foresight | ✅ | shipped v1.2.2 |
+| v1.3 | Memory | ✅ | shipped v1.3.4 |
+| v1.4 | Dashboard | ✅ | shipped v1.4.5 |
+| v1.5 | Depth | ✅ | shipped v1.5.6 |
+| v1.6 | Reach | ✅ | shipped v1.6.5 |
+| v1.7 | Standalone sign-in and hardening | ✅ | shipped v1.7.7 |
+| v1.8 | Signed-out menu bar | ✅ | shipped v1.8.0, `just verify-release` |
+| Signing | Notarize [6], Sparkle [13], WidgetKit [25] | 🔴 | Apple Developer account and signing secrets |
+| Small | Copy usage to clipboard [31] | ⬜ | none |
+| Hardening | Timezones, multi-monitor, big-jsonl streaming | ⬜ | ongoing, test first |
+| Exploratory | Prepaid balance [23], multi-account [24] | ⏸ | validate demand first |
+
 ---
 
 ## ✅ Shipped
