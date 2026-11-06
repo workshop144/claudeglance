@@ -19,14 +19,22 @@ enum HistoryStorage {
     /// Bumped only when a payload changes shape in a way older builds can't read.
     static let currentVersion = 1
 
-    /// Under XCTest the app runs only as a test host: every store reads and writes
-    /// a throwaway folder instead of the developer's real history, so a test that
-    /// touches a shared store (or the restore path) can never overwrite it.
+    /// Under XCTest the app runs only as a test host: every store (and the
+    /// statusline export) reads and writes a throwaway folder instead of the
+    /// developer's real files, so a test that touches a shared store (or the
+    /// restore path) can never overwrite them. Debug builds only: tests always run
+    /// Debug, so a stray `XCTestConfigurationFilePath` in a release launch can't
+    /// redirect history to an empty temp folder. The UUID keeps a reused PID from
+    /// inheriting an older run's folder; the test bundle removes it when it finishes.
     static let testSandbox: URL? = {
+        #if DEBUG
         guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil else { return nil }
         return FileManager.default.temporaryDirectory
-            .appendingPathComponent("ClaudeGlanceTests-history-\(ProcessInfo.processInfo.processIdentifier)",
+            .appendingPathComponent("ClaudeGlanceTests-history-\(ProcessInfo.processInfo.processIdentifier)-\(UUID().uuidString)",
                                     isDirectory: true)
+        #else
+        return nil
+        #endif
     }()
 
     static var primaryDirectory: URL? {

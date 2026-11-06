@@ -13,7 +13,13 @@ import XCTest
 /// status.json and incidents.json differently.
 final class RoutingURLProtocol: URLProtocol {
     struct Stub { var status: Int; var body: Data; var headers: [String: String] = [:] }
-    static var stubs: [String: Stub] = [:]
+    private static let lock = NSLock()
+    private static var _stubs: [String: Stub] = [:]
+    /// Guarded so URLSession's loader thread never reads while a test writes.
+    static var stubs: [String: Stub] {
+        get { lock.lock(); defer { lock.unlock() }; return _stubs }
+        set { lock.lock(); defer { lock.unlock() }; _stubs = newValue }
+    }
 
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
@@ -35,10 +41,33 @@ final class RoutingURLProtocol: URLProtocol {
     }
 }
 
+// MARK: - Sandbox cleanup
+
+/// Removes HistoryStorage's per-run temp folder once the whole bundle has run,
+/// so test runs don't pile synthetic history up in TMPDIR.
+final class TestSandboxCleanup: NSObject, XCTestObservation {
+    private static var registered = false
+    static func register() {
+        guard !registered else { return }
+        registered = true
+        XCTestObservationCenter.shared.addTestObserver(TestSandboxCleanup())
+    }
+    func testBundleDidFinish(_ testBundle: Bundle) {
+        if let sandbox = HistoryStorage.testSandbox {
+            try? FileManager.default.removeItem(at: sandbox)
+        }
+    }
+}
+
 // MARK: - Durable JSON files
 
 final class DurableJSONStorageTests: XCTestCase {
     private var file = ""
+
+    override class func setUp() {
+        super.setUp()
+        TestSandboxCleanup.register()
+    }
 
     override func setUp() {
         file = "test-\(UUID().uuidString).json"
@@ -68,6 +97,8 @@ final class DurableJSONStorageTests: XCTestCase {
             XCTAssertFalse(url.path.hasPrefix(home + "/.claudeglance"), url.path)
             XCTAssertFalse(url.path.hasPrefix(home + "/Library/Application Support"), url.path)
         }
+        let export = try XCTUnwrap(StatusLineExporter.fileURL)
+        XCTAssertTrue(export.path.hasPrefix(sandbox.path), "status.json must stay in the sandbox: \(export.path)")
     }
 
     func testSaveWritesAVersionedEnvelopeToBothCopies() throws {
@@ -224,9 +255,17 @@ final class StatusServicePollTests: XCTestCase {
     private let statusPath = "/api/v2/status.json"
     private let incidentsPath = "/api/v2/incidents.json"
 
+    private var originalSession: URLSession!
+
     override func setUp() {
         RoutingURLProtocol.stubs = [:]
+        originalSession = StatusService.shared.urlSession
         StatusService.shared.urlSession = RoutingURLProtocol.session()
+    }
+
+    override func tearDown() {
+        StatusService.shared.urlSession = originalSession
+        RoutingURLProtocol.stubs = [:]
     }
 
     private func status(_ indicator: String, _ text: String) -> Data {
@@ -292,6 +331,16 @@ final class StatusServicePollTests: XCTestCase {
 // MARK: - Usage fetch: Retry-After reaches the backoff
 
 final class UsageRetryAfterTests: XCTestCase {
+    private var originalSession: URLSession!
+
+    override func setUp() {
+        originalSession = UsageService.shared.urlSession
+    }
+
+    override func tearDown() {
+        UsageService.shared.urlSession = originalSession
+        RoutingURLProtocol.stubs = [:]
+    }
 
     func testRetryAfterHeaderIsCarriedOnThe429Error() async {
         RoutingURLProtocol.stubs = ["/api/oauth/usage": .init(status: 429, body: Data("slow down".utf8),

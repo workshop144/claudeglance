@@ -126,13 +126,10 @@ final class StatusLineExporter {
 
     // MARK: - Disk
 
+    /// `~/Library/Application Support/ClaudeGlance/status.json` (the statusline
+    /// script reads it there); under XCTest, the same path inside the test sandbox.
     static var fileURL: URL? {
-        let fm = FileManager.default
-        guard let base = try? fm.url(for: .applicationSupportDirectory, in: .userDomainMask,
-                                     appropriateFor: nil, create: true) else { return nil }
-        let dir = base.appendingPathComponent("ClaudeGlance", isDirectory: true)
-        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir.appendingPathComponent("status.json")
+        HistoryStorage.primaryDirectory?.appendingPathComponent("status.json")
     }
 
     static func write(_ export: StatusExport, to url: URL?) {

@@ -40,9 +40,11 @@ Last updated: 2026-11-06 by Claude: test coverage pass (branch tests/coverage-20
   revert 58dfb8e alone.
 - Tests (2026-11-06 coverage pass): 310 tests. App line coverage 32.45% to 35.46%; excluding
   the AppKit/SwiftUI files (AppDelegate, SettingsView, DashboardView, main) 66.96% to 73.41%.
-  Under XCTest, HistoryStorage reads and writes a per-process temp folder
-  (`HistoryStorage.testSandbox`), never ~/Library/Application Support/ClaudeGlance or
-  ~/.claudeglance, so tests of the shared stores and the restore path cannot touch real history.
+  Under XCTest (Debug builds only), HistoryStorage reads and writes a per-run temp folder
+  (`HistoryStorage.testSandbox`, PID plus UUID, removed by a test observer when the bundle
+  finishes), never ~/Library/Application Support/ClaudeGlance or ~/.claudeglance, so tests of
+  the shared stores and the restore path cannot touch real history. StatusLineExporter.fileURL
+  is built on `HistoryStorage.primaryDirectory`, so status.json follows the same rule.
   StatusService exposes awaitable `refreshStatus()` / `refreshIncidents()`;
   `StatusLineSetup.installScript(to:bundle:)` takes a destination. Still untested: UsageService
   `fetchUsage` end to end (needs a token seam on OAuthLoginService.shared), SettingsManager
