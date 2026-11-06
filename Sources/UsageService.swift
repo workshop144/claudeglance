@@ -164,6 +164,44 @@ func shouldNotifyReset(previousResetAt: Date?, newResetAt: Date?,
     return previousUtilization >= threshold
 }
 
+/// Follows one limit window (5h or 7d) across polls and reports when it rolled
+/// over after you were constrained. Pure value type, so the sequence is testable.
+///
+/// It keeps the last real boundary and the peak utilization seen in that window
+/// instead of overwriting both with each poll. After a 5h window ends and no new
+/// message has opened the next one, the API reports `resets_at: null` with 0%
+/// utilization; overwriting with that lost the boundary and the peak, so the
+/// "session reset" alert never fired. A rollover is now either the boundary moving
+/// forward (`shouldNotifyReset`) or the clock passing the stored boundary.
+struct ResetTracker: Equatable {
+    private(set) var boundary: Date?
+    private(set) var peakUtilization = 0
+
+    /// Feed one poll's reading. Returns true when this poll observed a rollover
+    /// that warrants a notification (peak before it at or above `threshold`).
+    mutating func observe(resetAt: Date?, utilization: Int, now: Date, threshold: Int) -> Bool {
+        guard let previous = boundary else {
+            // First reading (or no window open yet): start tracking.
+            boundary = resetAt.flatMap { $0 > now ? $0 : nil }
+            peakUtilization = boundary == nil ? 0 : utilization
+            return false
+        }
+        let advanced = shouldNotifyReset(previousResetAt: previous, newResetAt: resetAt,
+                                         previousUtilization: peakUtilization, threshold: Int.min)
+        let expired = now >= previous
+        guard advanced || expired else {
+            // Same window: remember the highest reading (null boundary keeps the old one).
+            peakUtilization = max(peakUtilization, utilization)
+            return false
+        }
+        let notify = peakUtilization >= threshold
+        // Start the next window, ignoring a boundary that's already in the past.
+        boundary = resetAt.flatMap { $0 > now ? $0 : nil }
+        peakUtilization = boundary == nil ? 0 : utilization
+        return notify
+    }
+}
+
 // MARK: - Weekly threshold alerts (pure, testable)
 
 /// Which weekly-usage alert to post, if any.

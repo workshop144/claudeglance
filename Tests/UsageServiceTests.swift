@@ -1569,3 +1569,44 @@ final class UsageAlertTests: XCTestCase {
         XCTAssertNil(evaluateUsageAlert(usage: 80, warningThreshold: 80, criticalThreshold: 95, state: &state))
     }
 }
+
+// MARK: - Reset tracking across a null resets_at gap
+
+final class ResetTrackerTests: XCTestCase {
+
+    private let t0 = Date(timeIntervalSince1970: 1_700_000_000)
+    private let hour: TimeInterval = 3600
+
+    func testResetFiresWhenIdleGapReportsNullBoundary() {
+        var tracker = ResetTracker()
+        let boundary = t0.addingTimeInterval(2 * hour)
+        XCTAssertFalse(tracker.observe(resetAt: boundary, utilization: 70, now: t0, threshold: 80))
+        XCTAssertFalse(tracker.observe(resetAt: boundary, utilization: 92, now: t0.addingTimeInterval(hour), threshold: 80))
+        // Window ended, nobody started a new one: the API sends null and 0%.
+        XCTAssertTrue(tracker.observe(resetAt: nil, utilization: 0, now: boundary.addingTimeInterval(60), threshold: 80))
+        // Later the next window opens: no second alert for the same rollover.
+        let next = boundary.addingTimeInterval(6 * hour)
+        XCTAssertFalse(tracker.observe(resetAt: next, utilization: 1, now: boundary.addingTimeInterval(hour), threshold: 80))
+    }
+
+    func testBoundaryAdvanceStillFires() {
+        var tracker = ResetTracker()
+        let boundary = t0.addingTimeInterval(hour)
+        XCTAssertFalse(tracker.observe(resetAt: boundary, utilization: 85, now: t0, threshold: 80))
+        // Asleep across the boundary; the first poll after wake shows the next window.
+        XCTAssertTrue(tracker.observe(resetAt: boundary.addingTimeInterval(5 * hour), utilization: 2,
+                                      now: boundary.addingTimeInterval(2 * hour), threshold: 80))
+    }
+
+    func testJitterAndLowPeakStayQuiet() {
+        var tracker = ResetTracker()
+        let boundary = t0.addingTimeInterval(2 * hour)
+        XCTAssertFalse(tracker.observe(resetAt: boundary, utilization: 90, now: t0, threshold: 80))
+        // Sub-second jitter on the same boundary is not a rollover.
+        XCTAssertFalse(tracker.observe(resetAt: boundary.addingTimeInterval(0.7), utilization: 91,
+                                       now: t0.addingTimeInterval(60), threshold: 80))
+        var quiet = ResetTracker()
+        XCTAssertFalse(quiet.observe(resetAt: boundary, utilization: 10, now: t0, threshold: 80))
+        XCTAssertFalse(quiet.observe(resetAt: nil, utilization: 0, now: boundary.addingTimeInterval(1), threshold: 80))
+    }
+}

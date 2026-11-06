@@ -18,12 +18,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // Weekly warning/critical alerts already sent this week; re-armed on reset.
     private var usageAlertState = UsageAlertState()
 
-    // Previous window state, to detect a reset (reset time advanced) and how
-    // constrained we were just before it. nil until the first snapshot arrives.
-    private var lastFiveHourReset: Date?
-    private var lastFiveHourUtil: Int = 0
-    private var lastSevenDayReset: Date?
-    private var lastSevenDayUtil: Int = 0
+    // Each window's last boundary and peak, to detect a reset and how
+    // constrained we were just before it.
+    private var fiveHourResets = ResetTracker()
+    private var sevenDayResets = ResetTracker()
 
     // Keep Combine subscriptions alive
     private var cancellables = Set<AnyCancellable>()
@@ -1062,34 +1060,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     /// Fire a one-shot "reset" notification when a 5h/7d window rolls over after
-    /// we were near its limit. Comparison/dedup lives in `shouldNotifyReset`; we
-    /// always update the stored previous-state so each boundary pings at most once.
+    /// we were near its limit. Rollover detection lives in `ResetTracker`; every
+    /// snapshot is fed to it so each boundary pings at most once.
     private func checkForResets() {
+        // The placeholder isn't a reading; feeding it would look like an idle window.
+        guard usageService.hasLoaded else { return }
         let snapshot = usageService.currentUsage
         let threshold = Int(settingsManager.settings.warningThreshold)
         let enabled = settingsManager.settings.resetNotificationsEnabled
+        let now = Date()
 
-        if enabled, shouldNotifyReset(previousResetAt: lastFiveHourReset,
-                                      newResetAt: snapshot.fiveHourResetAt,
-                                      previousUtilization: lastFiveHourUtil,
-                                      threshold: threshold) {
+        if fiveHourResets.observe(resetAt: snapshot.fiveHourResetAt,
+                                  utilization: snapshot.fiveHourUtilization,
+                                  now: now, threshold: threshold), enabled {
             sendNotification(title: "5-hour session reset",
                              body: "Your session limit just reset — full quota available again.",
                              isCritical: false)
         }
-        lastFiveHourReset = snapshot.fiveHourResetAt
-        lastFiveHourUtil = snapshot.fiveHourUtilization
-
-        if enabled, shouldNotifyReset(previousResetAt: lastSevenDayReset,
-                                      newResetAt: snapshot.sevenDayResetAt,
-                                      previousUtilization: lastSevenDayUtil,
-                                      threshold: threshold) {
+        if sevenDayResets.observe(resetAt: snapshot.sevenDayResetAt,
+                                  utilization: snapshot.sevenDayUtilization,
+                                  now: now, threshold: threshold), enabled {
             sendNotification(title: "Weekly limit reset",
                              body: "Your weekly limit just reset — full quota available again.",
                              isCritical: false)
         }
-        lastSevenDayReset = snapshot.sevenDayResetAt
-        lastSevenDayUtil = snapshot.sevenDayUtilization
     }
 
     private func checkForNotifications() {
