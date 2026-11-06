@@ -64,14 +64,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         usageService.$error
             .combineLatest(usageService.$hasLoaded)
             .receive(on: RunLoop.main)
-            .sink { [weak self] _ in self?.updateStatusItemAppearance() }
+            .sink { [weak self] _ in
+                self?.updateStatusItemAppearance()
+                StatusLineExporter.shared.export()
+            }
             .store(in: &cancellables)
 
         // Signing out (or the session expiring) swaps the frozen numbers for a
-        // sign-in prompt; signing back in restores them.
+        // sign-in prompt; signing back in restores them. The statusline follows.
         OAuthLoginService.shared.$state
             .receive(on: RunLoop.main)
-            .sink { [weak self] _ in self?.updateStatusItemAppearance() }
+            .sink { [weak self] _ in
+                self?.updateStatusItemAppearance()
+                StatusLineExporter.shared.export()
+            }
             .store(in: &cancellables)
 
         // Refresh the menu-bar health dot whenever the service status changes.

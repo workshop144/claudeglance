@@ -25,12 +25,31 @@ fi
 # The ClaudeGlance usage segment. Prefer jq (reads the structured `line`); fall
 # back to a quote-safe sed extraction so it still works without jq installed.
 usage=""
+stale=""
 if [ -f "$SIDECAR" ]; then
   if command -v jq >/dev/null 2>&1; then
     usage="$(jq -r '.line // empty' "$SIDECAR" 2>/dev/null)"
+    stale="$(jq -r 'if .stale == true then "true" else empty end' "$SIDECAR" 2>/dev/null)"
   else
     usage="$(sed -n 's/.*"line"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$SIDECAR" | head -n 1)"
+    grep -Eq '"stale"[[:space:]]*:[[:space:]]*true' "$SIDECAR" && stale="true"
   fi
+  # ClaudeGlance rewrites the file every minute while it runs. An old file means
+  # the app quit or hung, so its numbers are no longer current either.
+  max_age="${CLAUDEGLANCE_STALE_SECONDS:-900}"
+  mtime="$(stat -f %m "$SIDECAR" 2>/dev/null || stat -c %Y "$SIDECAR" 2>/dev/null)"
+  if [ -n "$mtime" ] && [ $(( $(date +%s) - mtime )) -gt "$max_age" ]; then
+    stale="true"
+  fi
+fi
+
+# Numbers that aren't current are marked, never shown as live. The app's own
+# "ClaudeGlance: ..." messages (sign in, no data yet) already say what's wrong.
+if [ -n "$usage" ] && [ "$stale" = "true" ]; then
+  case "$usage" in
+    ClaudeGlance:*) ;;
+    *) usage="$usage (stale)" ;;
+  esac
 fi
 
 # Compose "<model>  <usage>" when both exist, else whichever we have. If the

@@ -148,4 +148,88 @@ final class StatusLineExportTests: XCTestCase {
         XCTAssertFalse(StatusLineSetup.hasStatusLine("{}".data(using: .utf8)))
         XCTAssertTrue(StatusLineSetup.hasStatusLine(#"{"statusLine":{}}"#.data(using: .utf8)))
     }
+
+    // MARK: No data / signed out / stale (never shown as live numbers)
+
+    func testPlaceholderBeforeFirstFetchIsNotZeroPercent() {
+        let now = Date()
+        let export = buildStatusExport(usage: .placeholder, burn: nil, metrics: metrics(),
+                                       hasLoaded: false, signedIn: true, now: now)
+        XCTAssertEqual(export.line, statusLineNoDataText)
+        XCTAssertFalse(export.line.contains("0%"))
+        XCTAssertTrue(export.stale)
+    }
+
+    func testSignedOutSaysSignIn() {
+        let now = Date()
+        let export = buildStatusExport(usage: snapshot(lastUpdated: now), burn: nil, metrics: metrics(),
+                                       hasLoaded: true, signedIn: false, now: now)
+        XCTAssertEqual(export.line, statusLineSignedOutText)
+        XCTAssertTrue(export.stale)
+    }
+
+    func testUpdatedIsWhenNumbersWereFetched() {
+        let now = Date()
+        let fetched = now.addingTimeInterval(-30 * 60)
+        let export = buildStatusExport(usage: snapshot(lastUpdated: fetched), burn: nil,
+                                       metrics: metrics(), now: now)
+        let iso = ISO8601DateFormatter()
+        let updated = try! XCTUnwrap(iso.date(from: export.updated))
+        XCTAssertEqual(updated.timeIntervalSince1970, fetched.timeIntervalSince1970, accuracy: 1)
+        XCTAssertTrue(export.stale)
+    }
+
+    // MARK: The bundled script marks stale numbers
+
+    private func runScript(sidecar: StatusExport, modified: Date = Date()) throws -> String {
+        let script = try XCTUnwrap(Bundle.main.url(forResource: StatusLineSetup.scriptResource, withExtension: "sh"))
+        let home = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cg-statusline-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: home) }
+        let dir = home.appendingPathComponent("Library/Application Support/ClaudeGlance", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let file = dir.appendingPathComponent("status.json")
+        StatusLineExporter.write(sidecar, to: file)
+        try FileManager.default.setAttributes([.modificationDate: modified], ofItemAtPath: file.path)
+
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/bin/bash")
+        p.arguments = [script.path]
+        var env = ProcessInfo.processInfo.environment
+        env["HOME"] = home.path
+        p.environment = env
+        let out = Pipe()
+        p.standardOutput = out
+        p.standardInput = FileHandle.nullDevice
+        try p.run()
+        p.waitUntilExit()
+        let text = String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    func testScriptPrintsFreshLineAsIs() throws {
+        let now = Date()
+        let export = buildStatusExport(usage: snapshot(lastUpdated: now), burn: nil, metrics: metrics(), now: now)
+        XCTAssertEqual(try runScript(sidecar: export), "5h 35% · 7d 71%")
+    }
+
+    func testScriptMarksStaleFlag() throws {
+        let now = Date()
+        let export = buildStatusExport(usage: snapshot(lastUpdated: now.addingTimeInterval(-20 * 60)),
+                                       burn: nil, metrics: metrics(), now: now)
+        XCTAssertEqual(try runScript(sidecar: export), "5h 35% · 7d 71% (stale)")
+    }
+
+    func testScriptMarksOldFileAfterAppQuit() throws {
+        let now = Date()
+        let export = buildStatusExport(usage: snapshot(lastUpdated: now), burn: nil, metrics: metrics(), now: now)
+        XCTAssertEqual(try runScript(sidecar: export, modified: now.addingTimeInterval(-3600)),
+                       "5h 35% · 7d 71% (stale)")
+    }
+
+    func testScriptLeavesSignInMessageUnmarked() throws {
+        let export = buildStatusExport(usage: .placeholder, burn: nil, metrics: metrics(),
+                                       hasLoaded: false, signedIn: false)
+        XCTAssertEqual(try runScript(sidecar: export), statusLineSignedOutText)
+    }
 }
