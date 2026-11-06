@@ -69,7 +69,8 @@ final class StatusService: ObservableObject {
             do {
                 var request = URLRequest(url: endpoint)
                 request.timeoutInterval = 15
-                let (data, _) = try await urlSession.data(for: request)
+                let (data, response) = try await urlSession.data(for: request)
+                guard isUsableStatusResponse(response) else { throw URLError(.badServerResponse) }
                 let decoded = try JSONDecoder().decode(StatusResponse.self, from: data)
                 let indicator = ServiceStatusIndicator(rawValue: decoded.status.indicator) ?? .unknown
                 let result = ServiceStatus(indicator: indicator, description: decoded.status.description)
@@ -95,13 +96,14 @@ final class StatusService: ObservableObject {
             do {
                 var request = URLRequest(url: incidentsEndpoint)
                 request.timeoutInterval = 15
-                let (data, _) = try await urlSession.data(for: request)
-                let incidents = parseIncidents(data)
+                let (data, response) = try await urlSession.data(for: request)
                 let now = Date()
-                let pct = uptimePercent(incidents: incidents, window: 30 * 24 * 3600, now: now)
+                guard let update = uptimeUpdate(data: data, response: response, now: now) else {
+                    throw URLError(.badServerResponse)
+                }
                 await MainActor.run {
-                    self.uptime30dPercent = pct
-                    StatusHistoryStore.shared.seed(incidents: incidents, now: now)
+                    self.uptime30dPercent = update.percent
+                    StatusHistoryStore.shared.seed(incidents: update.incidents, now: now)
                 }
             } catch {
                 #if DEBUG

@@ -156,11 +156,38 @@ final class StatusHistoryTests: XCTestCase {
             "created_at": "2026-06-01T10:00:00.000Z", "resolved_at": null }
         ] }
         """.data(using: .utf8)!
-        let incidents = parseIncidents(json)
+        let incidents = try! XCTUnwrap(parseIncidents(json))
         XCTAssertEqual(incidents.count, 2)
         XCTAssertEqual(incidents[0].impact, .major)
         XCTAssertNotNil(incidents[0].end)
         XCTAssertEqual(incidents[1].impact, .minor)
         XCTAssertNil(incidents[1].end)   // unresolved → ongoing
+    }
+
+    // MARK: A failed incidents fetch is not 100% uptime
+
+    private func response(_ code: Int) -> URLResponse {
+        HTTPURLResponse(url: URL(string: "https://status.claude.com/api/v2/incidents.json")!,
+                        statusCode: code, httpVersion: nil, headerFields: nil)!
+    }
+
+    func testErrorPageIsNoDataNotPerfectUptime() {
+        let html = Data("<html><body>Just a moment...</body></html>".utf8)
+        XCTAssertNil(parseIncidents(html))
+        XCTAssertNil(uptimeUpdate(data: html, response: response(200), now: Date()))
+        XCTAssertNil(uptimeUpdate(data: html, response: response(503), now: Date()))
+    }
+
+    func testNon200WithJSONBodyIsRejected() {
+        let empty = Data(#"{"incidents":[]}"#.utf8)
+        XCTAssertNil(uptimeUpdate(data: empty, response: response(429), now: Date()))
+        XCTAssertFalse(isUsableStatusResponse(response(500)))
+    }
+
+    func testEmptyFeedOn200IsPerfectUptime() {
+        let empty = Data(#"{"incidents":[]}"#.utf8)
+        let update = try! XCTUnwrap(uptimeUpdate(data: empty, response: response(200), now: Date()))
+        XCTAssertEqual(update.percent, 100, accuracy: 0.0001)
+        XCTAssertTrue(update.incidents.isEmpty)
     }
 }
