@@ -113,11 +113,22 @@ final class ActivityArchiveStore {
     private let lock = NSLock()
     private var storage: ActivityArchive
     private let io = DispatchQueue(label: "io.github.broots144.ClaudeGlance.activity", qos: .utility)
+    private let save: (ActivityArchive) -> Void
 
     private init() {
         storage = DurableJSON.load(ActivityArchiveStore.fileName, as: ActivityArchive.self,
                                    merging: mergedArchive) ?? ActivityArchive()
+        save = { DurableJSON.save($0, to: ActivityArchiveStore.fileName) }
     }
+
+    /// Test-only: a store with its own starting state and save sink.
+    init(initial: ActivityArchive, save: @escaping (ActivityArchive) -> Void) {
+        storage = initial
+        self.save = save
+    }
+
+    /// Blocks until every save queued so far has run (tests).
+    func waitForPendingSaves() { io.sync {} }
 
     var archive: ActivityArchive {
         lock.lock(); defer { lock.unlock() }
@@ -132,8 +143,12 @@ final class ActivityArchiveStore {
         let merged = mergedArchive(storage, adding: fresh)
         guard merged != storage else { lock.unlock(); return merged }
         storage = merged
+        // Enqueue the save before unlocking: the metrics queue and an import on
+        // the main thread both record, and enqueueing after unlock let an older
+        // merge's save land last, leaving imported days missing on disk.
+        let save = self.save
+        io.async { save(merged) }
         lock.unlock()
-        io.async { DurableJSON.save(merged, to: ActivityArchiveStore.fileName) }
         return merged
     }
 

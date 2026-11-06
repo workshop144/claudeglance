@@ -181,6 +181,23 @@ final class HistoryPersistenceTests: XCTestCase {
         XCTAssertEqual(currentStreak(activeDays: active, today: today, calendar: utc), 40)
     }
 
+    // MARK: Archive saves land in merge order
+
+    func testLastSaveAlwaysMatchesTheLatestMergedState() {
+        let lock = NSLock()
+        var lastSaved: ActivityArchive?
+        let store = ActivityArchiveStore(initial: ActivityArchive()) { saved in
+            lock.lock(); lastSaved = saved; lock.unlock()
+        }
+        // The metrics queue and an import on another thread record concurrently.
+        DispatchQueue.concurrentPerform(iterations: 200) { i in
+            store.record(["2026-\(String(format: "%02d", i % 12 + 1))-\(String(format: "%02d", i % 28 + 1))": day(i + 1)])
+        }
+        store.waitForPendingSaves()
+        lock.lock(); defer { lock.unlock() }
+        XCTAssertEqual(lastSaved, store.archive)
+    }
+
     // MARK: Backup round-trip
 
     func testBackupEncodesAndDecodesEveryStore() throws {
