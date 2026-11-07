@@ -1,6 +1,6 @@
 # Current Build State
 
-Last updated: 2026-11-07 by Claude: security round r1 done (PRs #27, #28, ruleset), v1.8.2 released, flake re-pinned. Security grade A.
+Last updated: 2026-11-07 by Claude: security round r2 (review L1, L2, L6 in fix/2026-11-07-review/oauth-session; v1.8.3 in progress).
 
 ## Phases (release lines)
 
@@ -61,6 +61,16 @@ Last updated: 2026-11-07 by Claude: security round r1 done (PRs #27, #28, rulese
   real browser sign-in (an agent may not grant OAuth consent unasked): first sign-in after
   updating to 1.8.2 is the live check. Existing sessions keep their old broad-scope tokens
   until the user signs out and in (no forced re-login, documented as accepted Low).
+- Session generation (1.8.3, review L1): every Keychain and cache write on the token slow path
+  (`loadOrRefresh`) runs under `cacheLock` and checks the generation captured at entry
+  (`persistIfCurrent`, `cacheIfCurrent`, `commitRefreshed`, `endRejectedSession`); a sign-in
+  commits through `startSession` (bump, save, cache in one critical section). Tests park a
+  `CredentialStore` call and race signOut / sign-in against it (SessionGenerationRaceTests).
+- Background state (1.8.3, review L2): polls and refreshes change `state` through
+  `backgroundAuthTransition`, which never leaves `.awaitingBrowser` or `.awaitingCode`.
+- Token errors (1.8.3, review L6): `oauthTokenHTTPError` keeps only "HTTP <code>" in the
+  description (body only under DEBUG); `signInFailureMessage` and `usageErrorMessage` give
+  OAuthToken errors their own short text; a token 429 backs off by Retry-After like a usage 429.
 - Sign-in: own OAuth 2.0 PKCE browser flow with a loopback listener bound to the
   request state (v1.7.4, PR #1 / #5). Tokens live in the app's own Keychain item
   `ClaudeGlance-credentials`, re-created under the running build at each launch (v1.7.6, PR #11).

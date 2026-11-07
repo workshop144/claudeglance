@@ -68,6 +68,19 @@ func usageErrorMessage(for error: NSError, retryAt: Date) -> String {
             return "Couldn't load usage (HTTP \(error.code)) — retrying at \(when)"
         }
     }
+    if error.domain == "OAuthToken" {
+        // The token refresh failed. Never echo the token endpoint's body.
+        switch error.code {
+        case 429:
+            return "Anthropic is throttling sign-in refreshes (your Claude limits are unaffected) — retrying at \(when)"
+        case 500...599:
+            return "Anthropic's sign-in service is having trouble (HTTP \(error.code)) — retrying at \(when)"
+        case let code where code > 0:
+            return "Couldn't refresh your sign-in (HTTP \(code)) — retrying at \(when)"
+        default:
+            return "Couldn't refresh your sign-in — retrying at \(when)"
+        }
+    }
     if error.domain == NSURLErrorDomain {
         return "Can't reach Anthropic — check your connection. Retrying at \(when)"
     }
@@ -75,7 +88,15 @@ func usageErrorMessage(for error: NSError, retryAt: Date) -> String {
         // Sign-in errors already carry a user-facing message.
         return error.localizedDescription
     }
+    // Other domains (Keychain, decoding) carry no response body.
     return "Couldn't load usage: \(error.localizedDescription) — retrying at \(when)"
+}
+
+/// Whether a failed fetch is a 429 from either Anthropic endpoint it touches:
+/// the usage endpoint, or the token endpoint during a refresh. Both back off by
+/// `Retry-After` instead of retrying at the normal poll interval.
+func isRateLimitError(_ error: NSError) -> Bool {
+    (error.domain == "OAuthUsage" || error.domain == "OAuthToken") && error.code == 429
 }
 
 // MARK: - API Response Model
@@ -412,7 +433,7 @@ final class UsageService: ObservableObject {
                 }
             } catch let error as NSError {
                 let isUsageHTTP = error.domain == "OAuthUsage"
-                let isRateLimit = isUsageHTTP && error.code == 429
+                let isRateLimit = isRateLimitError(error)
                 rateLimited = isRateLimit
                 // A 401/403 means the token we sent is stale or was rotated — the
                 // cached copy is now useless, so drop it and re-read next poll.

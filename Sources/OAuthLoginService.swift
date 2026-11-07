@@ -428,6 +428,41 @@ final class OAuthCallbackServer: @unchecked Sendable {
     }
 }
 
+// MARK: - Token endpoint errors (pure, testable)
+
+/// The error for a non-200 token endpoint response. The description is a short
+/// status line only: the response body (which can echo request detail) never
+/// reaches the UI. DEBUG builds keep the body under `OAuthTokenBody` for logging.
+/// A `Retry-After` header is carried along for the 429 backoff.
+func oauthTokenHTTPError(status: Int, retryAfter: String?, body: Data) -> NSError {
+    var info: [String: Any] = [NSLocalizedDescriptionKey: "Token endpoint returned HTTP \(status)."]
+    if let retryAfter { info["Retry-After"] = retryAfter }
+    #if DEBUG
+    info["OAuthTokenBody"] = String(data: body.prefix(2048), encoding: .utf8) ?? "<binary>"
+    #endif
+    return NSError(domain: "OAuthToken", code: status, userInfo: info)
+}
+
+/// What Settings shows when the code exchange fails. Short and body-free.
+func signInFailureMessage(for error: NSError) -> String {
+    switch (error.domain, error.code) {
+    case ("OAuthToken", 400), ("OAuthToken", 401):
+        return "Sign-in failed: the code was rejected or expired. Please try again."
+    case ("OAuthToken", 429):
+        return "Sign-in failed: Anthropic is rate limiting sign-ins. Wait a minute and try again."
+    case ("OAuthToken", 500...599):
+        return "Sign-in failed: Anthropic's sign-in service is having trouble (HTTP \(error.code)). Try again shortly."
+    case ("OAuthToken", let code) where code > 0:
+        return "Sign-in failed (HTTP \(code)). Please try again."
+    case (NSURLErrorDomain, _):
+        return "Sign-in failed: can't reach Anthropic. Check your connection and try again."
+    case ("Keychain", _):
+        return "Sign-in failed: couldn't save your credentials to the Keychain."
+    default:
+        return "Sign-in failed. Please try again."
+    }
+}
+
 /// Whether a token expiring at `expiresAt` should be refreshed now — true once
 /// it's within `leeway` of expiry (default 5 min) so we never send a dead one.
 func shouldRefreshToken(expiresAt: Date, now: Date = Date(), leeway: TimeInterval = 300) -> Bool {
@@ -718,9 +753,7 @@ final class OAuthLoginService: ObservableObject {
                                                state: expected,
                                                verifier: verifier,
                                                redirectURI: pendingRedirectURI)
-            newSessionGeneration()
-            try store.save(creds)
-            cache(creds)
+            try startSession(creds)
             pendingVerifier = nil
             pendingState = nil
             state = .signedIn(creds.expiresAtDate)
@@ -729,7 +762,7 @@ final class OAuthLoginService: ObservableObject {
             UsageService.shared.fetchUsage(manual: true)
             NSApp.activate(ignoringOtherApps: true)
         } catch let error as NSError {
-            state = .error("Sign-in failed: \(error.localizedDescription)")
+            state = .error(signInFailureMessage(for: error))
         }
     }
 
@@ -776,19 +809,25 @@ final class OAuthLoginService: ObservableObject {
         return creds
     }
 
-    /// The slow path, only ever run by one task at a time.
+    /// The slow path, only ever run by one task at a time. Every Keychain and
+    /// cache write goes through a helper that takes `cacheLock` and checks the
+    /// session generation captured here, so a sign-out (or a new sign-in) that
+    /// lands while this runs can't be undone by it: old tokens are never written
+    /// back after sign-out, and a newer sign-in's tokens are never deleted.
     private func loadOrRefresh() async throws -> StoredCredentials {
         let generation = currentSessionGeneration()
         let (cached, forced, unsaved) = cacheSnapshot()
-        if unsaved, let cached { persist(cached) }
+        if unsaved, let cached {
+            guard persistIfCurrent(cached, generation: generation) else { return try sessionChangedResult() }
+        }
         // Prefer the in-memory pair: it can be newer than the Keychain item when a
         // save failed.
         guard let creds = cached ?? store.load() else {
-            await setState(.signedOut)
+            await setBackgroundState(.signedOut)
             throw OAuthLoginService.notSignedInError
         }
         if !forced, !shouldRefreshToken(expiresAt: creds.expiresAtDate) {
-            cache(creds)
+            guard cacheIfCurrent(creds, generation: generation) else { return try sessionChangedResult() }
             return creds
         }
         do {
@@ -797,27 +836,53 @@ final class OAuthLoginService: ObservableObject {
             guard commitRefreshed(fresh, generation: generation) else {
                 return try sessionChangedResult()
             }
-            await setState(.signedIn(fresh.expiresAtDate))
+            await setBackgroundState(.signedIn(fresh.expiresAtDate))
             return fresh
         } catch let error as NSError {
             // A 400/401 from the token endpoint means the refresh token is dead —
             // sign out so the UI prompts a fresh login. Transient/network errors
-            // (5xx, offline) keep the session so we can retry next poll.
-            if error.code == 400 || error.code == 401 {
-                if currentSessionGeneration() != generation { return try sessionChangedResult() }
-                // Unless something else already rotated it: then the stored pair is live.
-                let stored = store.load()
-                if !refreshRejectionEndsSession(rejected: creds, stored: stored), let stored {
-                    cache(stored)
+            // (5xx, 429, offline) keep the session so we can retry next poll.
+            if error.domain == "OAuthToken", error.code == 400 || error.code == 401 {
+                switch endRejectedSession(rejected: creds, generation: generation) {
+                case .sessionChanged:
+                    return try sessionChangedResult()
+                case .rotatedElsewhere(let stored):
+                    // Something else already rotated it: the stored pair is live.
                     return stored
+                case .ended:
+                    await setBackgroundState(.signedOut)
+                    throw OAuthLoginService.sessionExpiredError
                 }
-                store.delete()
-                clearCache()
-                await setState(.signedOut)
-                throw OAuthLoginService.sessionExpiredError
             }
             throw error
         }
+    }
+
+    /// Outcome of a refresh the token endpoint rejected (see `endRejectedSession`).
+    private enum RejectionOutcome {
+        case sessionChanged
+        case rotatedElsewhere(StoredCredentials)
+        case ended
+    }
+
+    /// Decide, and apply, what a rejected refresh means, all under `cacheLock` and
+    /// only for the session the refresh started under. Reading the store, then
+    /// deleting it, in one critical section means a sign-in that completes in
+    /// between can't have its fresh credentials deleted.
+    private func endRejectedSession(rejected: StoredCredentials, generation: Int) -> RejectionOutcome {
+        cacheLock.lock(); defer { cacheLock.unlock() }
+        guard generation == sessionGeneration else { return .sessionChanged }
+        let stored = store.load()
+        if !refreshRejectionEndsSession(rejected: rejected, stored: stored), let stored {
+            cachedCredentials = stored
+            needsRefresh = false
+            return .rotatedElsewhere(stored)
+        }
+        store.delete()
+        cachedCredentials = nil
+        needsRefresh = false
+        needsPersist = false
+        return .ended
     }
 
     /// Cache, then save, a refreshed pair, but only if the session is the one the
@@ -846,15 +911,25 @@ final class OAuthLoginService: ObservableObject {
         return sessionGeneration
     }
 
-    private func newSessionGeneration() {
+    /// A completed sign-in: new generation, save, cache, as one step under
+    /// `cacheLock`, so a refresh from the previous session can't interleave.
+    private func startSession(_ creds: StoredCredentials) throws {
         cacheLock.lock(); defer { cacheLock.unlock() }
         sessionGeneration += 1
+        try store.save(creds)
+        cachedCredentials = creds
+        needsRefresh = false
+        needsPersist = false
     }
 
-    /// Save to the store; on failure keep the pair in memory and retry next call.
-    private func persist(_ creds: StoredCredentials) {
-        let saved = (try? store.save(creds)) != nil
-        cacheLock.lock(); needsPersist = !saved; cacheLock.unlock()
+    /// Save to the store, unless the session changed since `generation` (then
+    /// nothing is written and false is returned). On a failed save the pair stays
+    /// in memory and the next call retries.
+    private func persistIfCurrent(_ creds: StoredCredentials, generation: Int) -> Bool {
+        cacheLock.lock(); defer { cacheLock.unlock() }
+        guard generation == sessionGeneration else { return false }
+        needsPersist = (try? store.save(creds)) == nil
+        return true
     }
 
     private func cacheSnapshot() -> (StoredCredentials?, Bool, Bool) {
@@ -902,9 +977,9 @@ final class OAuthLoginService: ObservableObject {
         let (data, response) = try await urlSession.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
         guard http.statusCode == 200 else {
-            let detail = String(data: data, encoding: .utf8) ?? "<no body>"
-            throw NSError(domain: "OAuthToken", code: http.statusCode,
-                          userInfo: [NSLocalizedDescriptionKey: "HTTP \(http.statusCode): \(detail)"])
+            throw oauthTokenHTTPError(status: http.statusCode,
+                                      retryAfter: http.value(forHTTPHeaderField: "Retry-After"),
+                                      body: data)
         }
         let token = try JSONDecoder().decode(OAuthTokenResponse.self, from: data)
         guard let refreshToken = token.refreshToken ?? fallbackRefreshToken else {
@@ -980,19 +1055,43 @@ final class OAuthLoginService: ObservableObject {
 
     // MARK: Cache helpers
 
-    private func cache(_ creds: StoredCredentials) {
+    /// Cache `creds` for later calls, unless the session changed since `generation`.
+    private func cacheIfCurrent(_ creds: StoredCredentials, generation: Int) -> Bool {
         cacheLock.lock(); defer { cacheLock.unlock() }
+        guard generation == sessionGeneration else { return false }
         cachedCredentials = creds
         needsRefresh = false
+        return true
     }
 
-    private func clearCache() {
-        cacheLock.lock(); defer { cacheLock.unlock() }
-        cachedCredentials = nil
-        needsRefresh = false
-        needsPersist = false
-    }
-
+    /// A state change from the token path (usage polls, refreshes). It never
+    /// replaces a sign-in in progress: the poll runs while signed out too, and
+    /// resetting `.awaitingCode` would hide the paste field mid-copy.
     @MainActor
-    private func setState(_ newState: AuthState) { state = newState }
+    private func setBackgroundState(_ newState: AuthState) {
+        state = backgroundAuthTransition(from: state, to: newState)
+    }
+
+    #if DEBUG
+    /// Test-only: complete a sign-in with `creds` without the browser round trip.
+    func startSessionForTesting(_ creds: StoredCredentials) throws { try startSession(creds) }
+
+    /// Test-only: put the service in a given UI state (e.g. a sign-in in progress)
+    /// without opening a browser.
+    @MainActor
+    func setStateForTesting(_ newState: AuthState) { state = newState }
+    #endif
+}
+
+/// The state after a background (poll or refresh) update to `proposed`. A sign-in
+/// in progress (`.awaitingBrowser`, `.awaitingCode`) is owned by the sign-in flow
+/// and only it, or a cancel, may leave it; every other state takes the update.
+func backgroundAuthTransition(from current: OAuthLoginService.AuthState,
+                              to proposed: OAuthLoginService.AuthState) -> OAuthLoginService.AuthState {
+    switch current {
+    case .awaitingBrowser, .awaitingCode:
+        return current
+    case .signedOut, .signedIn, .error:
+        return proposed
+    }
 }

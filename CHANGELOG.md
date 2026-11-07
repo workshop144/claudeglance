@@ -4,6 +4,19 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.3] — Review fixes
+
+### Fixed
+- **Sign-out always sticks.** A usage check running at the exact moment you
+  signed out could write your old tokens back, so you were signed in again at
+  the next launch; and a sign-in finishing while an expired session was being
+  cleared could lose its new tokens. Sign-out and sign-in now always win.
+- **The sign-in code field stays put.** The background usage check no longer
+  resets Settings while you are copying the sign-in code from the browser.
+- **Short, clean sign-in errors.** A failed sign-in or token refresh now says
+  what went wrong in one line instead of showing the server's raw response, and
+  a rate-limited token refresh waits as long as the server asks before retrying.
+
 ## [1.8.2] — Security hardening
 
 ### Security
