@@ -1,6 +1,6 @@
 # Current Build State
 
-Last updated: 2026-11-07 by Claude: security round r1 (L1 scope, L2 provenance, L3 ruleset), branches sec/2026-11-07-r1/*.
+Last updated: 2026-11-07 by Claude: security round r1 done (PRs #27, #28, ruleset), v1.8.2 released, flake re-pinned. Security grade A.
 
 ## Phases (release lines)
 
@@ -12,15 +12,17 @@ Last updated: 2026-11-07 by Claude: security round r1 (L1 scope, L2 provenance, 
 - [x] v1.6 Reach (v1.6.5)
 - [x] v1.7 Standalone sign-in and hardening (v1.7.0 to v1.7.7)
 - [x] v1.8 Signed-out menu bar (v1.8.0, released 2026-10-15)
-- [ ] v1.8.1 Bug sweep: fixes merged by PR, then tag v1.8.1 and re-pin the flake.
+- [x] v1.8.1 Bug sweep (released 2026-11-06)
+- [x] v1.8.2 Security hardening (released 2026-11-07): least-privilege scope, DMG provenance
 - [ ] Signing cluster: notarize [6], Sparkle auto-update [13], WidgetKit [25]. BLOCKED, see below.
 - [ ] Exploratory: real prepaid balance [23], multi-account [24]. Not started, demand unvalidated.
 
 ## What is true now
 
-- Shipped version: 1.8.0 (tag v1.8.0, GitHub release "Latest" on workshop144/claudeglance).
-  flake.nix pins 1.8.0 (PR #17). project.yml says 1.8.1 on the bug-sweep branch; after it
-  merges, tag v1.8.1 and run `scripts/update-flake.sh 1.8.1` in a follow-up PR.
+- Shipped version: 1.8.2 (tag v1.8.2, GitHub release "Latest", released 2026-11-07). The
+  Homebrew cask is at 1.8.2 with the DMG sha256 (release run 42372074324), and flake.nix pins 1.8.2
+  (this PR). `gh attestation verify ClaudeGlance.dmg -R workshop144/claudeglance` passes for
+  the v1.8.2 DMG (signer release.yml@refs/tags/v1.8.2, commit 5faa63b), and a modified copy fails.
 - v1.8.1 bug sweep (2026-11-06): token refresh is single-flight (SingleFlight) and a
   rejected refresh signs out only if the stored pair isn't newer; usage fetches run one at
   a time (FetchGate); weekly alerts re-arm after the reset; ResetTracker keeps the 5h
@@ -105,6 +107,37 @@ with `scripts/dev-install.sh` before or right after tagging.
 
 `just verify-flake`: `flake pinned to 1.8.0`.
 
+## Security
+
+Grade: **A** (rubric of the 2026-11-07 security round: no open Medium or higher; every open
+Low below is documented with a reason). Round r1 findings: L1 fixed (PR #27, v1.8.2), L2 fixed
+(PR #28, v1.8.2), L3 fixed (GitHub ruleset change, no repo diff).
+
+- L3 (2026-11-07): ruleset `protect-main` (id 24057473) now also has a `pull_request` rule
+  (0 approvals, so autonomous squash-merges still work) and `required_status_checks`
+  "Unit tests" and "Nix flake build" (GitHub Actions app, not strict), with no bypass actors.
+  `gh api repos/workshop144/claudeglance/rules/branches/main` lists all four rules. n0's dependabot-merge.py merges with
+  `gh pr merge --squash` after green checks, which the rule allows (dry run 2026-11-07: exit 0).
+  To undo: `gh api -X PUT repos/workshop144/claudeglance/rulesets/24057473` with only the
+  deletion and non_fast_forward rules.
+
+Open Lows (documented, count toward A):
+- Accepted: sessions signed in before 1.8.2 keep their broad-scope tokens
+  (`org:create_api_key user:profile user:inference`) until the user signs out and back in.
+  No forced re-login on upgrade: it would sign every user out for a risk that needs a
+  prior token theft. The CHANGELOG tells users to re-sign-in to narrow their token.
+- Blocked on the operator: the `user:profile`-only sign-in has not had a live browser sign-in
+  yet (an agent does not grant OAuth consent unasked). Next step: update to 1.8.2, sign out,
+  sign in, check that usage loads. If the server refuses it for scope, the app falls back on
+  its own (one extra sign-in). If the authorize page itself errors, revert the scope line.
+- Blocked on money: DMG not notarized (Apple Developer account, see below). Provenance
+  attestation and the brew/nix sha256 pins cover tampering in the meantime.
+- Accepted: `pull_request` rule needs 0 approvals (single maintainer; autonomous merges).
+  Required CI checks are the enforced gate.
+
+Informational: the sign-in reuses Claude Code's public OAuth client (SECURITY.md). Not A+ yet:
+the blocked items above and the legacy-token Low stay open.
+
 ## Open / BLOCKED
 
 - BLOCKED: notarization [6], and with it Sparkle [13] and WidgetKit [25], need an Apple
@@ -118,7 +151,7 @@ with `scripts/dev-install.sh` before or right after tagging.
 
 ## Next
 
-0. Merge the v1.8.1 PR, tag v1.8.1, then the flake re-pin PR (`scripts/update-flake.sh 1.8.1`).
+0. Operator: one live sign-in on 1.8.2 to confirm the `user:profile` scope (see Security).
 1. Delete or retire `develop` and update the dev-install.sh comment (small chore PR).
 2. Roadmap [31] copy-usage-to-clipboard is the only small unbuilt item that fits the aesthetic.
 3. Hardening list in ROADMAP.md (timezone correctness, multi-monitor placement) has no
