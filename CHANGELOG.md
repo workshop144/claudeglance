@@ -16,6 +16,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Short, clean sign-in errors.** A failed sign-in or token refresh now says
   what went wrong in one line instead of showing the server's raw response, and
   a rate-limited token refresh waits as long as the server asks before retrying.
+- **Reset countdowns no longer blink out.** A reset time sent without fractional
+  seconds (exactly on the second) failed to parse, so the countdown, pace
+  marker, run-out estimate and reset alerts vanished for that update.
+- **Context gauge sized right for older models.** Opus 4, 4.1 and 4.5 and
+  Sonnet 4 and 4.5 have a 200K context window, not 1M, so their sessions showed
+  about a fifth of their real fill and the "compact soon" warning never fired.
 
 ## [1.8.2] — Security hardening
 
