@@ -29,7 +29,10 @@ ClaudeGlance signs you in through your browser using an OAuth 2.0 PKCE flow and
 stores the resulting access/refresh tokens in its **own local macOS Keychain
 item** (`ClaudeGlance-credentials`). Tokens are sent only to Anthropic's own
 OAuth token and usage endpoints over HTTPS, and are never logged or transmitted
-anywhere else. Reports about how the app stores, refreshes, transmits, or exposes
+anywhere else. Sign-in requests only the `user:profile` scope, which is enough to
+read usage; it never requests `org:create_api_key`, so a leaked token can't mint
+API keys. If Anthropic ever refuses that token for a missing scope, the app asks
+you to sign in once more with `user:profile user:inference`. Reports about how the app stores, refreshes, transmits, or exposes
 those tokens are especially welcome.
 
 > Note: the browser flow reuses Claude's **public** OAuth client (the same public

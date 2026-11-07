@@ -7,9 +7,9 @@ import Network
 // MARK: - OAuth configuration
 
 /// Claude's public OAuth client used for browser sign-in. This is the same
-/// PKCE public client the Claude Code CLI uses (no client secret), so a token
-/// minted here carries the same scopes and works against the same
-/// `/api/oauth/usage` endpoint ClaudeGlance reads.
+/// PKCE public client the Claude Code CLI uses (no client secret). ClaudeGlance
+/// asks it for the smallest scope `/api/oauth/usage` accepts (`scopes` below),
+/// not the full set Claude Code requests.
 ///
 /// Note: this is an *unofficial* reuse of Claude Code's public client — there's
 /// no separate OAuth client registration for third-party usage apps. It works,
@@ -29,13 +29,40 @@ enum OAuthConfig {
     static func loopbackRedirectURI(port: UInt16) -> String {
         "http://localhost:\(port)/callback"
     }
-    static let scopes = "org:create_api_key user:profile user:inference"
+    /// Least privilege: ClaudeGlance only reads `/api/oauth/usage`, which needs
+    /// `user:profile`. Never request `org:create_api_key` (mints API keys) or, unless
+    /// the server demands it, `user:inference` (runs models on the user's account):
+    /// a leaked token pair should be able to read usage and nothing more.
+    static let minimalScopes = "user:profile"
+    /// Used only after the usage endpoint rejected a minimal-scope token for a
+    /// missing scope (see `isMissingScopeRejection`); still never org:create_api_key.
+    static let fallbackScopes = "user:profile user:inference"
+    /// UserDefaults flag set when the fallback is needed; the next sign-in uses it.
+    static let scopeFallbackKey = "oauthScopeFallback"
+    static var scopes: String {
+        oauthScopes(fallback: UserDefaults.standard.bool(forKey: scopeFallbackKey))
+    }
 
     /// Our own Keychain item — created and owned by ClaudeGlance, so reading it
     /// never triggers the cross-app "allow access" password prompt that reading
     /// Claude Code's item did. Updated in place (never delete+re-add) so any ACL
     /// survives token refreshes.
     static let keychainService = "ClaudeGlance-credentials"
+}
+
+// MARK: - Scopes (pure, testable)
+
+/// The scope string a sign-in requests.
+func oauthScopes(fallback: Bool) -> String {
+    fallback ? OAuthConfig.fallbackScopes : OAuthConfig.minimalScopes
+}
+
+/// Whether a failed usage fetch is the server refusing the token for a missing
+/// scope (a 403 whose body names a scope), which a refresh can't fix: the user
+/// has to sign in again with the fallback scopes.
+func isMissingScopeRejection(_ error: NSError) -> Bool {
+    guard error.domain == "OAuthUsage", error.code == 403 else { return false }
+    return error.localizedDescription.lowercased().contains("scope")
 }
 
 // MARK: - PKCE & callback parsing (pure, testable)

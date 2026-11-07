@@ -51,6 +51,39 @@ final class AuthorizationURLTests: XCTestCase {
         XCTAssertEqual(q["code_challenge_method"], "S256")
         XCTAssertEqual(q["state"], "the-state")
     }
+
+    // Security regression (L1, 2026-11-07): least-privilege scopes.
+    func testDefaultScopeIsUserProfileOnly() {
+        XCTAssertEqual(oauthScopes(fallback: false), "user:profile")
+        let q = query(buildAuthorizationURL(scope: oauthScopes(fallback: false), state: "s", challenge: "c"))
+        XCTAssertEqual(q["scope"], "user:profile")
+    }
+
+    func testNoScopeEverRequestsAPIKeyCreation() {
+        for fallback in [false, true] {
+            XCTAssertFalse(oauthScopes(fallback: fallback).contains("org:create_api_key"))
+        }
+        XCTAssertFalse(OAuthConfig.scopes.contains("org:create_api_key"))
+        let url = buildAuthorizationURL(state: "s", challenge: "c")
+        XCTAssertFalse(query(url)["scope"]!.contains("org:create_api_key"))
+        XCTAssertFalse(url.absoluteString.contains("create_api_key"))
+    }
+
+    func testFallbackAddsOnlyInference() {
+        XCTAssertEqual(Set(oauthScopes(fallback: true).split(separator: " ")),
+                       ["user:profile", "user:inference"])
+    }
+
+    func testMissingScopeRejectionDetection() {
+        func err(_ domain: String, _ code: Int, _ body: String) -> NSError {
+            NSError(domain: domain, code: code, userInfo: [NSLocalizedDescriptionKey: "HTTP \(code): \(body)"])
+        }
+        XCTAssertTrue(isMissingScopeRejection(err("OAuthUsage", 403,
+            #"{"error":{"type":"permission_error","message":"OAuth token does not meet scope requirement user:inference"}}"#)))
+        XCTAssertFalse(isMissingScopeRejection(err("OAuthUsage", 403, #"{"error":"forbidden"}"#)))
+        XCTAssertFalse(isMissingScopeRejection(err("OAuthUsage", 401, "invalid scope")))
+        XCTAssertFalse(isMissingScopeRejection(err("OAuthToken", 403, "scope")))
+    }
 }
 
 // MARK: - Loopback redirect (seamless flow)

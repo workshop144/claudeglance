@@ -418,7 +418,19 @@ final class UsageService: ObservableObject {
                 // cached copy is now useless, so drop it and re-read next poll.
                 // (A 429 says nothing about the token, so it's left alone.)
                 let isAuthError = isUsageHTTP && (error.code == 401 || error.code == 403)
+                // A minimal-scope token the endpoint refuses for its scope: switch
+                // the next sign-in to the fallback scopes once and ask for it.
+                let needsWiderScope = isMissingScopeRejection(error)
+                    && !UserDefaults.standard.bool(forKey: OAuthConfig.scopeFallbackKey)
                 await MainActor.run {
+                    if needsWiderScope {
+                        UserDefaults.standard.set(true, forKey: OAuthConfig.scopeFallbackKey)
+                        OAuthLoginService.shared.signOut()
+                        self.error = "ClaudeGlance needs one more permission to read usage. Sign in to Claude again in Settings."
+                        self.scheduleTimer(interval: self.normalInterval)
+                        self.isLoading = false
+                        return
+                    }
                     if isAuthError { self.invalidateToken() }
                     let delay = isRateLimit
                         ? usageRetryDelay(retryAfter: error.userInfo["Retry-After"] as? String,
