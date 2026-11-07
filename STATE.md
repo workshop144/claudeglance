@@ -1,6 +1,6 @@
 # Current Build State
 
-Last updated: 2026-11-07 by Claude: security round r2 (review L1, L2, L6 in fix/2026-11-07-review/oauth-session; v1.8.3 in progress).
+Last updated: 2026-11-07 by Claude: security round r2 (review L1, L2, L6 in PR #30; L7, L8 in fix/2026-11-07-review/parsing; v1.8.3 in progress).
 
 ## Phases (release lines)
 
@@ -71,6 +71,11 @@ Last updated: 2026-11-07 by Claude: security round r2 (review L1, L2, L6 in fix/
 - Token errors (1.8.3, review L6): `oauthTokenHTTPError` keeps only "HTTP <code>" in the
   description (body only under DEBUG); `signInFailureMessage` and `usageErrorMessage` give
   OAuthToken errors their own short text; a token 429 backs off by Retry-After like a usage 429.
+- Reset times (1.8.3, review L7): `parseResetTimestamp` accepts `resets_at` with or without
+  fractional seconds (Python isoformat drops a zero fraction).
+- Context window (1.8.3, review L8): `contextWindowLimit` is version-aware. 1M for Opus 4.6+,
+  Sonnet 4.6+ (`sonnet4MinorVersion`), Fable and ids ending "[1m]"; 200K for Opus 4/4.1/4.5,
+  Sonnet 4/4.5, Haiku, Claude 3 and anything unrecognised (never overstate headroom).
 - Sign-in: own OAuth 2.0 PKCE browser flow with a loopback listener bound to the
   request state (v1.7.4, PR #1 / #5). Tokens live in the app's own Keychain item
   `ClaudeGlance-credentials`, re-created under the running build at each launch (v1.7.6, PR #11).

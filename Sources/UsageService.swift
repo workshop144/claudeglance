@@ -145,12 +145,22 @@ struct OAuthUsageResponse: Decodable {
         }
 
         var resetsAtDate: Date? {
-            guard let resetsAt else { return nil }
-            let formatter = ISO8601DateFormatter()
-            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            return formatter.date(from: resetsAt)
+            resetsAt.flatMap(parseResetTimestamp)
         }
     }
+}
+
+/// Parse an API `resets_at`. The API emits Python `isoformat()` strings, which
+/// carry microseconds ("…T19:00:00.367134+00:00") except when they are exactly
+/// zero, when the fraction is dropped ("…T19:00:00+00:00"). Accept both, or the
+/// countdown, pace marker, burn ETA and reset alerts vanish for that poll.
+func parseResetTimestamp(_ raw: String) -> Date? {
+    let fractional = ISO8601DateFormatter()
+    fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    if let date = fractional.date(from: raw) { return date }
+    let whole = ISO8601DateFormatter()
+    whole.formatOptions = [.withInternetDateTime]
+    return whole.date(from: raw)
 }
 
 // MARK: - Utilization helpers (pure, testable)

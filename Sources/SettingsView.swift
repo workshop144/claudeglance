@@ -102,7 +102,7 @@ struct SettingsView: View {
                               description: "Show whether usage credits are on, with a link to manage them.",
                               isOn: $showUsageCredits) { settingsManager.setShowUsageCredits($0) }
                     toggleRow(icon: "memorychip", title: "Show context window",
-                              description: "Show how full your active Claude Code session's context window is (sized per model — 1M for Opus/Sonnet/Fable, 200K for Haiku).",
+                              description: "Show how full your active Claude Code session's context window is (sized per model — 1M for Opus 4.6+, Sonnet 4.6+ and Fable, 200K for Haiku and older models).",
                               isOn: $showContextWindow) { settingsManager.setShowContextWindow($0) }
                     toggleRow(icon: "checkmark.seal", title: "Show session grade",
                               description: "Show today's composite health grade (A–F) from cache efficiency, limit headroom, and context.",

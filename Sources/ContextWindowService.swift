@@ -5,20 +5,42 @@ import Foundation
 /// The 200K window — Haiku, and the conservative fallback for anything we don't
 /// recognize (so we never overstate headroom).
 let standardContextWindow = 200_000
-/// The 1M window the current Opus/Sonnet/Fable models ship as standard.
+/// The 1M window Opus 4.6+, Sonnet 4.6+ and Fable 5 ship as standard.
 let largeContextWindow = 1_000_000
 
-/// The usable context window for a session, from its transcript model id. The
-/// current Claude models (Opus 4.x, Sonnet 4.x, Fable 5) ship a 1M-token window as
-/// *standard* — it's no longer a beta we'd have to detect from a `[1m]` marker — so
-/// we map the model directly. Haiku is 200K; unknown ids fall back to 200K. [#11]
+/// The usable context window for a session, from its transcript model id.
+/// Version-aware, and never overstating headroom: Opus 4.6+ and Sonnet 4.6+
+/// (and Fable 5) ship a 1M-token window as standard; Opus 4, 4.1 and 4.5,
+/// Sonnet 4 and 4.5, Haiku, Claude 3 models and anything unrecognised get 200K.
+/// (Sonnet 4 / 4.5 offered 1M only as an opt-in beta, so 200K is the safe
+/// reading there unless the id carries Claude Code's "[1m]" marker: it can only
+/// understate headroom.) [#11]
 func contextWindowLimit(forModel model: String) -> Int {
     let id = model.lowercased()
+    // Claude Code's explicit 1M marker (e.g. "claude-sonnet-4-5[1m]") always wins.
+    if id.hasSuffix("[1m]") { return largeContextWindow }
     if id.contains("haiku") { return standardContextWindow }
-    if id.contains("opus") || id.contains("sonnet-4") || id.contains("fable") {
+    if id.contains("fable") { return largeContextWindow }
+    if id.contains("opus"), let minor = opus4MinorVersion(id), minor >= 6 {
+        return largeContextWindow
+    }
+    if id.contains("sonnet"), let minor = sonnet4MinorVersion(id), minor >= 6 {
         return largeContextWindow
     }
     return standardContextWindow
+}
+
+/// The minor version of a Sonnet 4.x model id ("claude-sonnet-4-6" → 6), or nil
+/// for plain Sonnet 4 ("claude-sonnet-4-20250514", where the next part is a date)
+/// and anything that isn't Sonnet 4.x. Same rules as `opus4MinorVersion`.
+func sonnet4MinorVersion(_ model: String) -> Int? {
+    let m = model.lowercased()
+    guard let r = m.range(of: "sonnet-4-") ?? m.range(of: "sonnet4-") else { return nil }
+    let rest = m[r.upperBound...]
+    guard let first = rest.first, first.isASCII, let digit = first.wholeNumberValue else { return nil }
+    let after = rest.dropFirst().first
+    guard after == nil || after == "-" else { return nil }
+    return digit
 }
 
 /// A single Claude Code session and how full its context window currently is.
@@ -31,7 +53,7 @@ struct ContextSession: Identifiable {
     let gitBranch: String?
     let model: String            // display name, e.g. "Opus 4.8"
     let contextTokens: Int       // current prompt size sent to the model
-    let windowLimit: Int         // per-model: 1M for Opus/Sonnet/Fable, 200K for Haiku
+    let windowLimit: Int         // per-model: see contextWindowLimit(forModel:)
     let lastActivity: Date
     let cacheActive: Bool        // the latest turn read or wrote a prompt cache
 

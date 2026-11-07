@@ -129,6 +129,26 @@ final class OAuthUsageResponseTests: XCTestCase {
         XCTAssertEqual(response.fiveHour?.utilization, 10.0)
     }
 
+    func testResetsAtDateParsesWholeSeconds() throws {
+        // Review L7: Python isoformat() drops the fraction when the microseconds
+        // are 0. Both forms must give the same instant.
+        let json = """
+        {
+          "five_hour":   { "utilization": 10.0, "resets_at": "2026-03-19T19:00:00+00:00" },
+          "seven_day":   { "utilization": 20.0, "resets_at": "2026-03-20T11:00:00.000000+00:00" },
+          "seven_day_sonnet": null
+        }
+        """.data(using: .utf8)!
+        let response = try JSONDecoder().decode(OAuthUsageResponse.self, from: json)
+        let whole = try XCTUnwrap(response.fiveHour?.resetsAtDate)
+        XCTAssertEqual(whole.timeIntervalSince1970, 1_773_946_800, accuracy: 0.001)
+        let fractional = try XCTUnwrap(response.sevenDay?.resetsAtDate)
+        XCTAssertEqual(fractional.timeIntervalSince1970, 1_774_004_400, accuracy: 0.001)
+        XCTAssertEqual(parseResetTimestamp("2026-03-19T19:00:00Z")?.timeIntervalSince1970 ?? 0,
+                       1_773_946_800, accuracy: 0.001)
+        XCTAssertNil(parseResetTimestamp("not a date"))
+    }
+
     func testDecodesAllNulls() throws {
         let json = """
         {
@@ -1271,6 +1291,24 @@ final class AggregateContextWindowsTests: XCTestCase {
         XCTAssertEqual(contextWindowLimit(forModel: "claude-fable-5"), 1_000_000)
         XCTAssertEqual(contextWindowLimit(forModel: "claude-haiku-4-5-20251001"), 200_000)
         XCTAssertEqual(contextWindowLimit(forModel: "some-future-model"), 200_000)
+    }
+
+    func testContextWindowIsVersionAware() {
+        // Review L8: older Opus/Sonnet 4.x have a 200K standard window; mapping
+        // them to 1M showed a fifth of the real fill and "compact soon" never fired.
+        for old in ["claude-opus-4-20250514", "claude-opus-4-1-20250805", "claude-opus-4-5-20251101",
+                    "claude-sonnet-4-20250514", "claude-sonnet-4-5-20250929", "claude-sonnet-4-5",
+                    "claude-3-opus-20240229", "claude-3-5-sonnet-20241022", "claude-opus-5"] {
+            XCTAssertEqual(contextWindowLimit(forModel: old), 200_000, old)
+        }
+        for large in ["claude-opus-4-6", "claude-opus-4-7-20260301", "claude-sonnet-4-6",
+                      "claude-sonnet-4-7-20260401", "claude-fable-5", "claude-sonnet-4-5[1m]"] {
+            XCTAssertEqual(contextWindowLimit(forModel: large), 1_000_000, large)
+        }
+        XCTAssertEqual(sonnet4MinorVersion("claude-sonnet-4-6"), 6)
+        XCTAssertEqual(sonnet4MinorVersion("claude-sonnet-4-5-20250929"), 5)
+        XCTAssertNil(sonnet4MinorVersion("claude-sonnet-4-20250514"))
+        XCTAssertNil(sonnet4MinorVersion("claude-3-5-sonnet-20241022"))
     }
 
     func testUserTurnsIgnored() {
