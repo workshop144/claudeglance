@@ -59,6 +59,9 @@ jobs:
       - name: Workflows pinned and release provenance attested
         run: scripts/check-workflows.sh
 
+      - name: flake.lock pins nixpkgs
+        run: scripts/check-flake-lock.sh
+
       - name: Run tests
         # `set -o pipefail` (and no output-swallowing pipe) is load-bearing: the
         # previous `xcodebuild | grep` form returned grep's exit code, so a failing
@@ -112,7 +115,9 @@ jobs:
         uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
 
       - name: Build the package
-        run: nix build --print-build-logs .#claudeglance
+        # --no-update-lock-file: a missing or stale flake.lock fails the build
+        # instead of silently resolving nixpkgs to today's branch head.
+        run: nix build --no-update-lock-file --print-build-logs .#claudeglance
 
       - name: Sanity-check the result
         run: |

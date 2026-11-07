@@ -1,6 +1,6 @@
 # Current Build State
 
-Last updated: 2026-11-07 by Claude: security round r2 (review L1, L2, L6 in PR #30; L7, L8 in fix/2026-11-07-review/parsing; v1.8.3 in progress).
+Last updated: 2026-11-07 by Claude: security round r2 done (PRs #30, #31, #32), v1.8.3 released, flake re-pinned and locked. Security grade A.
 
 ## Phases (release lines)
 
@@ -14,15 +14,27 @@ Last updated: 2026-11-07 by Claude: security round r2 (review L1, L2, L6 in PR #
 - [x] v1.8 Signed-out menu bar (v1.8.0, released 2026-10-15)
 - [x] v1.8.1 Bug sweep (released 2026-11-06)
 - [x] v1.8.2 Security hardening (released 2026-11-07): least-privilege scope, DMG provenance
+- [x] v1.8.3 Review fixes (released 2026-11-07): session-generation guards, token error text, reset parsing, context window
 - [ ] Signing cluster: notarize [6], Sparkle auto-update [13], WidgetKit [25]. BLOCKED, see below.
 - [ ] Exploratory: real prepaid balance [23], multi-account [24]. Not started, demand unvalidated.
 
 ## What is true now
 
-- Shipped version: 1.8.2 (tag v1.8.2, GitHub release "Latest", released 2026-11-07). The
-  Homebrew cask is at 1.8.2 with the DMG sha256 (release run 42372074324), and flake.nix pins 1.8.2
-  (this PR). `gh attestation verify ClaudeGlance.dmg -R workshop144/claudeglance` passes for
-  the v1.8.2 DMG (signer release.yml@refs/tags/v1.8.2, commit 5faa63b), and a modified copy fails.
+- Shipped version: 1.8.3 (tag v1.8.3 on d9765c1, GitHub release "Latest", released 2026-11-07,
+  release run 42383693790). The Homebrew cask is at 1.8.3 with DMG sha256 6b66272b..., and
+  flake.nix pins 1.8.3 (this PR). `gh attestation verify` passes for the v1.8.3 DMG.
+  This Mac was upgraded with `brew upgrade --cask claudeglance` (1.8.1 to 1.8.3); the new build
+  raised the usual post-update Keychain "allow access" prompt, which needs the operator's
+  login password (see Next).
+- flake.lock (review L4): nixpkgs is locked to one commit of `nixpkgs-26.05-darwin` (moved off
+  nixpkgs-unstable, which dropped x86_64-darwin; 26.05 is the last release with it).
+  `scripts/check-flake-lock.sh` (CI Unit tests job and `just lint`) fails if the lock is
+  missing, not on a 40-char rev with a narHash, or tracks a different branch than flake.nix.
+  CI builds with `nix build --no-update-lock-file`. `scripts/update-flake.sh <version>` also
+  refreshes the lock (nix if installed, else the digest-pinned nixos/nix:2.28.3 container via
+  colima); `--lock-only` refreshes just the lock. Dependabot has no flake support we rely on,
+  so the lock moves once per release by hand. Both darwin systems evaluate against the lock
+  (checked in the container); the real darwin build is the CI "Nix flake build" job.
 - v1.8.1 bug sweep (2026-11-06): token refresh is single-flight (SingleFlight) and a
   rejected refresh signs out only if the stored pair isn't newer; usage fetches run one at
   a time (FetchGate); weekly alerts re-arm after the reset; ResetTracker keeps the 5h
@@ -124,9 +136,19 @@ with `scripts/dev-install.sh` before or right after tagging.
 
 ## Security
 
-Grade: **A** (rubric of the 2026-11-07 security round: no open Medium or higher; every open
-Low below is documented with a reason). Round r1 findings: L1 fixed (PR #27, v1.8.2), L2 fixed
-(PR #28, v1.8.2), L3 fixed (GitHub ruleset change, no repo diff).
+Grade: **A** (2026-11-07 rubric: no open Medium or higher; every open Low below is documented
+with a reason). Not A+: the accepted and blocked Lows below stay open.
+
+Round r2 (2026-11-07 review), all fixed:
+- L1 (Low) sign-out/sign-in race on the token slow path: fixed, PR #30, v1.8.3.
+- L2 (Info) signed-out poll wiped an in-flight sign-in state: fixed, PR #30, v1.8.3.
+- L4 (Low) flake.nix had no flake.lock: fixed, PR #32.
+- L6 (Info) raw token-endpoint bodies in the UI, no token 429 backoff: fixed, PR #30, v1.8.3.
+- L7 (Info) whole-second `resets_at` parsed to nil: fixed, PR #31, v1.8.3.
+- L8 (Info) context window overstated for older Opus/Sonnet: fixed, PR #31, v1.8.3.
+
+Round r1 findings: L1 fixed (PR #27, v1.8.2), L2 fixed (PR #28, v1.8.2), L3 fixed (GitHub
+ruleset change, no repo diff).
 
 - L3 (2026-11-07): ruleset `protect-main` (id 24057473) now also has a `pull_request` rule
   (0 approvals, so autonomous squash-merges still work) and `required_status_checks`
@@ -142,7 +164,7 @@ Open Lows (documented, count toward A):
   No forced re-login on upgrade: it would sign every user out for a risk that needs a
   prior token theft. The CHANGELOG tells users to re-sign-in to narrow their token.
 - Blocked on the operator: the `user:profile`-only sign-in has not had a live browser sign-in
-  yet (an agent does not grant OAuth consent unasked). Next step: update to 1.8.2, sign out,
+  yet (an agent does not grant OAuth consent unasked). Next step: on 1.8.3, sign out,
   sign in, check that usage loads. If the server refuses it for scope, the app falls back on
   its own (one extra sign-in). If the authorize page itself errors, revert the scope line.
 - Blocked on money: DMG not notarized (Apple Developer account, see below). Provenance
@@ -150,8 +172,10 @@ Open Lows (documented, count toward A):
 - Accepted: `pull_request` rule needs 0 approvals (single maintainer; autonomous merges).
   Required CI checks are the enforced gate.
 
-Informational: the sign-in reuses Claude Code's public OAuth client (SECURITY.md). Not A+ yet:
-the blocked items above and the legacy-token Low stay open.
+Informational: the sign-in reuses Claude Code's public OAuth client (SECURITY.md). Defense in
+depth already in place: least-privilege scope, SHA-pinned actions plus check-workflows.sh,
+locked flake inputs plus check-flake-lock.sh, DMG provenance attestation, hardened runtime
+check in CI, Keychain item re-created per build, PKCE plus loopback state binding.
 
 ## Open / BLOCKED
 
@@ -166,7 +190,10 @@ the blocked items above and the legacy-token Low stay open.
 
 ## Next
 
-0. Operator: one live sign-in on 1.8.2 to confirm the `user:profile` scope (see Security).
+0. Operator: approve the Keychain prompt 1.8.3 raised on this Mac (Always Allow), check the
+   menu bar shows usage, then sign out and in once to confirm the `user:profile` scope
+   (see Security). If 1.8.3 misbehaves: `brew reinstall --cask claudeglance` after reverting
+   PR #30 or #31 and tagging v1.8.4.
 1. Delete or retire `develop` and update the dev-install.sh comment (small chore PR).
 2. Roadmap [31] copy-usage-to-clipboard is the only small unbuilt item that fits the aesthetic.
 3. Hardening list in ROADMAP.md (timezone correctness, multi-monitor placement) has no
