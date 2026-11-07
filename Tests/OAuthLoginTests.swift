@@ -328,21 +328,45 @@ final class RotatingTokenEndpoint: URLProtocol {
     }
 }
 
-/// In-memory stand-in for the Keychain item.
+/// In-memory stand-in for the Keychain item. `afterLoad` runs once a load has
+/// read the item (before it returns) and `beforeSave` before a save writes it,
+/// both outside the box's lock, so a test can park the service inside a store
+/// operation and race a sign-out or sign-in against it.
 final class MemoryCredentialBox: @unchecked Sendable {
     private let lock = NSLock()
     private var creds: StoredCredentials?
     var failSaves = false
+    var afterLoad: (() -> Void)?
+    var beforeSave: (() -> Void)?
     init(_ creds: StoredCredentials?) { self.creds = creds }
     var current: StoredCredentials? { lock.lock(); defer { lock.unlock() }; return creds }
     var store: CredentialStore {
         CredentialStore(
-            load: { [self] in current },
+            load: { [self] in let read = current; afterLoad?(); return read },
             save: { [self] c in
+                beforeSave?()
                 if failSaves { throw NSError(domain: "Keychain", code: -25299) }
                 lock.lock(); creds = c; lock.unlock()
             },
             delete: { [self] in lock.lock(); creds = nil; lock.unlock() })
+    }
+}
+
+/// Parks one store call until the test releases it, and says when it got there.
+final class StoreGate: @unchecked Sendable {
+    let entered = DispatchSemaphore(value: 0)
+    let release = DispatchSemaphore(value: 0)
+    private let lock = NSLock()
+    private var armed = true
+    /// Blocks the first caller only; later calls pass straight through.
+    func park() {
+        lock.lock()
+        let first = armed
+        armed = false
+        lock.unlock()
+        guard first else { return }
+        entered.signal()
+        release.wait()
     }
 }
 
@@ -413,6 +437,174 @@ final class TokenRefreshRaceTests: XCTestCase {
         // An older leftover never wins.
         let older = StoredCredentials(accessToken: "c", refreshToken: "rt-0", expiresAt: 50)
         XCTAssertTrue(refreshRejectionEndsSession(rejected: rejected, stored: older))
+    }
+}
+
+// MARK: - Sign-out and sign-in win over the token slow path (review L1)
+
+final class SessionGenerationRaceTests: XCTestCase {
+
+    private func valid(_ refresh: String, access: String = "at") -> StoredCredentials {
+        StoredCredentials(accessToken: access, refreshToken: refresh,
+                          expiresAt: Date().addingTimeInterval(3600).timeIntervalSince1970)
+    }
+
+    private func expired(_ refresh: String) -> StoredCredentials {
+        StoredCredentials(accessToken: "old", refreshToken: refresh,
+                          expiresAt: Date().addingTimeInterval(-60).timeIntervalSince1970)
+    }
+
+    private func waitEntered(_ gate: StoreGate) async {
+        await withCheckedContinuation { cont in
+            DispatchQueue.global().async { gate.entered.wait(); cont.resume() }
+        }
+    }
+
+    /// Sign-out while the Keychain read of a valid pair is in flight: the read's
+    /// pair must not land in the in-memory cache and keep the user signed in.
+    func testSignOutDuringLoadDoesNotRecacheOldPair() async throws {
+        let box = MemoryCredentialBox(valid("rt-0", access: "at-old"))
+        let service = OAuthLoginService(testStore: box.store, urlSession: RotatingTokenEndpoint.session())
+        let gate = StoreGate()
+        box.afterLoad = { gate.park() }
+
+        let call = Task { try await service.validAccessToken() }
+        await waitEntered(gate)
+        await MainActor.run { service.signOut() }
+        gate.release.signal()
+
+        do {
+            let token = try await call.value
+            XCTFail("signed out mid-load but still got a token: \(token)")
+        } catch {}
+        box.afterLoad = nil
+        XCTAssertNil(box.current)
+        do {
+            _ = try await service.validAccessToken()
+            XCTFail("old pair survived sign-out in memory")
+        } catch {}
+    }
+
+    /// Sign-out while a retried Keychain save of an unsaved pair is running: the
+    /// old tokens must not be written back (they'd sign the user in at next launch).
+    func testSignOutDuringRetriedSaveDoesNotRestoreTokens() async throws {
+        RotatingTokenEndpoint.reset(validRefreshToken: "rt-0")
+        let box = MemoryCredentialBox(expired("rt-0"))
+        box.failSaves = true
+        let service = OAuthLoginService(testStore: box.store, urlSession: RotatingTokenEndpoint.session())
+        _ = try await service.validAccessToken()          // refreshed, save failed: needsPersist
+        box.failSaves = false
+
+        let gate = StoreGate()
+        box.beforeSave = { gate.park() }
+        let call = Task { try? await service.validAccessToken() }
+        await waitEntered(gate)
+        // signOut has to wait for the save to finish, then deletes it.
+        let signOut = Task { await MainActor.run { service.signOut() } }
+        try await Task.sleep(nanoseconds: 100_000_000)
+        gate.release.signal()
+        _ = await call.value
+        await signOut.value
+
+        XCTAssertNil(box.current, "sign-out must leave no tokens in the store")
+        let state = await MainActor.run { service.state }
+        XCTAssertEqual(state, .signedOut)
+    }
+
+    /// A sign-in that completes while a rejected refresh is deciding to end the old
+    /// session must keep its new credentials.
+    func testRejectedRefreshDoesNotDeleteConcurrentSignIn() async throws {
+        RotatingTokenEndpoint.reset(validRefreshToken: "someone-else")   // rt-dead gets 400
+        let box = MemoryCredentialBox(expired("rt-dead"))
+        let service = OAuthLoginService(testStore: box.store, urlSession: RotatingTokenEndpoint.session())
+
+        // Park the second load: the one the rejection path makes.
+        let gate = StoreGate()
+        let loads = NSLock(); var loadCount = 0
+        box.afterLoad = {
+            loads.lock(); loadCount += 1; let n = loadCount; loads.unlock()
+            if n == 2 { gate.park() }
+        }
+        let call = Task { try await service.validAccessToken() }
+        await waitEntered(gate)
+
+        let fresh = valid("rt-new", access: "at-new")
+        let signedIn = expectation(description: "sign-in committed")
+        DispatchQueue.global().async {
+            try? service.startSessionForTesting(fresh)
+            signedIn.fulfill()
+        }
+        try await Task.sleep(nanoseconds: 100_000_000)
+        gate.release.signal()
+        _ = try? await call.value
+        await fulfillment(of: [signedIn], timeout: 3)
+
+        XCTAssertEqual(box.current?.refreshToken, "rt-new", "the new sign-in was deleted")
+        box.afterLoad = nil
+        let token = try await service.validAccessToken()
+        XCTAssertEqual(token, "at-new")
+    }
+}
+
+// MARK: - A poll while signed out leaves a sign-in in progress alone (review L2)
+
+final class BackgroundAuthStateTests: XCTestCase {
+
+    func testAwaitingStatesAreNotOverwritten() {
+        typealias S = OAuthLoginService.AuthState
+        let later = Date()
+        for current in [S.awaitingBrowser, S.awaitingCode] {
+            XCTAssertEqual(backgroundAuthTransition(from: current, to: .signedOut), current)
+            XCTAssertEqual(backgroundAuthTransition(from: current, to: .signedIn(later)), current)
+        }
+        XCTAssertEqual(backgroundAuthTransition(from: .signedIn(later), to: .signedOut), .signedOut)
+        XCTAssertEqual(backgroundAuthTransition(from: .error("x"), to: .signedOut), .signedOut)
+        XCTAssertEqual(backgroundAuthTransition(from: .signedOut, to: .signedIn(later)), .signedIn(later))
+    }
+
+    func testSignedOutPollKeepsPasteField() async {
+        let box = MemoryCredentialBox(nil)
+        let service = OAuthLoginService(testStore: box.store, urlSession: RotatingTokenEndpoint.session())
+        await MainActor.run { service.setStateForTesting(.awaitingCode) }
+        do {
+            _ = try await service.validAccessToken()
+            XCTFail("no credentials, should throw")
+        } catch {}
+        let state = await MainActor.run { service.state }
+        XCTAssertEqual(state, .awaitingCode)
+    }
+}
+
+// MARK: - Token endpoint errors stay short and back off (review L6)
+
+final class TokenEndpointErrorTests: XCTestCase {
+
+    func testTokenErrorDescriptionHasNoBody() {
+        let body = Data(#"{"error":"invalid_grant","error_description":"secret detail"}"#.utf8)
+        let error = oauthTokenHTTPError(status: 400, retryAfter: nil, body: body)
+        XCTAssertEqual(error.domain, "OAuthToken")
+        XCTAssertEqual(error.code, 400)
+        XCTAssertFalse(error.localizedDescription.contains("secret detail"))
+        XCTAssertFalse(signInFailureMessage(for: error).contains("secret detail"))
+        XCTAssertFalse(usageErrorMessage(for: error, retryAt: Date()).contains("secret detail"))
+    }
+
+    func testTokenRateLimitBacksOffByRetryAfter() {
+        let error = oauthTokenHTTPError(status: 429, retryAfter: "120", body: Data("slow down".utf8))
+        XCTAssertTrue(isRateLimitError(error))
+        XCTAssertEqual(usageRetryDelay(retryAfter: error.userInfo["Retry-After"] as? String, fallback: 900), 120)
+        let message = usageErrorMessage(for: error, retryAt: Date())
+        XCTAssertTrue(message.contains("throttling sign-in refreshes"))
+        XCTAssertFalse(message.contains("slow down"))
+        XCTAssertTrue(isRateLimitError(NSError(domain: "OAuthUsage", code: 429)))
+        XCTAssertFalse(isRateLimitError(NSError(domain: "OAuthToken", code: 503)))
+    }
+
+    func testSignInFailureMessages() {
+        XCTAssertTrue(signInFailureMessage(for: NSError(domain: "OAuthToken", code: 400)).contains("rejected or expired"))
+        XCTAssertTrue(signInFailureMessage(for: NSError(domain: "OAuthToken", code: 503)).contains("HTTP 503"))
+        XCTAssertTrue(signInFailureMessage(for: NSError(domain: NSURLErrorDomain, code: NSURLErrorNotConnectedToInternet))
+            .contains("can't reach Anthropic"))
     }
 }
 
