@@ -1,6 +1,6 @@
 # Current Build State
 
-Last updated: 2026-11-06 by Claude: test coverage pass (branch tests/coverage-2026-11-06c, PR to main).
+Last updated: 2026-11-07 by Claude: security round r1 (L1 scope, L2 provenance, L3 ruleset), branches sec/2026-11-07-r1/*.
 
 ## Phases (release lines)
 
@@ -50,6 +50,15 @@ Last updated: 2026-11-06 by Claude: test coverage pass (branch tests/coverage-20
   `fetchUsage` end to end (needs a token seam on OAuthLoginService.shared), SettingsManager
   (writes the host app's real UserDefaults domain), MetricsService / ContextWindowService
   refresh (read real ~/.claude/projects), and the UI files.
+- Sign-in scope (1.8.2, security L1): requests `user:profile` only (was `org:create_api_key
+  user:profile user:inference`). Evidence it works: Claude Code's own `setup-token` asks this
+  client for a single scope, and its strings name `user:profile` as the profile-endpoint scope.
+  Fallback: a 403 from /api/oauth/usage whose body names a scope sets UserDefaults
+  `oauthScopeFallback`, signs out and asks for one more sign-in, which then requests
+  `user:profile user:inference`. Never org:create_api_key (unit-tested). Not yet verified by a
+  real browser sign-in (an agent may not grant OAuth consent unasked): first sign-in after
+  updating to 1.8.2 is the live check. Existing sessions keep their old broad-scope tokens
+  until the user signs out and in (no forced re-login, documented as accepted Low).
 - Sign-in: own OAuth 2.0 PKCE browser flow with a loopback listener bound to the
   request state (v1.7.4, PR #1 / #5). Tokens live in the app's own Keychain item
   `ClaudeGlance-credentials`, re-created under the running build at each launch (v1.7.6, PR #11).

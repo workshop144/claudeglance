@@ -4,6 +4,15 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.2] — Security hardening
+
+### Security
+- **Sign-in asks for less.** ClaudeGlance now requests only the `user:profile`
+  scope, which is all it needs to read your usage. Earlier versions also asked
+  for `org:create_api_key` and `user:inference`, so a leaked token could have
+  created API keys or run models on your account. Existing sign-ins keep working;
+  sign out and back in from Settings to swap your token for a narrower one.
+
 ## [1.8.1] — Bug sweep
 
 ### Fixed
