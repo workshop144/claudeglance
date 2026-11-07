@@ -41,6 +41,7 @@ lint:
     set -euo pipefail
     for f in scripts/*.sh; do bash -n "$f"; done
     echo "scripts parse"
+    scripts/check-workflows.sh
 
 # validate + lint + test + hardened release build. Mirrors the CI "Unit tests" job.
 check: lint test build-release

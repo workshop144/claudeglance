@@ -171,6 +171,17 @@ window.
 > say it "cannot verify the developer." Right-click the app › **Open** (once), or
 > remove the quarantine flag: `xattr -dr com.apple.quarantine /Applications/ClaudeGlance.app`.
 
+To check that a downloaded DMG was built by this repo's release workflow from a
+tagged commit (and not swapped afterwards), verify its build provenance with the
+GitHub CLI before opening it:
+
+```bash
+gh attestation verify ClaudeGlance.dmg -R workshop144/claudeglance
+```
+
+Releases from 1.8.2 on carry an attestation. Homebrew and Nix installs are
+already pinned to the release's SHA-256.
+
 **Nix (flake):** the repo ships a flake that packages the released app
 (`aarch64-darwin` / `x86_64-darwin`). It tracks the latest public release.
 
