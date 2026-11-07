@@ -3,6 +3,14 @@ name: CI
 on:
   push:
     branches: [main, develop]
+    # Docs-only pushes skip CI entirely (no required checks on push).
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+  # No paths-ignore on pull_request: "Unit tests" and "Nix flake build" are required
+  # checks, and a workflow that never starts leaves them pending forever. Instead the
+  # `changes` job below lets those jobs skip (which satisfies the requirement) on a
+  # docs-only PR, and the STATE.md guard always runs.
   pull_request:
   workflow_dispatch:
 
@@ -16,6 +24,37 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    # Docs-only PR (every changed path is *.md or under docs/)? Then the macOS jobs skip.
+    name: Detect docs-only change
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event_name == 'pull_request'
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Classify changed paths
+        id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" != pull_request ]; then echo "code=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          changed="$(git diff --name-only "$BASE...$HEAD")"
+          printf '%s\n' "$changed"
+          if [ -n "$changed" ] && ! printf '%s\n' "$changed" | grep -vE '\.md$|^docs/' >/dev/null; then
+            echo "docs-only change: macOS jobs skip"
+            echo "code=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          fi
+
   state-guard:
     # Repo-state pattern: a PR that changes code must update STATE.md in the same PR.
     # Escape hatch: PR titles starting with "chore" or "deps" (Dependabot uses chore(deps)).
@@ -47,6 +86,9 @@ jobs:
 
   test:
     name: Unit tests
+    needs: changes
+    # Fail closed: run unless `changes` succeeded and reported a docs-only change.
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.code != 'false') }}
     runs-on: macos-26
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -105,6 +147,9 @@ jobs:
     # `nix build` on the dev box, so CI is the safety net. Independent of the test
     # job; a broken flake shows up as its own red check.
     name: Nix flake build
+    needs: changes
+    # Fail closed: run unless `changes` succeeded and reported a docs-only change.
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.code != 'false') }}
     runs-on: macos-26
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

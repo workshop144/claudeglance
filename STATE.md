@@ -26,6 +26,10 @@ Last updated: 2026-11-07 by Claude: security round r2 done (PRs #30, #31, #32), 
   This Mac was upgraded with `brew upgrade --cask claudeglance` (1.8.1 to 1.8.3); the new build
   raised the usual post-update Keychain "allow access" prompt, which needs the operator's
   login password (see Next).
+- CI minutes (2026-11-07): ci.yml skips docs-only changes (`**.md`, `docs/**`). Pushes use
+  `paths-ignore`; PRs keep triggering so the STATE.md guard always runs, and a `changes` job
+  lets the required macOS checks (Unit tests, Nix flake build) skip, failing closed if it errors.
+  Repo is public, so hosted macOS/Linux minutes cost nothing; it stays off self-hosted runners.
 - flake.lock (review L4): nixpkgs is locked to one commit of `nixpkgs-26.05-darwin` (moved off
   nixpkgs-unstable, which dropped x86_64-darwin; 26.05 is the last release with it).
   `scripts/check-flake-lock.sh` (CI Unit tests job and `just lint`) fails if the lock is
