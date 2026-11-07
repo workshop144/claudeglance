@@ -56,6 +56,9 @@ jobs:
       - name: Show toolchain
         run: xcodebuild -version
 
+      - name: Workflows pinned and release provenance attested
+        run: scripts/check-workflows.sh
+
       - name: Run tests
         # `set -o pipefail` (and no output-swallowing pipe) is load-bearing: the
         # previous `xcodebuild | grep` form returned grep's exit code, so a failing

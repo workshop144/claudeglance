@@ -12,6 +12,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   for `org:create_api_key` and `user:inference`, so a leaked token could have
   created API keys or run models on your account. Existing sign-ins keep working;
   sign out and back in from Settings to swap your token for a narrower one.
+- **Verifiable downloads.** Each release DMG now carries a signed build
+  provenance attestation. Run
+  `gh attestation verify ClaudeGlance.dmg -R workshop144/claudeglance` to check
+  that a DMG came from this repo's release workflow.
 
 ## [1.8.1] — Bug sweep
 

@@ -12,6 +12,11 @@ jobs:
     runs-on: macos-26
     permissions:
       contents: write
+      # Build provenance for the DMG (security L2): a Sigstore-signed attestation
+      # tying the file to this repo, workflow and commit. Users check it with
+      # `gh attestation verify ClaudeGlance.dmg -R workshop144/claudeglance`.
+      id-token: write
+      attestations: write
     # The tap job gets the DMG hash from here, computed before any third-party
     # action runs, instead of hashing a workspace file that action could replace.
     outputs:
@@ -147,13 +152,26 @@ jobs:
             ClaudeGlance.dmg
           echo "sha256=$(shasum -a 256 ClaudeGlance.dmg | awk '{print $1}')" >> "$GITHUB_OUTPUT"
 
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: ClaudeGlance.dmg
+
       - name: Compose release notes
         run: |
           if [ "$HAS_SIGNING" = "true" ]; then
-            echo "RELEASE_BODY=Signed with a Developer ID and notarized by Apple — just open it after installing." >> "$GITHUB_ENV"
+            {
+              echo "RELEASE_BODY<<EOF"
+              echo "Signed with a Developer ID and notarized by Apple — just open it after installing."
+              echo ""
+              echo "Check the DMG was built by this repo's release workflow: \`gh attestation verify ClaudeGlance.dmg -R workshop144/claudeglance\`"
+              echo "EOF"
+            } >> "$GITHUB_ENV"
           else
             {
               echo "RELEASE_BODY<<EOF"
+              echo "Check the DMG was built by this repo's release workflow: \`gh attestation verify ClaudeGlance.dmg -R workshop144/claudeglance\`"
+              echo ""
               echo "This build is ad-hoc signed (not yet notarized). On first launch macOS may say it cannot verify the developer:"
               echo ""
               echo "- Right-click ClaudeGlance in /Applications and choose **Open** (once), or"

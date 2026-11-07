@@ -65,6 +65,11 @@ Last updated: 2026-11-07 by Claude: security round r1 (L1 scope, L2 provenance, 
   Signed out, the menu bar shows a locked ring and "Sign in" (v1.8.0, PR #16).
 - Builds are ad-hoc signed with the hardened runtime; CI and release fail without it
   (`scripts/check-hardened-runtime.sh`, v1.7.5, PR #9). Not notarized.
+- Release provenance (security L2): release.yml attests ClaudeGlance.dmg with
+  actions/attest-build-provenance (SHA-pinned v4.2.2; job has id-token and attestations write).
+  README documents `gh attestation verify ClaudeGlance.dmg -R workshop144/claudeglance`.
+  `scripts/check-workflows.sh` (CI Unit tests job and `just lint`) fails on any `uses:` not
+  pinned to a 40-char SHA, or if the attestation step or its permissions go missing.
 - Release workflow publishes the DMG and updates the Homebrew tap with a tap-scoped
   deploy key (PR #8). Developer ID signing and notarization steps exist but are skipped
   until the Apple secrets are set.
