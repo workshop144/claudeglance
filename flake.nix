@@ -1,17 +1,22 @@
 {
   description = "ClaudeGlance — a macOS menu bar app showing Claude.ai plan usage in real time";
 
-  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+  # A stable darwin release branch (not nixpkgs-unstable, which dropped
+  # x86_64-darwin), locked to one commit in flake.lock. The lock is refreshed by
+  # scripts/update-flake.sh at each release; scripts/check-flake-lock.sh (CI and
+  # `just lint`) fails if it is missing or out of step with this line, and CI
+  # builds with --no-update-lock-file.
+  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-26.05-darwin";
 
   outputs = { self, nixpkgs }:
     let
       # Tracks the latest *public* release. Bump both together when a new version
       # ships — scripts/update-flake.sh does it from the released DMG. (ClaudeGlance
       # versions on `develop` between public releases; this points at the release.)
-      version = "1.8.2";
+      version = "1.8.3";
       # SRI hash of that release's ClaudeGlance.dmg — the same artifact the Homebrew
-      # cask pins (hex b11a0895…). Verify with: scripts/update-flake.sh <version>.
-      dmgHash = "sha256-sRoIlQzriie5FDJtC7QcRdLHO+q3pxDsahrT8RShb+c=";
+      # cask pins (hex 6b66272b…). Verify with: scripts/update-flake.sh <version>.
+      dmgHash = "sha256-a2YnK7JFs8mL+WGHlmb8l0bDlqoxFdXOq7zWJSFHqRA=";
 
       # macOS only — this is a native .app bundle (no Linux build).
       systems = [ "aarch64-darwin" "x86_64-darwin" ];
