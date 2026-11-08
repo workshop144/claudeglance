@@ -4,7 +4,10 @@
 <dict>
   <key>method</key>
   <string>developer-id</string>
+  <!-- Manual: CI has the certificate in a temp keychain but no Xcode account. -->
   <key>signingStyle</key>
-  <string>automatic</string>
+  <string>manual</string>
+  <key>signingCertificate</key>
+  <string>Developer ID Application</string>
 </dict>
 </plist>

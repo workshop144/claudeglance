@@ -4,6 +4,20 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.4] — Signed and notarized
+
+### Changed
+- **Opens without a warning.** ClaudeGlance is now signed with an Apple
+  Developer ID and notarized by Apple, and so is the DMG. macOS no longer says
+  it "cannot verify the developer", and the Homebrew cask drops its
+  `xattr -dr com.apple.quarantine` step.
+
+### Upgrade note
+- **One more sign-in prompt.** The app's signature changed, so on the first
+  launch after updating macOS may ask for your login password to let
+  ClaudeGlance read its saved sign-in (choose **Always Allow**), or ask you to
+  sign in to Claude again from Settings. This happens once.
+
 ## [1.8.3] — Review fixes
 
 ### Fixed

@@ -1,6 +1,6 @@
 # Current Build State
 
-Last updated: 2026-11-07 by Claude: security round r2 done (PRs #30, #31, #32), v1.8.3 released, flake re-pinned and locked. Security grade A.
+Last updated: 2026-11-08 by Claude: v1.8.4 PR (Developer ID signing and notarization) open, waiting on the operator to add Apple signing secrets. Apple Developer account (Workshop 144 LLC) now exists.
 
 ## Phases (release lines)
 
@@ -15,7 +15,8 @@ Last updated: 2026-11-07 by Claude: security round r2 done (PRs #30, #31, #32), 
 - [x] v1.8.1 Bug sweep (released 2026-11-06)
 - [x] v1.8.2 Security hardening (released 2026-11-07): least-privilege scope, DMG provenance
 - [x] v1.8.3 Review fixes (released 2026-11-07): session-generation guards, token error text, reset parsing, context window
-- [ ] Signing cluster: notarize [6], Sparkle auto-update [13], WidgetKit [25]. BLOCKED, see below.
+- [ ] v1.8.4 Signed and notarized [6]: PR open, plan in docs/plans/v1.8.4-notarize.md. Waits on signing secrets.
+- [ ] Sparkle auto-update [13], WidgetKit [25]: unblocked once 1.8.4 ships notarized (D-009).
 - [ ] Exploratory: real prepaid balance [23], multi-account [24]. Not started, demand unvalidated.
 
 ## What is true now
@@ -183,17 +184,25 @@ check in CI, Keychain item re-created per build, PKCE plus loopback state bindin
 
 ## Open / BLOCKED
 
-- BLOCKED: notarization [6], and with it Sparkle [13] and WidgetKit [25], need an Apple
-  Developer account. Next step for the operator: enroll, then add repo secrets
+- BLOCKED on the operator: notarization [6]. The Apple Developer account exists (Workshop 144
+  LLC, checked 2026-11-08: no certificates, App IDs or apps yet). Next: create a Developer ID
+  Application certificate, export a .p12, create an app-specific password, then set repo secrets
   `APPLE_CERTIFICATE_1`, `APPLE_CERTIFICATE_2`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_ID`,
-  `APPLE_TEAM_ID`, `APPLE_APP_PASSWORD`. release.yml switches to Developer ID + notarize
-  automatically once all are present. Then write docs/plans/signing.md before building Sparkle.
+  `APPLE_TEAM_ID`, `APPLE_APP_PASSWORD`. The v1.8.4 PR fixes release.yml for CI signing
+  (manual style; automatic needs an Xcode account) and notarizes the DMG too.
+- Mac App Store (reviewed 2026-11-08, not started): not viable as built. Blockers are the
+  App Sandbox (off; ~/.claude reads and settings.json writes need folder grants), the reused
+  Claude Code OAuth client id, and the "Claude" name (guideline 5.2). Needs Anthropic's
+  answer on the last two before any code. Also missing for MAS: PrivacyInfo.xcprivacy,
+  CURRENT_PROJECT_VERSION, LSApplicationCategoryType, ITSAppUsesNonExemptEncryption.
 - `develop` is stale. Decide whether to delete it and drop it from ci.yml `push.branches`
   (scripts/dev-install.sh comments still describe the develop to main flow).
 - One Swift 6 concurrency note (`ImplicitStrongCapture`) appears in the Release build; not a failure.
 
 ## Next
 
+First, operator: add the Apple signing secrets (see Open / BLOCKED), merge the v1.8.4 PR, tag
+   v1.8.4, confirm the run logs "building a NOTARIZED release", then re-pin the flake.
 0. Operator: approve the Keychain prompt 1.8.3 raised on this Mac (Always Allow), check the
    menu bar shows usage, then sign out and in once to confirm the `user:profile` scope
    (see Security). If 1.8.3 misbehaves: `brew reinstall --cask claudeglance` after reverting
