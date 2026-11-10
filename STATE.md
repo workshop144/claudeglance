@@ -1,6 +1,6 @@
 # Current Build State
 
-Last updated: 2026-11-08 by Claude: v1.8.4 PR (Developer ID signing and notarization) open, waiting on the operator to add Apple signing secrets. Apple Developer account (Workshop 144 LLC) now exists.
+Last updated: 2026-11-10 by Claude: v1.8.4 released, the first Developer ID signed and notarized build. Flake re-pinned to 1.8.4; tap job moved to Linux.
 
 ## Phases (release lines)
 
@@ -15,15 +15,18 @@ Last updated: 2026-11-08 by Claude: v1.8.4 PR (Developer ID signing and notariza
 - [x] v1.8.1 Bug sweep (released 2026-11-06)
 - [x] v1.8.2 Security hardening (released 2026-11-07): least-privilege scope, DMG provenance
 - [x] v1.8.3 Review fixes (released 2026-11-07): session-generation guards, token error text, reset parsing, context window
-- [ ] v1.8.4 Signed and notarized [6]: PR open, plan in docs/plans/v1.8.4-notarize.md. Waits on signing secrets.
+- [x] v1.8.4 Signed and notarized [6] (released 2026-11-10), plan in docs/plans/v1.8.4-notarize.md
 - [ ] Sparkle auto-update [13], WidgetKit [25]: unblocked once 1.8.4 ships notarized (D-009).
 - [ ] Exploratory: real prepaid balance [23], multi-account [24]. Not started, demand unvalidated.
 
 ## What is true now
 
-- Shipped version: 1.8.3 (tag v1.8.3 on d9765c1, GitHub release "Latest", released 2026-11-07,
-  release run 42383693790). The Homebrew cask is at 1.8.3 with DMG sha256 6b66272b..., and
-  flake.nix pins 1.8.3 (this PR). `gh attestation verify` passes for the v1.8.3 DMG.
+- Shipped version: 1.8.4 (tag v1.8.4 on 4f36d53, released 2026-11-10, release run
+  42840745465). First Developer ID signed and notarized release: app and DMG both stapled;
+  `spctl` on the downloaded DMG says "Notarized Developer ID", Workshop 144 LLC (Q4PR8D5TG8);
+  `gh attestation verify` passes. DMG sha256 228913f8...; flake.nix pins 1.8.4 (this PR).
+  The tap job was cancelled (no macOS runner within 15 minutes) and re-run; see Next for
+  the cask check. The first notarization took about 35 minutes (new team, in-depth review).
   This Mac was upgraded with `brew upgrade --cask claudeglance` (1.8.1 to 1.8.3); the new build
   raised the usual post-update Keychain "allow access" prompt, which needs the operator's
   login password (see Next).
@@ -184,15 +187,14 @@ check in CI, Keychain item re-created per build, PKCE plus loopback state bindin
 
 ## Open / BLOCKED
 
-- BLOCKED on the operator: notarization [6]. The Apple Developer account exists (Workshop 144
-  LLC). Done 2026-11-08: Developer ID Application certificate created (team Q4PR8D5TG8,
-  expires 2027-12-08); key, cert and `set-secrets.sh` are in ~/.config/claudeglance-signing on
-  n0 (not in the repo), identity installed in n0's login keychain. Next: create a team App Store
-  Connect API key (Developer role) for notarization, download its .p8, run set-secrets.sh, which
-  sets `APPLE_CERTIFICATE_1`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_TEAM_ID`, `APPLE_API_KEY`,
-  `APPLE_API_KEY_ID`, `APPLE_API_ISSUER`. Notarization uses the API key, not an Apple ID
-  app-specific password (team scoped, no iCloud access, revocable alone). The v1.8.4 PR fixes release.yml for CI signing
-  (manual style; automatic needs an Xcode account) and notarizes the DMG too.
+- Signing (done 2026-11-10): Developer ID Application certificate for team Q4PR8D5TG8,
+  expires 2027-12-08; renew before then or releases fall back to failing the Gatekeeper check.
+  Key, cert, .p12, the `claudeglance-ci` team API key (.p8, Developer role) and `set-secrets.sh`
+  live in ~/.config/claudeglance-signing on n0, not in the repo; the operator should keep a
+  backup. Repo secrets: `APPLE_CERTIFICATE_1`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_TEAM_ID`,
+  `APPLE_API_KEY`, `APPLE_API_KEY_ID`, `APPLE_API_ISSUER`. The certificate is shared by every
+  app the team ships; each repo should get its own `<repo>-ci` API key.
+- Sparkle [13] and WidgetKit [25] are unblocked now that releases are signed (D-009).
 - Mac App Store (reviewed 2026-11-08, not started): not viable as built. Blockers are the
   App Sandbox (off; ~/.claude reads and settings.json writes need folder grants), the reused
   Claude Code OAuth client id, and the "Claude" name (guideline 5.2). Needs Anthropic's
@@ -204,8 +206,9 @@ check in CI, Keychain item re-created per build, PKCE plus loopback state bindin
 
 ## Next
 
-First, operator: add the Apple signing secrets (see Open / BLOCKED), merge the v1.8.4 PR, tag
-   v1.8.4, confirm the run logs "building a NOTARIZED release", then re-pin the flake.
+First: confirm broots144/homebrew-tap Casks/claudeglance.rb is at 1.8.4 with no caveats block
+   (re-run the release's homebrew-tap job if not), then `brew upgrade --cask claudeglance` on
+   this Mac and expect one Keychain prompt or a fresh sign-in (signature changed).
 0. Operator: approve the Keychain prompt 1.8.3 raised on this Mac (Always Allow), check the
    menu bar shows usage, then sign out and in once to confirm the `user:profile` scope
    (see Security). If 1.8.3 misbehaves: `brew reinstall --cask claudeglance` after reverting

@@ -2,6 +2,8 @@
 
 One line per lesson, newest first.
 
+- 2026-11-10: A new Apple team's first notarization sat "In Progress" for about 35 minutes and the macOS-only tap job was then cancelled for want of a runner (v1.8.4). Rule: expect a slow first notarization, check it with `notarytool history`, and run jobs that need no macOS tools on Linux.
+- 2026-11-08: The release workflow had Developer ID steps that had never run, and they asked for automatic signing, which needs an Xcode account CI does not have. Rule: CI signs manually, and a signed release fails unless `stapler validate` and `spctl` accept it.
 - 2026-11-06: Tests run inside a host copy of the app, so any test touching a shared history store or the backup restore would have written the developer's real ~/.claudeglance and Application Support history. Rule: every Application Support or ~/.claudeglance writer builds its path on HistoryStorage, which resolves to a temp sandbox when XCTestConfigurationFilePath is set in a Debug build.
 - 2026-11-06: Two usage fetches could each refresh the OAuth token with the same refresh token; the server rotates it, the loser got invalid_grant and deleted the winner's credentials (v1.8.1). Rule: token refresh is single-flight, and a rejected refresh only signs out if the stored pair is not newer.
 - 2026-11-06: Network.framework refuses a second NWListener on the same port in one process (EADDRINUSE) even across 127.0.0.1 and ::1, though the kernel allows it. Rule: reserve the other loopback address with a plain BSD socket.

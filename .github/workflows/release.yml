@@ -235,7 +235,9 @@ jobs:
   # environment with the build or with a third-party action.
   homebrew-tap:
     needs: release
-    runs-on: macos-26
+    # Only bash, git and ssh: Linux, so a release never waits on scarce macOS runners
+    # (the v1.8.4 tap job was cancelled after 15 minutes without one).
+    runs-on: ubuntu-latest
     permissions: {}
     env:
       HAS_SIGNING: ${{ needs.release.outputs.signed }}
