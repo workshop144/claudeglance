@@ -24,8 +24,8 @@ Status detail lives in [STATE.md](STATE.md); decisions in [docs/DECISIONS.md](do
 | v1.6 | Reach | ✅ | shipped v1.6.5 |
 | v1.7 | Standalone sign-in and hardening | ✅ | shipped v1.7.7 |
 | v1.8 | Signed-out menu bar | ✅ | shipped v1.8.0, `just verify-release` |
-| v1.8.4 | Signed and notarized [6] | 🟡 | PR open; signing secrets |
-| Signing | Sparkle [13], WidgetKit [25] | ⬜ | after v1.8.4 ships notarized |
+| v1.8.4 | Signed and notarized [6] | ✅ | shipped v1.8.4 |
+| Signing | Sparkle [13], WidgetKit [25] | ⬜ | unblocked by v1.8.4 |
 | Small | Copy usage to clipboard [31] | ⬜ | none |
 | Hardening | Timezones, multi-monitor, big-jsonl streaming | ⬜ | ongoing, test first |
 | Exploratory | Prepaid balance [23], multi-account [24] | ⏸ | validate demand first |
