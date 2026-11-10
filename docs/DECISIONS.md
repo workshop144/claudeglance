@@ -30,7 +30,8 @@ Partly supersedes D-004 and D-005. The Workshop 144 LLC Apple Developer account 
 so 1.8.4 ships Developer ID signed and notarized (app and DMG) for the DMG, cask and flake.
 Notarization ships alone, ahead of Sparkle and WidgetKit, because it removes the Gatekeeper
 step for every install today. CI signs manually (temp keychain, no Xcode account) and the
-release fails if `stapler validate` or `spctl` rejects the build.
+release fails if `stapler validate` or `spctl` rejects the build. Notarization authenticates
+with a team App Store Connect API key, not an Apple ID app-specific password.
 Mac App Store distribution is a separate track and is not covered here: it needs the App
 Sandbox (folder access grants for ~/.claude), a sanctioned OAuth client, and a name cleared
 for the Claude trademark.

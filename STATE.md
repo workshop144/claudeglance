@@ -185,10 +185,13 @@ check in CI, Keychain item re-created per build, PKCE plus loopback state bindin
 ## Open / BLOCKED
 
 - BLOCKED on the operator: notarization [6]. The Apple Developer account exists (Workshop 144
-  LLC, checked 2026-11-08: no certificates, App IDs or apps yet). Next: create a Developer ID
-  Application certificate, export a .p12, create an app-specific password, then set repo secrets
-  `APPLE_CERTIFICATE_1`, `APPLE_CERTIFICATE_2`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_ID`,
-  `APPLE_TEAM_ID`, `APPLE_APP_PASSWORD`. The v1.8.4 PR fixes release.yml for CI signing
+  LLC). Done 2026-11-08: Developer ID Application certificate created (team Q4PR8D5TG8,
+  expires 2027-12-08); key, cert and `set-secrets.sh` are in ~/.config/claudeglance-signing on
+  n0 (not in the repo), identity installed in n0's login keychain. Next: create a team App Store
+  Connect API key (Developer role) for notarization, download its .p8, run set-secrets.sh, which
+  sets `APPLE_CERTIFICATE_1`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_TEAM_ID`, `APPLE_API_KEY`,
+  `APPLE_API_KEY_ID`, `APPLE_API_ISSUER`. Notarization uses the API key, not an Apple ID
+  app-specific password (team scoped, no iCloud access, revocable alone). The v1.8.4 PR fixes release.yml for CI signing
   (manual style; automatic needs an Xcode account) and notarizes the DMG too.
 - Mac App Store (reviewed 2026-11-08, not started): not viable as built. Blockers are the
   App Sandbox (off; ~/.claude reads and settings.json writes need folder grants), the reused
