@@ -154,22 +154,16 @@ today's cost/tokens, reset countdowns, burn rate, and an on-pace ETA).
 brew install --cask broots144/tap/claudeglance
 ```
 
-Because the build is ad-hoc signed (not notarized), macOS quarantines it. Clear
-that once after installing — either way:
-
-- Right-click the app in `/Applications` › **Open** › **Open**, or
-- `xattr -dr com.apple.quarantine /Applications/ClaudeGlance.app`
-
-(Homebrew removed its `--no-quarantine` flag, so this is a one-time manual step
-until the app is notarized.)
+From 1.8.4 the app and DMG are signed with a Developer ID and notarized by
+Apple, so they open without a warning.
 
 **Or download the DMG** from the [Releases page](https://github.com/workshop144/claudeglance/releases),
 open it, and drag **ClaudeGlance** onto the **Applications** folder in the same
 window.
 
-> The release build is ad-hoc signed, not notarized — on first launch macOS may
-> say it "cannot verify the developer." Right-click the app › **Open** (once), or
-> remove the quarantine flag: `xattr -dr com.apple.quarantine /Applications/ClaudeGlance.app`.
+> Releases before 1.8.4 were ad-hoc signed, not notarized. If macOS says it
+> "cannot verify the developer" on one of those, right-click the app › **Open**
+> (once), or run `xattr -dr com.apple.quarantine /Applications/ClaudeGlance.app`.
 
 To check that a downloaded DMG was built by this repo's release workflow from a
 tagged commit (and not swapped afterwards), verify its build provenance with the

@@ -25,6 +25,17 @@ Releases are ad-hoc signed and must carry the hardened runtime. release.yml alre
 contains the Developer ID, notarize and staple steps, gated on secrets, so enrolling
 flips releases to notarized with no workflow change.
 
+## D-009: Developer ID signing and notarization in 1.8.4 (2026-11-08)
+Partly supersedes D-004 and D-005. The Workshop 144 LLC Apple Developer account exists,
+so 1.8.4 ships Developer ID signed and notarized (app and DMG) for the DMG, cask and flake.
+Notarization ships alone, ahead of Sparkle and WidgetKit, because it removes the Gatekeeper
+step for every install today. CI signs manually (temp keychain, no Xcode account) and the
+release fails if `stapler validate` or `spctl` rejects the build. Notarization authenticates
+with a team App Store Connect API key, not an Apple ID app-specific password.
+Mac App Store distribution is a separate track and is not covered here: it needs the App
+Sandbox (folder access grants for ~/.claude), a sanctioned OAuth client, and a name cleared
+for the Claude trademark.
+
 ## D-005: Notarization, Sparkle and WidgetKit ship together (2026-06-12)
 Sparkle's value is seamless updates, which ad-hoc builds cannot give past Gatekeeper,
 and widgets need an App Group and a real signature. All three wait on D-004's account.

@@ -30,7 +30,7 @@ jobs:
     # once the secrets exist it automatically produces a notarized, stapled build
     # with no further changes.
     env:
-      HAS_SIGNING: ${{ secrets.APPLE_CERTIFICATE_1 != '' && secrets.APPLE_ID != '' && secrets.APPLE_TEAM_ID != '' && secrets.APPLE_APP_PASSWORD != '' }}
+      HAS_SIGNING: ${{ secrets.APPLE_CERTIFICATE_1 != '' && secrets.APPLE_TEAM_ID != '' && secrets.APPLE_API_KEY != '' && secrets.APPLE_API_KEY_ID != '' && secrets.APPLE_API_ISSUER != '' }}
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -74,6 +74,19 @@ jobs:
           security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
 
+      # Notarization authenticates with a team App Store Connect API key, not an
+      # Apple ID password: it is scoped to the team, has no iCloud access and can be
+      # revoked on its own. The .p8 lives only in the runner's temp dir.
+      - name: Write notarization API key
+        if: env.HAS_SIGNING == 'true'
+        env:
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+        run: |
+          umask 077
+          printf '%s\n' "$APPLE_API_KEY" > "$RUNNER_TEMP/notary.p8"
+          grep -q 'BEGIN PRIVATE KEY' "$RUNNER_TEMP/notary.p8" \
+            || { echo "::error::APPLE_API_KEY is not a .p8 private key"; exit 1; }
+
       - name: Archive (Developer ID)
         if: env.HAS_SIGNING == 'true'
         env:
@@ -84,7 +97,7 @@ jobs:
             -configuration Release \
             -archivePath build/ClaudeGlance.xcarchive \
             CODE_SIGN_IDENTITY="Developer ID Application" \
-            CODE_SIGN_STYLE=Automatic \
+            CODE_SIGN_STYLE=Manual \
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
             GIT_COMMIT="$(git rev-parse --short HEAD)" \
             archive
@@ -100,15 +113,14 @@ jobs:
       - name: Notarize
         if: env.HAS_SIGNING == 'true'
         env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
         run: |
           ditto -c -k --keepParent build/export/ClaudeGlance.app ClaudeGlance.zip
           xcrun notarytool submit ClaudeGlance.zip \
-            --apple-id "$APPLE_ID" \
-            --team-id "$APPLE_TEAM_ID" \
-            --password "$APPLE_APP_PASSWORD" \
+            --key "$RUNNER_TEMP/notary.p8" \
+            --key-id "$APPLE_API_KEY_ID" \
+            --issuer "$APPLE_API_ISSUER" \
             --wait
 
       - name: Staple
@@ -144,13 +156,41 @@ jobs:
         run: scripts/check-hardened-runtime.sh build/export/ClaudeGlance.app
 
       - name: Build DMG
-        id: dmg
         timeout-minutes: 15
         run: |
           VOL_NAME="ClaudeGlance" scripts/make-dmg.sh \
             build/export/ClaudeGlance.app \
             ClaudeGlance.dmg
-          echo "sha256=$(shasum -a 256 ClaudeGlance.dmg | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      # The app inside is already notarized and stapled; signing, notarizing and
+      # stapling the DMG too lets Gatekeeper clear the download itself offline.
+      - name: Sign, notarize and staple DMG
+        if: env.HAS_SIGNING == 'true'
+        env:
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          codesign --force --timestamp --sign "Developer ID Application" ClaudeGlance.dmg
+          xcrun notarytool submit ClaudeGlance.dmg \
+            --key "$RUNNER_TEMP/notary.p8" \
+            --key-id "$APPLE_API_KEY_ID" \
+            --issuer "$APPLE_API_ISSUER" \
+            --wait
+          xcrun stapler staple ClaudeGlance.dmg
+
+      # Fail the release rather than ship a "signed" build Gatekeeper would reject.
+      - name: Check Gatekeeper accepts the build
+        if: env.HAS_SIGNING == 'true'
+        run: |
+          xcrun stapler validate build/export/ClaudeGlance.app
+          xcrun stapler validate ClaudeGlance.dmg
+          spctl --assess --type execute --verbose=2 build/export/ClaudeGlance.app
+          spctl --assess --type open --context context:primary-signature --verbose=2 ClaudeGlance.dmg
+
+      # Hash last: stapling rewrites the DMG, and the cask must pin the final bytes.
+      - name: Hash DMG
+        id: dmg
+        run: echo "sha256=$(shasum -a 256 ClaudeGlance.dmg | awk '{print $1}')" >> "$GITHUB_OUTPUT"
 
       - name: Attest build provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
