@@ -162,8 +162,8 @@ Last updated: 2026-11-11 by Claude: first live Sparkle update (1.9.0 to 1.9.1) w
   history), so streaks survive Claude Code's 30 day transcript cleanup (v1.7.2).
 - No open issues or PRs on workshop144/claudeglance as of 2026-11-06. `gh` without `-R`
   lists the upstream fork's issues instead (see LESSONS.md).
-- Branch `develop` (last commit 2026-09-28) has no diff against main; all work since
-  v1.7.4 lands by PR to main.
+- Branch `develop` was deleted 2026-11-11 (D-013; last commit 51a1a52, whose only real
+  change, the workshop144 URLs, is on main). All work lands by PR to main.
 
 Verified 2026-11-06 on this Mac, `just verify-release` on fix/bugs-2026-11-06:
 
@@ -281,9 +281,7 @@ check in CI, Keychain item re-created per build, PKCE plus loopback state bindin
   App Sandbox (off; ~/.claude reads and settings.json writes need folder grants), the reused
   Claude Code OAuth client id, and the "Claude" name (guideline 5.2). Needs Anthropic's
   answer on the last two before any code. Also missing for MAS: PrivacyInfo.xcprivacy,
-  CURRENT_PROJECT_VERSION, LSApplicationCategoryType, ITSAppUsesNonExemptEncryption.
-- `develop` is stale. Decide whether to delete it and drop it from ci.yml `push.branches`
-  (scripts/dev-install.sh comments still describe the develop to main flow).
+  LSApplicationCategoryType, ITSAppUsesNonExemptEncryption.
 - One Swift 6 concurrency note (`ImplicitStrongCapture`) appears in the Release build; not a failure.
 
 ## Next
@@ -305,6 +303,5 @@ work. Each release now reaches DMG and cask installs by itself.
 
 2. Operator: sign out and in once to confirm the `user:profile` scope (see Security). If the
    authorize page errors, revert the scope line; a scope 403 falls back on its own.
-3. Delete or retire `develop` and update the dev-install.sh comment (small chore PR).
-4. Hardening list in ROADMAP.md (timezone correctness, multi-monitor placement) has no
+3. Hardening list in ROADMAP.md (timezone correctness, multi-monitor placement) has no
    tests yet; pick one and add a test first. Big-jsonl streaming is done (TranscriptCache).

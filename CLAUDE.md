@@ -42,7 +42,8 @@ and a Nix flake. User-facing docs: README.md, CHANGELOG.md, SECURITY.md, CONTRIB
 
 ## Rules
 
-- Work in a git worktree on a branch, open a PR to `main`. `develop` is stale (see STATE.md).
+- Work in a git worktree on a branch, open a PR to `main`. There is no `develop` branch;
+  betas, when needed, are a Sparkle channel built from `main` (D-013).
 - `gh` defaults to the `upstream` remote (adntgv/claude-usage-systray). Always pass
   `-R workshop144/claudeglance` to gh commands.
 - Public repo: never write the operator's real name, family, address, location, phone

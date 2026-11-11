@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
     # Docs-only pushes skip CI entirely (no required checks on push).
     paths-ignore:
       - '**.md'
