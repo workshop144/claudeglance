@@ -66,3 +66,11 @@ Pages site and CI never commits. The app requires a signed feed. The private key
 the n0 login Keychain, ~/.config/claudeglance-signing and LastPass; CI gets it as
 SPARKLE_ED_PRIVATE_KEY. The updater is off inside /nix/store (read-only) and for builds
 not signed by team Q4PR8D5TG8. The Homebrew cask declares `auto_updates true`.
+
+## D-012: Widgets parked until a user asks (2026-11-11)
+Partly supersedes D-010, which planned widgets as 1.10.0. WidgetKit [25] is not built: the
+operator would not look at a widget instead of the menu bar, it was the lowest rated item
+(one star), and it adds a sandboxed extension and an App Group to maintain for a second
+glance surface. A spike showed it is cheap to revive: a Developer ID widget with a
+team-prefixed App Group needs no provisioning profile or new secret (STATE.md, Next).
+Revisit on a user request.
