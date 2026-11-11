@@ -27,6 +27,8 @@ Last updated: 2026-11-11 by Claude: v1.9.0 released (Sparkle auto-update); flake
   `releases/latest/download/appcast.xml` serves 1.9.0; the downloaded DMG matches the feed's
   EdDSA signature and length (3057421); `spctl` says "Notarized Developer ID";
   `gh attestation verify` exits 0; the tap cask is 1.9.0 with `auto_updates true` and no caveats.
+  Live on n0 (2026-11-11): `brew upgrade --cask --greedy claudeglance` took 1.8.4 to 1.9.0 with
+  no Keychain prompt; Settings "Check now" reads the live feed and says up to date.
 - Sparkle (1.9.0): Sparkle 2.10.1 by SPM, exact version. Feed
   `releases/latest/download/appcast.xml`, a one-item appcast that release.yml writes with
   `scripts/make-appcast.sh` and signs with sign_update (feed and DMG both EdDSA signed; the
@@ -218,8 +220,8 @@ check in CI, Keychain item re-created per build, PKCE plus loopback state bindin
   backup. Repo secrets: `APPLE_CERTIFICATE_1`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_TEAM_ID`,
   `APPLE_API_KEY`, `APPLE_API_KEY_ID`, `APPLE_API_ISSUER`. The certificate is shared by every
   app the team ships; each repo should get its own `<repo>-ci` API key.
-- SPARKLE_ED_PRIVATE_KEY set 2026-11-11. Operator: copy sparkle_ed25519.key into the LastPass
-  note "Workshop144 secrets" if not done. Losing the key strands every installed copy.
+- SPARKLE_ED_PRIVATE_KEY set 2026-11-11; sparkle_ed25519.key backed up to the LastPass note
+  "Workshop144 secrets" (operator confirmed). Losing the key strands every installed copy.
 - Mac App Store (reviewed 2026-11-08, not started): not viable as built. Blockers are the
   App Sandbox (off; ~/.claude reads and settings.json writes need folder grants), the reused
   Claude Code OAuth client id, and the "Claude" name (guideline 5.2). Needs Anthropic's
@@ -233,8 +235,9 @@ check in CI, Keychain item re-created per build, PKCE plus loopback state bindin
 
 v1.9.0, in order:
 1. Done: secret set, PR #37 merged, v1.9.0 tagged and released, flake re-pinned.
-2. Install 1.9.0 (`brew upgrade --cask claudeglance`), then ship a 1.9.1 and confirm the app
-   offers it, installs it, relaunches, and raises no Keychain prompt. Then update-flake PR.
+2. 1.9.0 is installed on n0 (no prompt, Check now works). Remaining live check: ship the next
+   release (1.9.1) and confirm 1.9.0 offers it, installs it, relaunches, and raises no Keychain
+   prompt. Then update-flake PR.
 3. Start v1.10 widgets: brainstorm, then plan in docs/plans/. First spike: does a Developer ID
    widget extension with a team-prefixed App Group (`Q4PR8D5TG8.*`) load with no
    provisioning profile?
