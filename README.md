@@ -103,6 +103,13 @@ To remove history deliberately, `brew uninstall --zap claudeglance` clears both
 locations; a plain uninstall leaves them, which is what makes a reinstall pick up
 where you left off.
 
+## Copy usage
+
+**Copy usage** in the menu puts one line on the clipboard, ready to paste into a
+chat or an issue: `Claude usage: 5h 35% (resets 2:40 PM) · 7d 71% (resets Thu 9:00 AM)`.
+It always shows usage (not the remaining toggle), and reset times are clock times so
+the line stays right after it's pasted.
+
 ## Wrapped card
 
 **Share Wrapped card…** (in the menu, or the **Share Wrapped** button on the

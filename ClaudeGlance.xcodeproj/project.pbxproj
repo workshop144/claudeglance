@@ -25,7 +25,9 @@
 		513B1D3A50992861B757990A /* SessionGrade.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F94FF2A4B0577DE427D40BD /* SessionGrade.swift */; };
 		555CE50366E519569631B64A /* claudeglance-statusline.sh in Resources */ = {isa = PBXBuildFile; fileRef = 43285A0918E2B6249471B9C3 /* claudeglance-statusline.sh */; };
 		5A61FB1F6E2DE28695AF728A /* UpdateController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C773E9D7AF6768F43E3F7DB /* UpdateController.swift */; };
+		5F397E16067A7A809C810275 /* CopyUsage.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFB13756E77042753C1B7CAB /* CopyUsage.swift */; };
 		641791CDCB279ABBC08D042E /* UsageServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1949DB119DBBF5FE0F65D2A4 /* UsageServiceTests.swift */; };
+		649FAE11AF39EEF562F8092E /* CopyUsageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F780EF52D0E533DE7C7EB1CB /* CopyUsageTests.swift */; };
 		67595229FD19EE3BDF827CDE /* UpdatePolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DA46D8F9DC7D8576E2BA10C /* UpdatePolicyTests.swift */; };
 		6D214E56F105333C2AA79C24 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73C3777959157876E1139AF1 /* AppDelegate.swift */; };
 		6E7959CD2F34813603847D4E /* WrappedCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD69DF6900409BF9A03F064A /* WrappedCard.swift */; };
@@ -109,10 +111,12 @@
 		B1517703E21CE6FD07CD0FE7 /* SettingsManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsManager.swift; sourceTree = "<group>"; };
 		B36FB16856DC48803542CAE5 /* HistoryPersistenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryPersistenceTests.swift; sourceTree = "<group>"; };
 		B7122E4ED4E2E86D4A2CC15E /* StatusLineExportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusLineExportTests.swift; sourceTree = "<group>"; };
+		BFB13756E77042753C1B7CAB /* CopyUsage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CopyUsage.swift; sourceTree = "<group>"; };
 		CD69DF6900409BF9A03F064A /* WrappedCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WrappedCard.swift; sourceTree = "<group>"; };
 		D200048597B4157291EE1A2F /* UsageData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageData.swift; sourceTree = "<group>"; };
 		D3FF9EBD17B7B96B3A223C27 /* WrappedCardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WrappedCardTests.swift; sourceTree = "<group>"; };
 		F4F0004C2C97093175FCCF74 /* PlanFitTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanFitTests.swift; sourceTree = "<group>"; };
+		F780EF52D0E533DE7C7EB1CB /* CopyUsageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CopyUsageTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -158,6 +162,7 @@
 				A990F191E512F052132FC6BF /* BurnRate.swift */,
 				49ACE0A9954AE2900B722F7A /* ClaudePaths.swift */,
 				4398E2F05CF55A6F687BA545 /* ContextWindowService.swift */,
+				BFB13756E77042753C1B7CAB /* CopyUsage.swift */,
 				15B60109596823E8B3049AE5 /* DashboardView.swift */,
 				4833BF2BAC908370F76F3D12 /* HistoryBackup.swift */,
 				A151385E73DAC680D30C981D /* HistoryStorage.swift */,
@@ -209,6 +214,7 @@
 		E6DB70BE103B4934B0ABABD9 /* Tests */ = {
 			isa = PBXGroup;
 			children = (
+				F780EF52D0E533DE7C7EB1CB /* CopyUsageTests.swift */,
 				B36FB16856DC48803542CAE5 /* HistoryPersistenceTests.swift */,
 				A36FA88E079EA2A96CE3E701 /* OAuthLoginTests.swift */,
 				F4F0004C2C97093175FCCF74 /* PlanFitTests.swift */,
@@ -323,6 +329,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				649FAE11AF39EEF562F8092E /* CopyUsageTests.swift in Sources */,
 				C3494525D1305C4F2BF31FE9 /* HistoryPersistenceTests.swift in Sources */,
 				DC313BEF77D3899745D72858 /* OAuthLoginTests.swift in Sources */,
 				CE3D6DABD601B48FB4D64469 /* PlanFitTests.swift in Sources */,
@@ -346,6 +353,7 @@
 				F228D6812CD9ABAA0B73B62A /* BurnRate.swift in Sources */,
 				71334E3131A76CB33D721E33 /* ClaudePaths.swift in Sources */,
 				4E2D274727CD82AF9428F3B1 /* ContextWindowService.swift in Sources */,
+				5F397E16067A7A809C810275 /* CopyUsage.swift in Sources */,
 				A8F5786D359DC59F12661A93 /* DashboardView.swift in Sources */,
 				B9BB427F4B25FF58AF2F12BE /* HistoryBackup.swift in Sources */,
 				FA56861CCC28E18AC4658376 /* HistoryStorage.swift in Sources */,
@@ -443,7 +451,7 @@
 				GIT_BRANCH = "";
 				GIT_COMMIT = "";
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
-				MARKETING_VERSION = 1.9.0;
+				MARKETING_VERSION = 1.9.1;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -571,7 +579,7 @@
 				GIT_BRANCH = "";
 				GIT_COMMIT = "";
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
-				MARKETING_VERSION = 1.9.0;
+				MARKETING_VERSION = 1.9.1;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = NO;

@@ -4,6 +4,15 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.1] — Copy usage
+
+### Added
+- **Copy usage.** A new menu item copies your current usage as one line, ready
+  to paste into a chat or an issue, for example
+  `Claude usage: 5h 35% (resets 2:40 PM) · 7d 71% (resets Thu 9:00 AM)`.
+  Reset times are clock times, so the line stays right after you paste it.
+  It shows once usage has loaded.
+
 ## [1.9.0] — Updates itself
 
 ### Added
