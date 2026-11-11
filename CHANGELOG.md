@@ -4,6 +4,19 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- The status line set up from Settings now works when your home folder name
+  has a space or quote in it, and the copied settings.json snippet is always
+  valid JSON.
+
+### Security
+- If Claude ever refuses a sign-in for a missing permission, ClaudeGlance asks
+  for the wider permission for 30 days only, then goes back to the smallest one.
+  It also only reacts to a real "missing scope" answer, not to any refusal.
+- Releases can only be built from reviewed code on main.
+
 ## [1.9.1] — Copy usage
 
 ### Added

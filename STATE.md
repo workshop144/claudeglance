@@ -1,6 +1,6 @@
 # Current Build State
 
-Last updated: 2026-11-11 by Claude: v1.9.1 released (copy usage [31]); flake re-pinned. Waiting on the operator for the first live Sparkle update (1.9.0 to 1.9.1).
+Last updated: 2026-11-10 by Claude: security sweep leftovers (release main-gate and `release` environment, L5; expiring scope fallback, L3; quoted statusline command, L9; Sparkle path read). Unreleased: ships in the next version. Still waiting on the operator for the first live Sparkle update (1.9.0 to 1.9.1).
 
 ## Phases (release lines)
 
@@ -127,21 +127,32 @@ Last updated: 2026-11-11 by Claude: v1.9.1 released (copy usage [31]); flake re-
   request state (v1.7.4, PR #1 / #5). Tokens live in the app's own Keychain item
   `ClaudeGlance-credentials`, re-created under the running build at each launch (v1.7.6, PR #11).
   Signed out, the menu bar shows a locked ring and "Sign in" (v1.8.0, PR #16).
-- Builds are ad-hoc signed with the hardened runtime; CI and release fail without it
-  (`scripts/check-hardened-runtime.sh`, v1.7.5, PR #9). Not notarized.
+- Builds have the hardened runtime; CI and release fail without it
+  (`scripts/check-hardened-runtime.sh`, v1.7.5, PR #9). CI builds are ad-hoc signed; releases
+  are Developer ID signed and notarized since 1.8.4.
 - Release provenance (security L2): release.yml attests ClaudeGlance.dmg with
   actions/attest-build-provenance (SHA-pinned v4.2.2; job has id-token and attestations write).
   README documents `gh attestation verify ClaudeGlance.dmg -R workshop144/claudeglance`.
   `scripts/check-workflows.sh` (CI Unit tests job and `just lint`) fails on any `uses:` not
   pinned to a 40-char SHA, or if the attestation step or its permissions go missing.
 - Release workflow publishes the DMG and updates the Homebrew tap with a tap-scoped
-  deploy key (PR #8). Developer ID signing and notarization steps exist but are skipped
-  until the Apple secrets are set.
+  deploy key (PR #8), Developer ID signed and notarized (secrets set 2026-11-10).
+- Release gate (2026-11-10, review L5, D-013): release.yml's first job `main-gate` (Linux)
+  fails unless `git merge-base --is-ancestor "$GITHUB_SHA" origin/main`; `release` and
+  `homebrew-tap` both need it and run in the `release` GitHub environment, whose deployment
+  policy allows only `v*` tags (created by gh api). Tag ruleset `release-tags-admin-only`
+  (id 26997972) blocks creating `v*` tags for everyone but the admin role (the operator's
+  `git push origin vX.Y.Z` still works); `protect-release-tags` (24057474) still blocks
+  deleting or moving them, no bypass. `scripts/check-workflows.sh` fails if the ancestor
+  check, either `needs`, or either `environment: release` goes missing. Not yet exercised by
+  a real tag: the next release is the live check (expect a "Tagged commit is on main" job
+  and a `release` deployment). Undo: drop `main-gate`, `environment:` and the guard lines;
+  `gh api -X DELETE repos/workshop144/claudeglance/rulesets/26997972`.
 - CI (`.github/workflows/ci.yml`): unit tests, hardened Release build, `nix build` of the
   flake, and (from this change) the STATE.md guard on PRs.
 - CI and release run on the `macos-26` runner (Xcode 26.6 default) since 2026-11-06; they were
   on `macos-15` (Xcode 16). Swift language mode stays 5.9 (Swift 6 strict concurrency not adopted).
-  release.yml has not yet run on macos-26 (first run is the next `v*` tag). make-dmg.sh bounds
+  release.yml has run on macos-26 since 1.8.4. make-dmg.sh bounds
   the Finder osascript with a watchdog (OSA_TIMEOUT, default 120s) and the Build DMG step has
   timeout-minutes: 15, so an Apple Events hang falls back to an unstyled DMG. If the tagged
   release fails on macos-26, set runs-on back to macos-15 and re-tag (it fails before publishing).
@@ -182,6 +193,49 @@ Round r2 (2026-11-07 review), all fixed:
 - L7 (Info) whole-second `resets_at` parsed to nil: fixed, PR #31, v1.8.3.
 - L8 (Info) context window overstated for older Opus/Sonnet: fixed, PR #31, v1.8.3.
 
+Max-effort code review (2026-11-07, claudeglance-code-review-max.md) L1 to L9: L1, L2, L4,
+L6, L7, L8 are the r2 items above; L5 is r2 L5 below. Closed 2026-11-10:
+- L3 (Low) sticky, loosely triggered scope fallback: fixed. A scope refusal now needs a 403
+  whose body says `insufficient_scope`, or `permission_error` plus "scope"; the fallback is a
+  date (`oauthScopeFallbackSince`), active for 30 days, after which sign-ins ask for
+  `user:profile` alone again. The old Bool `oauthScopeFallback` migrates to a date on first
+  read and is removed. Tests: testScopeFallbackExpires, testScopeFallbackRecordsAndClearsInDefaults,
+  testLegacyScopeFallbackFlagMigratesToAnExpiringDate, testMissingScopeRejectionDetection.
+  Not done: a Settings "reset sign-in permissions" control (the expiry does the same job).
+- L9 (Low) statusline command not shell-quoted, snippet not JSON-escaped: fixed.
+  `StatusLineSetup.command` is the single-quoted path (`'` as `'\''`); `snippet` is built with
+  JSONSerialization. Tests: testStatusLineCommandIsShellQuoted (runs /bin/sh on a path with a
+  space, quote, `$` and `"`), testStatusLineSnippetEscapesJSON. Users who wired the statusline
+  before keep the bare path until they press "Wire into settings.json" again (harmless unless
+  their home path has a space).
+- r2 L5 / code-review L5 (Low) any `v*` tag on any branch shipped a signed, notarized Sparkle
+  update: fixed (see "Release gate" above). Evidence: `scripts/check-workflows.sh` passes and
+  fails when `environment: release` is changed (mutation run); `git merge-base --is-ancestor`
+  exits 1 for a commit off main and 0 for main; `gh api .../environments/release/deployment-branch-policies`
+  lists `v*` (tag); ruleset 26997972 has rule `creation` with RepositoryRole admin bypass.
+  `just check` 2026-11-10: 337 tests, 0 failures; hardened runtime check passes.
+
+Sparkle update path read (1.9.0/1.9.1, 2026-11-10), no new Medium or higher:
+- Good: feed is https on github.com (`releases/latest/download/appcast.xml`); the app sets
+  SURequireSignedFeed and SUVerifyUpdateBeforeExtraction, so the feed and the DMG are both
+  EdDSA checked before anything is unpacked; Sparkle 2.10.1 is pinned exactly (Package.resolved
+  revision ab7d712); release.yml pins the sign_update tarball by sha256, refuses a
+  SPARKLE_ED_PRIVATE_KEY whose public half differs from SUPublicEDKey, verifies both signatures
+  after signing, and checks tag == CFBundleShortVersionString == CFBundleVersion. Sparkle also
+  checks the update's Developer ID code signature against the running app, so a leaked EdDSA
+  key alone cannot ship an update (the Developer ID cert is needed too). Sparkle never installs
+  a lower version, so marking an old release "latest" cannot downgrade users. The key is
+  passed by stdin, never written to disk in CI. Updater off in /nix/store and for builds not
+  signed by Q4PR8D5TG8. On n0 the key file is mode 0600 in a 0700 folder.
+- S1 (Low, operator ask): the Apple, Sparkle and tap secrets are repo secrets, so a workflow on
+  any branch (needs a write credential that can push a workflow) could read them. Now that the
+  `release` environment exists, move them there: re-run `set-secrets.sh`, `set-sparkle-secret.sh`
+  and the tap key setup with `gh secret set --env release`, then delete the repo-level copies.
+  An agent did not move them (it would mean handling the private keys). Until then the
+  main-gate and the tag creation rule cover the tag path.
+- S2 (Info, carried r2 I7): `id-token: write` covers the whole release job, including the
+  SHA-pinned softprops release action. It cannot change the attested DMG digest.
+
 Round r1 findings: L1 fixed (PR #27, v1.8.2), L2 fixed (PR #28, v1.8.2), L3 fixed (GitHub
 ruleset change, no repo diff).
 
@@ -202,8 +256,8 @@ Open Lows (documented, count toward A):
   yet (an agent does not grant OAuth consent unasked). Next step: on 1.8.3, sign out,
   sign in, check that usage loads. If the server refuses it for scope, the app falls back on
   its own (one extra sign-in). If the authorize page itself errors, revert the scope line.
-- Blocked on money: DMG not notarized (Apple Developer account, see below). Provenance
-  attestation and the brew/nix sha256 pins cover tampering in the meantime.
+- Done (was blocked on money): DMG not notarized. Signed and notarized since 1.8.4
+  (2026-11-10, `spctl`: "Notarized Developer ID").
 - Accepted: `pull_request` rule needs 0 approvals (single maintainer; autonomous merges).
   Required CI checks are the enforced gate.
 

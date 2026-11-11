@@ -23,18 +23,26 @@ enum StatusLineSetup {
     /// Claude Code's settings file we wire the statusLine into.
     static var settingsURL: URL { claudeDir.appendingPathComponent("settings.json") }
 
-    /// The command Claude Code runs — an absolute path so it works regardless of
-    /// how the statusline command is invoked (no reliance on `~` expansion).
-    static var command: String { installURL.path }
+    /// The command Claude Code runs through a shell: the absolute install path (no
+    /// reliance on `~` expansion), single-quoted so a home folder with spaces or
+    /// shell metacharacters still runs the script (review L9).
+    static var command: String { shellCommand(forPath: installURL.path) }
+
+    /// A path as one shell word: wrapped in single quotes, each `'` written as `'\''`.
+    static func shellCommand(forPath path: String) -> String {
+        "'" + path.replacingOccurrences(of: "'", with: #"'\''"#) + "'"
+    }
 
     /// The settings.json fragment shown to the user / copied to the clipboard.
-    static var snippet: String {
-        """
-        "statusLine": {
-          "type": "command",
-          "command": "\(command)"
-        }
-        """
+    static var snippet: String { snippet(command: command) }
+
+    /// Built with JSONSerialization so a `"` or `\` in the command stays valid JSON.
+    static func snippet(command: String) -> String {
+        let line: [String: String] = ["type": "command", "command": command]
+        guard let data = try? JSONSerialization.data(
+                withJSONObject: line, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]),
+              let object = String(data: data, encoding: .utf8) else { return "" }
+        return "\"statusLine\": " + object
     }
 
     // MARK: - Install the script

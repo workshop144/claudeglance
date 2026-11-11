@@ -37,10 +37,35 @@ enum OAuthConfig {
     /// Used only after the usage endpoint rejected a minimal-scope token for a
     /// missing scope (see `isMissingScopeRejection`); still never org:create_api_key.
     static let fallbackScopes = "user:profile user:inference"
-    /// UserDefaults flag set when the fallback is needed; the next sign-in uses it.
+    /// Legacy UserDefaults Bool (1.8.2 to 1.9.1): set once, never cleared. Read only to
+    /// migrate it to `scopeFallbackDateKey`, then removed (review L3).
     static let scopeFallbackKey = "oauthScopeFallback"
+    /// When the usage endpoint last refused a minimal-scope token. Sign-ins within
+    /// `scopeFallbackLifetime` of it ask for `fallbackScopes`; after that the app tries
+    /// `user:profile` alone again, so one refusal never widens the scope for good.
+    static let scopeFallbackDateKey = "oauthScopeFallbackSince"
+    static let scopeFallbackLifetime: TimeInterval = 30 * 24 * 3600
     static var scopes: String {
-        oauthScopes(fallback: UserDefaults.standard.bool(forKey: scopeFallbackKey))
+        oauthScopes(fallback: scopeFallbackActive())
+    }
+
+    /// Whether sign-ins should request `fallbackScopes` now. Migrates the legacy Bool.
+    static func scopeFallbackActive(defaults: UserDefaults = .standard, now: Date = Date()) -> Bool {
+        if defaults.object(forKey: scopeFallbackKey) != nil {
+            if defaults.bool(forKey: scopeFallbackKey), defaults.object(forKey: scopeFallbackDateKey) == nil {
+                defaults.set(now, forKey: scopeFallbackDateKey)
+            }
+            defaults.removeObject(forKey: scopeFallbackKey)
+        }
+        return isScopeFallbackActive(since: defaults.object(forKey: scopeFallbackDateKey) as? Date,
+                                     now: now, lifetime: scopeFallbackLifetime)
+    }
+
+    /// Record a missing-scope refusal: the next sign-ins (for `scopeFallbackLifetime`)
+    /// request `fallbackScopes`.
+    static func recordScopeFallback(defaults: UserDefaults = .standard, now: Date = Date()) {
+        defaults.removeObject(forKey: scopeFallbackKey)
+        defaults.set(now, forKey: scopeFallbackDateKey)
     }
 
     /// Our own Keychain item — created and owned by ClaudeGlance, so reading it
@@ -57,12 +82,25 @@ func oauthScopes(fallback: Bool) -> String {
     fallback ? OAuthConfig.fallbackScopes : OAuthConfig.minimalScopes
 }
 
+/// Whether a scope fallback recorded at `since` still applies at `now`. A date in the
+/// future (clock moved back) does not count: the cost is one extra sign-in, never a
+/// wider scope than needed.
+func isScopeFallbackActive(since: Date?, now: Date, lifetime: TimeInterval) -> Bool {
+    guard let since else { return false }
+    let age = now.timeIntervalSince(since)
+    return age >= 0 && age < lifetime
+}
+
 /// Whether a failed usage fetch is the server refusing the token for a missing
-/// scope (a 403 whose body names a scope), which a refresh can't fix: the user
-/// has to sign in again with the fallback scopes.
+/// scope, which a refresh can't fix: the user has to sign in again with the
+/// fallback scopes. Needs a 403 whose body is an authorization error
+/// (`permission_error` or `insufficient_scope`) that names a scope; any other 403
+/// body, however worded, is an ordinary auth failure (review L3).
 func isMissingScopeRejection(_ error: NSError) -> Bool {
     guard error.domain == "OAuthUsage", error.code == 403 else { return false }
-    return error.localizedDescription.lowercased().contains("scope")
+    let body = error.localizedDescription.lowercased()
+    return body.contains("insufficient_scope")
+        || (body.contains("permission_error") && body.contains("scope"))
 }
 
 // MARK: - PKCE & callback parsing (pure, testable)

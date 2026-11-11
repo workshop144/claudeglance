@@ -452,10 +452,10 @@ final class UsageService: ObservableObject {
                 // A minimal-scope token the endpoint refuses for its scope: switch
                 // the next sign-in to the fallback scopes once and ask for it.
                 let needsWiderScope = isMissingScopeRejection(error)
-                    && !UserDefaults.standard.bool(forKey: OAuthConfig.scopeFallbackKey)
+                    && !OAuthConfig.scopeFallbackActive()
                 await MainActor.run {
                     if needsWiderScope {
-                        UserDefaults.standard.set(true, forKey: OAuthConfig.scopeFallbackKey)
+                        OAuthConfig.recordScopeFallback()
                         OAuthLoginService.shared.signOut()
                         self.error = "ClaudeGlance needs one more permission to read usage. Sign in to Claude again in Settings."
                         self.scheduleTimer(interval: self.normalInterval)
