@@ -1,6 +1,6 @@
 # Current Build State
 
-Last updated: 2026-11-11 by Claude: v1.9.0 released (Sparkle auto-update); flake re-pinned to 1.9.0.
+Last updated: 2026-11-11 by Claude: v1.9.0 released and live-checked; widget App Group spike passed (no profiles needed).
 
 ## Phases (release lines)
 
@@ -238,9 +238,15 @@ v1.9.0, in order:
 2. 1.9.0 is installed on n0 (no prompt, Check now works). Remaining live check: ship the next
    release (1.9.1) and confirm 1.9.0 offers it, installs it, relaunches, and raises no Keychain
    prompt. Then update-flake PR.
-3. Start v1.10 widgets: brainstorm, then plan in docs/plans/. First spike: does a Developer ID
-   widget extension with a team-prefixed App Group (`Q4PR8D5TG8.*`) load with no
-   provisioning profile?
+3. v1.10 widgets: brainstorm, then plan in docs/plans/. Spike answered (2026-11-11, on n0,
+   throwaway project outside the repo): a Developer ID signed, hardened, sandboxed widget
+   extension with App Group `Q4PR8D5TG8.io.github.broots144.WidgetSpike` and no provisioning
+   profile archives, exports (developer-id, manual), registers with pluginkit, renders on the
+   desktop, reads a file the unsandboxed host app wrote to the group container and writes one
+   back. No "access data from other apps" prompt, no sandbox denials. So v1.10 needs no
+   profiles and no new secrets. Not checked: notarization of an app carrying the widget (first
+   v1.10 release run; the Gatekeeper step fails closed). Spike bundle ids
+   io.github.broots144.WidgetSpike(.Widget) are throwaway; never reuse them.
 
 Older items:
 
