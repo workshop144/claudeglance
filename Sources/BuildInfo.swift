@@ -22,7 +22,7 @@ struct BuildInfo {
 
     var label: String { buildInfoLabel(version: version, branch: branch, commit: commit) }
     var url: URL { buildInfoURL(repo: Self.repoURL, branch: branch, commit: commit) }
-    /// "prod" for release/main builds, "dev" for feature/develop dev builds.
+    /// "prod" for release/main builds, "dev" for feature-branch dev builds.
     var channel: String { buildChannel(branch: branch) }
     var helpText: String {
         if let branch, let commit { return "Built from \(branch) @ \(commit) — open on GitHub" }
@@ -46,7 +46,7 @@ func buildInfoLabel(version: String, branch: String?, commit: String?) -> String
 
 /// The release channel from the build's branch: release builds (tagged on `main`,
 /// which pass no branch) and `main` itself are "prod"; everything else — a
-/// dev-install from a `feature/*` or `develop` branch — is "dev".
+/// dev-install from a feature branch — is "dev".
 func buildChannel(branch: String?) -> String {
     guard let branch, !branch.isEmpty, branch != "main" else { return "prod" }
     return "dev"

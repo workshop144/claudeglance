@@ -82,3 +82,12 @@ first job fails unless the tagged commit is an ancestor of origin/main; the buil
 jobs run in the `release` environment (deploys from `v*` tags only); a tag ruleset limits
 creating `v*` tags to the admin role. check-workflows.sh keeps the gate from being dropped.
 Next step, the operator's: move the signing, Sparkle and tap secrets into that environment.
+
+## D-013: No develop branch; betas are a Sparkle channel from main (2026-11-11)
+`develop` is deleted (last commit 51a1a52; nothing on it was missing from main). Work lands
+by PR to main (D-008) and releases tag main. If outside testers appear, betas ship as
+pre-release tags on main (`vX.Y.Z-beta.N`) into a Sparkle `beta` channel that users opt
+into from Settings; the Homebrew job already rejects non-plain versions. That needs the
+appcast to carry the newest stable and newest beta items, because `releases/latest` skips
+pre-releases (D-011). Not built until there is demand. A long-lived branch is not a
+distribution channel and caused merge conflicts before (LESSONS.md, 2026-06-12).

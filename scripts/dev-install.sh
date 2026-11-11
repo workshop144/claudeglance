@@ -6,8 +6,8 @@
 # relaunches it, and posts a notification so you can try the change immediately.
 #
 # This is NOT a release: no Developer ID signing, no notarization, no git tag,
-# no Homebrew update. Those happen only when `develop` merges to `main` and a
-# `vX.Y.Z` tag fires .github/workflows/release.yml.
+# no Homebrew update. Those happen only when a `vX.Y.Z` tag on `main` fires
+# .github/workflows/release.yml.
 #
 # Note: this overwrites /Applications/ClaudeGlance.app even if Homebrew installed
 # it — brew will still think the cask version is installed until the next

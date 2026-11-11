@@ -11,8 +11,8 @@
   outputs = { self, nixpkgs }:
     let
       # Tracks the latest *public* release. Bump both together when a new version
-      # ships — scripts/update-flake.sh does it from the released DMG. (ClaudeGlance
-      # versions on `develop` between public releases; this points at the release.)
+      # ships — scripts/update-flake.sh does it from the released DMG. (main can be
+      # ahead of the last release; this points at the release.)
       version = "1.9.1";
       # SRI hash of that release's ClaudeGlance.dmg — the same artifact the Homebrew
       # cask pins (hex 228913f8…). Verify with: scripts/update-flake.sh <version>.

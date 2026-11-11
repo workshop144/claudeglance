@@ -8,9 +8,9 @@
 # keeps the Nix package in step with the Homebrew cask, which CI updates itself.
 #
 # Done as a manual post-release step (not in CI) on purpose: flake.nix lives in
-# this repo, so auto-committing it from the tag-triggered release would create the
-# same develop↔main merge conflicts ROADMAP.md does. Bumping it by hand on the
-# next develop change keeps history clean.
+# this repo, and auto-committing it from the tag-triggered release would push to
+# main around the PR flow and the protect-main ruleset. A small follow-up PR keeps
+# history clean.
 #
 # It also refreshes flake.lock (the nixpkgs commit the build tooling comes from,
 # review L4) so the lock moves forward once per release instead of floating.

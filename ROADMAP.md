@@ -29,6 +29,7 @@ Status detail lives in [STATE.md](STATE.md); decisions in [docs/DECISIONS.md](do
 | v1.9.1 | Copy usage to clipboard [31] | ✅ | shipped v1.9.1 |
 | Hardening | Timezones, multi-monitor, big-jsonl streaming | ⬜ | ongoing, test first |
 | Exploratory | Prepaid balance [23], multi-account [24], widgets [25] | ⏸ | validate demand first (widgets: D-012) |
+| Exploratory | Sparkle beta channel | ⏸ | when outside testers exist (D-013) |
 
 ---
 
