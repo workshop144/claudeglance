@@ -1,6 +1,6 @@
 # Current Build State
 
-Last updated: 2026-11-11 by Claude: v1.9.0 released and live-checked; widget App Group spike passed (no profiles needed).
+Last updated: 2026-11-11 by Claude: v1.9.0 released and live-checked; widgets parked after a passing App Group spike (D-012).
 
 ## Phases (release lines)
 
@@ -17,8 +17,7 @@ Last updated: 2026-11-11 by Claude: v1.9.0 released and live-checked; widget App
 - [x] v1.8.3 Review fixes (released 2026-11-07): session-generation guards, token error text, reset parsing, context window
 - [x] v1.8.4 Signed and notarized [6] (released 2026-11-10), plan in docs/plans/v1.8.4-notarize.md
 - [x] v1.9.0 Sparkle auto-update [13] (released 2026-11-11, PR #37), plan in docs/plans/v1.9-sparkle.md (D-010, D-011)
-- [ ] v1.10.0 WidgetKit [25]: after 1.9.0 ships (D-010). Not started.
-- [ ] Exploratory: real prepaid balance [23], multi-account [24]. Not started, demand unvalidated.
+- [ ] Exploratory: real prepaid balance [23], multi-account [24], WidgetKit [25] (parked, D-012). Not started, demand unvalidated.
 
 ## What is true now
 
@@ -238,14 +237,15 @@ v1.9.0, in order:
 2. 1.9.0 is installed on n0 (no prompt, Check now works). Remaining live check: ship the next
    release (1.9.1) and confirm 1.9.0 offers it, installs it, relaunches, and raises no Keychain
    prompt. Then update-flake PR.
-3. v1.10 widgets: brainstorm, then plan in docs/plans/. Spike answered (2026-11-11, on n0,
+3. Widgets [25] parked (D-012): the operator would not use one over the menu bar. If a user
+   asks for widgets, start from this spike result. Spike (2026-11-11, on n0, removed after,
    throwaway project outside the repo): a Developer ID signed, hardened, sandboxed widget
    extension with App Group `Q4PR8D5TG8.io.github.broots144.WidgetSpike` and no provisioning
    profile archives, exports (developer-id, manual), registers with pluginkit, renders on the
    desktop, reads a file the unsandboxed host app wrote to the group container and writes one
    back. No "access data from other apps" prompt, no sandbox denials. So v1.10 needs no
-   profiles and no new secrets. Not checked: notarization of an app carrying the widget (first
-   v1.10 release run; the Gatekeeper step fails closed). Spike bundle ids
+   profiles and no new secrets. Not checked: notarization of an app carrying the widget (the
+   release Gatekeeper step fails closed). Spike bundle ids
    io.github.broots144.WidgetSpike(.Widget) are throwaway; never reuse them.
 
 Older items:
