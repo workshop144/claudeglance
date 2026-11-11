@@ -83,6 +83,49 @@ final class AuthorizationURLTests: XCTestCase {
         XCTAssertFalse(isMissingScopeRejection(err("OAuthUsage", 403, #"{"error":"forbidden"}"#)))
         XCTAssertFalse(isMissingScopeRejection(err("OAuthUsage", 401, "invalid scope")))
         XCTAssertFalse(isMissingScopeRejection(err("OAuthToken", 403, "scope")))
+        // Review L3: a 403 that merely mentions "scope" is not a scope refusal.
+        XCTAssertFalse(isMissingScopeRejection(err("OAuthUsage", 403, "outside the allowed scope of this region")))
+        XCTAssertTrue(isMissingScopeRejection(err("OAuthUsage", 403, #"{"error":"insufficient_scope"}"#)))
+    }
+
+    // Review L3: the fallback expires, so one refusal never widens the scope for good.
+    func testScopeFallbackExpires() {
+        let t0 = Date(timeIntervalSince1970: 1_800_000_000)
+        let life = OAuthConfig.scopeFallbackLifetime
+        XCTAssertFalse(isScopeFallbackActive(since: nil, now: t0, lifetime: life))
+        XCTAssertTrue(isScopeFallbackActive(since: t0, now: t0, lifetime: life))
+        XCTAssertTrue(isScopeFallbackActive(since: t0, now: t0.addingTimeInterval(life - 1), lifetime: life))
+        XCTAssertFalse(isScopeFallbackActive(since: t0, now: t0.addingTimeInterval(life), lifetime: life))
+        XCTAssertFalse(isScopeFallbackActive(since: t0.addingTimeInterval(60), now: t0, lifetime: life))
+    }
+
+    func testScopeFallbackRecordsAndClearsInDefaults() throws {
+        let suite = "ScopeFallbackTests-\(UUID().uuidString)"
+        let d = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { d.removePersistentDomain(forName: suite) }
+        let t0 = Date(timeIntervalSince1970: 1_800_000_000)
+        XCTAssertFalse(OAuthConfig.scopeFallbackActive(defaults: d, now: t0))
+        OAuthConfig.recordScopeFallback(defaults: d, now: t0)
+        XCTAssertTrue(OAuthConfig.scopeFallbackActive(defaults: d, now: t0.addingTimeInterval(3600)))
+        XCTAssertFalse(OAuthConfig.scopeFallbackActive(
+            defaults: d, now: t0.addingTimeInterval(OAuthConfig.scopeFallbackLifetime + 1)))
+    }
+
+    func testLegacyScopeFallbackFlagMigratesToAnExpiringDate() throws {
+        let suite = "ScopeFallbackTests-\(UUID().uuidString)"
+        let d = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { d.removePersistentDomain(forName: suite) }
+        let t0 = Date(timeIntervalSince1970: 1_800_000_000)
+        d.set(true, forKey: OAuthConfig.scopeFallbackKey)
+        XCTAssertTrue(OAuthConfig.scopeFallbackActive(defaults: d, now: t0))
+        XCTAssertNil(d.object(forKey: OAuthConfig.scopeFallbackKey))
+        XCTAssertFalse(OAuthConfig.scopeFallbackActive(
+            defaults: d, now: t0.addingTimeInterval(OAuthConfig.scopeFallbackLifetime)))
+        // A legacy `false` is simply dropped.
+        d.set(false, forKey: OAuthConfig.scopeFallbackKey)
+        d.removeObject(forKey: OAuthConfig.scopeFallbackDateKey)
+        XCTAssertFalse(OAuthConfig.scopeFallbackActive(defaults: d, now: t0))
+        XCTAssertNil(d.object(forKey: OAuthConfig.scopeFallbackKey))
     }
 }
 

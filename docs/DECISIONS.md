@@ -74,3 +74,11 @@ operator would not look at a widget instead of the menu bar, it was the lowest r
 glance surface. A spike showed it is cheap to revive: a Developer ID widget with a
 team-prefixed App Group needs no provisioning profile or new secret (STATE.md, Next).
 Revisit on a user request.
+
+## D-013: Releases ship from main only, inside a `release` environment (2026-11-10)
+Since 1.9.0 a `v*` tag pushes a signed, notarized update to every installed copy through
+Sparkle, so a tag on an unreviewed branch would reach users within a day. release.yml's
+first job fails unless the tagged commit is an ancestor of origin/main; the build and tap
+jobs run in the `release` environment (deploys from `v*` tags only); a tag ruleset limits
+creating `v*` tags to the admin role. check-workflows.sh keeps the gate from being dropped.
+Next step, the operator's: move the signing, Sparkle and tap secrets into that environment.

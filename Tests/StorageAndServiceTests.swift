@@ -448,6 +448,33 @@ final class StatusLineInstallTests: XCTestCase {
         XCTAssertNil(result.backup)
         XCTAssertFalse(result.replacedExisting)
         XCTAssertTrue(StatusLineSetup.hasStatusLine(try Data(contentsOf: settings)))
-        XCTAssertTrue(StatusLineSetup.snippet.contains(StatusLineSetup.command))
+        let snippetObject = try XCTUnwrap(JSONSerialization.jsonObject(
+            with: Data(("{" + StatusLineSetup.snippet + "}").utf8)) as? [String: [String: String]])
+        XCTAssertEqual(snippetObject["statusLine"]?["command"], StatusLineSetup.command)
+    }
+
+    // Review L9: the command is one shell word and the snippet stays valid JSON.
+    func testStatusLineCommandIsShellQuoted() throws {
+        XCTAssertEqual(StatusLineSetup.shellCommand(forPath: "/Users/a b/.claude/s.sh"), "'/Users/a b/.claude/s.sh'")
+        XCTAssertEqual(StatusLineSetup.shellCommand(forPath: "/Users/o'k/s.sh"), #"'/Users/o'\''k/s.sh'"#)
+        XCTAssertTrue(StatusLineSetup.command.hasPrefix("'") && StatusLineSetup.command.hasSuffix("'"))
+
+        // The shell sees exactly the original path, even with a quote, space and $.
+        let path = #"/tmp/we ird'$HOME"x\.sh"#
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/bin/sh")
+        p.arguments = ["-c", "printf %s " + StatusLineSetup.shellCommand(forPath: path)]
+        let out = Pipe(); p.standardOutput = out
+        try p.run(); p.waitUntilExit()
+        XCTAssertEqual(String(data: out.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8), path)
+    }
+
+    func testStatusLineSnippetEscapesJSON() throws {
+        let command = #"'/Users/q"b\s/x.sh'"#
+        let text = StatusLineSetup.snippet(command: command)
+        XCTAssertTrue(text.hasPrefix(#""statusLine": "#))
+        let obj = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(("{" + text + "}").utf8))
+                                as? [String: [String: String]])
+        XCTAssertEqual(obj["statusLine"], ["type": "command", "command": command])
     }
 }

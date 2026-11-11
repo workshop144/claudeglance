@@ -8,8 +8,37 @@ on:
 permissions: {}
 
 jobs:
+  # Release integrity (security review L5): a `v*` tag ships a signed, notarized
+  # Sparkle update to every installed copy, so only a commit already on main
+  # (reviewed, CI-gated by protect-main) may be released. A tag on any other
+  # branch fails here, before any secret is in reach. Kept on Linux: git only.
+  main-gate:
+    name: Tagged commit is on main
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Require the tagged commit to be an ancestor of origin/main
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --quiet origin +refs/heads/main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::$GITHUB_REF_NAME ($GITHUB_SHA) is not on main; releases ship from main only"
+            exit 1
+          fi
+          echo "$GITHUB_REF_NAME ($GITHUB_SHA) is on main"
+
   release:
+    needs: main-gate
     runs-on: macos-26
+    # Signing, notarization and Sparkle secrets: the `release` environment only
+    # deploys from `v*` tags (deployment policy), on top of the main-gate above.
+    environment: release
     permissions:
       contents: write
       # Build provenance for the DMG (security L2): a Sigstore-signed attestation
@@ -278,7 +307,8 @@ jobs:
   # A separate job so the cross-repo tap token never shares a runner, PATH or
   # environment with the build or with a third-party action.
   homebrew-tap:
-    needs: release
+    needs: [main-gate, release]
+    environment: release
     # Only bash, git and ssh: Linux, so a release never waits on scarce macOS runners
     # (the v1.8.4 tap job was cancelled after 15 minutes without one).
     runs-on: ubuntu-latest

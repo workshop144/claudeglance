@@ -25,9 +25,17 @@ done
 # Sparkle (D-011): the signed release must publish a signed appcast next to the DMG.
 grep -qE '^[[:space:]]+appcast\.xml$' "$rel" || { echo "error: $rel does not publish appcast.xml" >&2; fail=1; }
 grep -q 'sparkle-public-key.swift' "$rel" || { echo "error: $rel does not check the Sparkle key against SUPublicEDKey" >&2; fail=1; }
+# Release integrity (review L5): only a commit on main can be released, inside the
+# `release` environment (deploys from v* tags only).
+grep -q 'git merge-base --is-ancestor "$GITHUB_SHA" origin/main' "$rel" \
+  || { echo "error: $rel does not require the tagged commit to be on main" >&2; fail=1; }
+grep -qE '^    needs: main-gate$' "$rel" || { echo "error: $rel release job does not need main-gate" >&2; fail=1; }
+grep -qE '^    needs: \[main-gate, release\]$' "$rel" || { echo "error: $rel homebrew-tap job does not need main-gate" >&2; fail=1; }
+[ "$(grep -cE '^    environment: release$' "$rel")" = 2 ] \
+  || { echo "error: $rel release and homebrew-tap jobs must both run in the release environment" >&2; fail=1; }
 # Workflow-level token stays read-only / empty by default.
 grep -qE '^permissions: \{\}$' "$rel" || { echo "error: $rel must default to 'permissions: {}'" >&2; fail=1; }
 grep -qE '^permissions:$' .github/workflows/ci.yml || { echo "error: ci.yml has no top-level permissions" >&2; fail=1; }
 
-[ "$fail" = 0 ] && echo "workflows pinned; release attests provenance"
+[ "$fail" = 0 ] && echo "workflows pinned; release attests provenance and ships from main only"
 exit "$fail"
