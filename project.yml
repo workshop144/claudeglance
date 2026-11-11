@@ -6,9 +6,18 @@ options:
   xcodeVersion: "15.0"
   generateEmptyDirectories: true
 
+packages:
+  # Auto-update [13]. Exact version: release.yml downloads the same release's
+  # sign_update tool to sign the DMG and appcast (D-011).
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    exactVersion: 2.10.1
+
 settings:
   base:
-    MARKETING_VERSION: "1.8.4"
+    MARKETING_VERSION: "1.9.0"
+    # CFBundleVersion. Sparkle compares it with the appcast's sparkle:version.
+    CURRENT_PROJECT_VERSION: "$(MARKETING_VERSION)"
     SWIFT_VERSION: "5.9"
     # Build-time git provenance, surfaced in the Settings footer so it's obvious
     # which build is running while testing. Empty by default (plain Xcode ⌘R
@@ -52,6 +61,7 @@ targets:
         LSUIElement: YES
     dependencies:
       - sdk: Security.framework
+      - package: Sparkle
     entitlements:
       path: Resources/ClaudeGlance.entitlements
       properties:

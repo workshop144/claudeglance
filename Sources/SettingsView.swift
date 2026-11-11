@@ -6,6 +6,7 @@ struct SettingsView: View {
     @ObservedObject var settingsManager: SettingsManager
     @ObservedObject var usageService: UsageService
     @ObservedObject private var auth = OAuthLoginService.shared
+    @ObservedObject private var updates = UpdateController.shared
 
     // Browser-OAuth sign-in: the code the user pastes back from the callback page.
     @State private var pastedCode: String = ""
@@ -66,6 +67,7 @@ struct SettingsView: View {
                             .padding(.leading, 38)
                             .padding(.bottom, 4)
                     }
+                    updatesRow
                     rowDivider
 
                     toggleRow(icon: "menubar.rectangle", title: "Show menu-bar icon",
@@ -415,6 +417,46 @@ struct SettingsView: View {
     }
 
     // MARK: - Claude Code statusline [#27]
+
+    /// Sparkle auto-update [13]: one switch and "Check now", or one line saying why
+    /// this copy does not update itself (Nix store, development build).
+    @ViewBuilder
+    private var updatesRow: some View {
+        if let reason = updates.policy.explanation {
+            HStack(spacing: 14) {
+                rowIcon("arrow.down.circle")
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Updates")
+                        .font(.system(size: 13, weight: .medium))
+                    Text(reason)
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+                Spacer()
+            }
+            .padding(.vertical, 8)
+        } else {
+            HStack(spacing: 14) {
+                rowIcon("arrow.down.circle")
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Automatically check for updates")
+                        .font(.system(size: 13, weight: .medium))
+                    Text("Look for a new version once a day and offer to install it.")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+                Spacer()
+                HoverButton(title: "Check now") { updates.checkNow() }
+                    .disabled(!updates.canCheckForUpdates)
+                Toggle("", isOn: Binding(get: { updates.automaticallyChecks },
+                                         set: { updates.setAutomaticallyChecks($0) }))
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+                    .labelsHidden()
+            }
+            .padding(.vertical, 8)
+        }
+    }
 
     private var statusLineSection: some View {
         HStack(alignment: .top, spacing: 14) {

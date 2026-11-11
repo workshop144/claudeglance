@@ -1,6 +1,6 @@
 # Current Build State
 
-Last updated: 2026-11-10 by Claude: v1.8.4 released, the first Developer ID signed and notarized build. Flake re-pinned to 1.8.4; tap job moved to Linux.
+Last updated: 2026-11-10 by Claude: v1.9.0 Sparkle auto-update built on feat/sparkle-1.9.0 (PR open), waiting on the SPARKLE_ED_PRIVATE_KEY secret before tagging.
 
 ## Phases (release lines)
 
@@ -16,10 +16,29 @@ Last updated: 2026-11-10 by Claude: v1.8.4 released, the first Developer ID sign
 - [x] v1.8.2 Security hardening (released 2026-11-07): least-privilege scope, DMG provenance
 - [x] v1.8.3 Review fixes (released 2026-11-07): session-generation guards, token error text, reset parsing, context window
 - [x] v1.8.4 Signed and notarized [6] (released 2026-11-10), plan in docs/plans/v1.8.4-notarize.md
-- [ ] Sparkle auto-update [13], WidgetKit [25]: unblocked once 1.8.4 ships notarized (D-009).
+- [ ] v1.9.0 Sparkle auto-update [13]: built, plan in docs/plans/v1.9-sparkle.md (D-010, D-011). Not tagged.
+- [ ] v1.10.0 WidgetKit [25]: after 1.9.0 ships (D-010). Not started.
 - [ ] Exploratory: real prepaid balance [23], multi-account [24]. Not started, demand unvalidated.
 
 ## What is true now
+
+- Sparkle (1.9.0, not yet released): Sparkle 2.10.1 by SPM, exact version. Feed
+  `releases/latest/download/appcast.xml`, a one-item appcast that release.yml writes with
+  `scripts/make-appcast.sh` and signs with sign_update (feed and DMG both EdDSA signed; the
+  app sets SURequireSignedFeed and SUVerifyUpdateBeforeExtraction). The release fails if
+  SPARKLE_ED_PRIVATE_KEY is missing or its public half (`scripts/sparkle-public-key.swift`)
+  differs from the app's SUPublicEDKey `GYUVGOpOPMhboEaFgjIXDbE8SJY8mcvWBlpOhqzLIYg=`.
+  Key generated on n0 2026-11-10: login Keychain account `claudeglance` and
+  ~/.config/claudeglance-signing/sparkle_ed25519.key; `set-sparkle-secret.sh` there sets the
+  secret. `UpdatePolicy` keeps the updater off in /nix/store and for builds not signed by team
+  Q4PR8D5TG8 (dev-install, Xcode, ad-hoc fallback). CFBundleVersion now equals
+  MARKETING_VERSION (it was empty). Cask gets `auto_updates true` on signed releases.
+  Checked on n0: `just check` passes; a local Developer ID archive and export (temp keychain)
+  signs every Sparkle component (framework, Autoupdate, Updater.app, both XPC services) with
+  the team ID, hardened runtime and timestamp; `codesign --verify --deep --strict` passes;
+  the designated requirement is bundle id plus team, so Sparkle updates keep Keychain access.
+  An appcast dry run (fake DMG) signs and verifies. Not yet checked: notarization of the
+  Sparkle-bearing build and a real Sparkle update (first live run is the v1.9.0 tag, then 1.9.1).
 
 - Shipped version: 1.8.4 (tag v1.8.4 on 4f36d53, released 2026-11-10, release run
   42840745465). First Developer ID signed and notarized release: app and DMG both stapled;
@@ -194,7 +213,9 @@ check in CI, Keychain item re-created per build, PKCE plus loopback state bindin
   backup. Repo secrets: `APPLE_CERTIFICATE_1`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_TEAM_ID`,
   `APPLE_API_KEY`, `APPLE_API_KEY_ID`, `APPLE_API_ISSUER`. The certificate is shared by every
   app the team ships; each repo should get its own `<repo>-ci` API key.
-- Sparkle [13] and WidgetKit [25] are unblocked now that releases are signed (D-009).
+- BLOCKED on the operator (v1.9.0): run ~/.config/claudeglance-signing/set-sparkle-secret.sh
+  on n0 and copy sparkle_ed25519.key into the LastPass note "Workshop144 secrets". The
+  signed release fails without the secret. Losing the key strands every installed copy.
 - Mac App Store (reviewed 2026-11-08, not started): not viable as built. Blockers are the
   App Sandbox (off; ~/.claude reads and settings.json writes need folder grants), the reused
   Claude Code OAuth client id, and the "Claude" name (guideline 5.2). Needs Anthropic's
@@ -205,6 +226,18 @@ check in CI, Keychain item re-created per build, PKCE plus loopback state bindin
 - One Swift 6 concurrency note (`ImplicitStrongCapture`) appears in the Release build; not a failure.
 
 ## Next
+
+v1.9.0, in order:
+1. Operator: set SPARKLE_ED_PRIVATE_KEY (see Open / BLOCKED), merge the Sparkle PR.
+2. Tag v1.9.0. Watch the release: notarization of the new nested Sparkle code, then the
+   appcast step. Check `curl -sL .../releases/latest/download/appcast.xml` serves it.
+3. Install 1.9.0 (`brew upgrade --cask claudeglance`), then ship a 1.9.1 and confirm the app
+   offers it, installs it, relaunches, and raises no Keychain prompt. Then update-flake PR.
+4. Start v1.10 widgets: brainstorm, then plan in docs/plans/. First spike: does a Developer ID
+   widget extension with a team-prefixed App Group (`Q4PR8D5TG8.*`) load with no
+   provisioning profile?
+
+Older items:
 
 First: confirm broots144/homebrew-tap Casks/claudeglance.rb is at 1.8.4 with no caveats block
    (re-run the release's homebrew-tap job if not), then `brew upgrade --cask claudeglance` on

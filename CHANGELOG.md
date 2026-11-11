@@ -4,6 +4,21 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] — Updates itself
+
+### Added
+- **Automatic updates.** ClaudeGlance checks for a new version once a day and
+  offers to install it, so you no longer need to download a DMG or run
+  `brew upgrade`. Turn it off, or check right away, in Settings under
+  **Automatically check for updates**. Every update is signed, and the app
+  refuses one whose signature does not match.
+- Copies installed with Nix, and development builds, never update themselves;
+  Settings says so instead of showing the switch.
+
+### Upgrade note
+- **No more sign-in prompts on update.** The app keeps the same signature from
+  one version to the next, so updating does not ask for your login password.
+
 ## [1.8.4] — Signed and notarized
 
 ### Changed
