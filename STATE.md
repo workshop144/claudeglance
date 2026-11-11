@@ -1,6 +1,6 @@
 # Current Build State
 
-Last updated: 2026-11-10 by Claude: security sweep leftovers (release main-gate and `release` environment, L5; expiring scope fallback, L3; quoted statusline command, L9; Sparkle path read). Unreleased: ships in the next version. Still waiting on the operator for the first live Sparkle update (1.9.0 to 1.9.1).
+Last updated: 2026-11-11 by Claude: first live Sparkle update (1.9.0 to 1.9.1) worked with no Keychain prompt. Security sweep leftovers (release main-gate and `release` environment, L5; expiring scope fallback, L3; quoted statusline command, L9; Sparkle path read) are merged but unreleased: they ship in the next version.
 
 ## Phases (release lines)
 
@@ -288,12 +288,11 @@ check in CI, Keychain item re-created per build, PKCE plus loopback state bindin
 
 ## Next
 
-v1.9.0, in order:
-1. Done: secret set, PR #37 merged, v1.9.0 tagged and released, flake re-pinned.
-2. 1.9.0 is installed on n0 (no prompt, Check now works). Remaining live check: ship the next
-   release (1.9.1) and confirm 1.9.0 offers it, installs it, relaunches, and raises no Keychain
-   prompt. Then update-flake PR.
-3. Widgets [25] parked (D-012): the operator would not use one over the menu bar. If a user
+Sparkle [13] is done and live-checked (2026-11-11, n0): 1.9.0 offered 1.9.1 from Settings
+"Check now", installed it, relaunched, raised no Keychain prompt, and usage and Copy usage
+work. Each release now reaches DMG and cask installs by itself.
+
+1. Widgets [25] parked (D-012): the operator would not use one over the menu bar. If a user
    asks for widgets, start from this spike result. Spike (2026-11-11, on n0, removed after,
    throwaway project outside the repo): a Developer ID signed, hardened, sandboxed widget
    extension with App Group `Q4PR8D5TG8.io.github.broots144.WidgetSpike` and no provisioning
@@ -304,16 +303,8 @@ v1.9.0, in order:
    release Gatekeeper step fails closed). Spike bundle ids
    io.github.broots144.WidgetSpike(.Widget) are throwaway; never reuse them.
 
-Older items:
-
-First: confirm broots144/homebrew-tap Casks/claudeglance.rb is at 1.8.4 with no caveats block
-   (re-run the release's homebrew-tap job if not), then `brew upgrade --cask claudeglance` on
-   this Mac and expect one Keychain prompt or a fresh sign-in (signature changed).
-0. Operator: approve the Keychain prompt 1.8.3 raised on this Mac (Always Allow), check the
-   menu bar shows usage, then sign out and in once to confirm the `user:profile` scope
-   (see Security). If 1.8.3 misbehaves: `brew reinstall --cask claudeglance` after reverting
-   PR #30 or #31 and tagging v1.8.4.
-1. Delete or retire `develop` and update the dev-install.sh comment (small chore PR).
-2. Roadmap [31] copy-usage-to-clipboard is the only small unbuilt item that fits the aesthetic.
-3. Hardening list in ROADMAP.md (timezone correctness, multi-monitor placement) has no
+2. Operator: sign out and in once to confirm the `user:profile` scope (see Security). If the
+   authorize page errors, revert the scope line; a scope 403 falls back on its own.
+3. Delete or retire `develop` and update the dev-install.sh comment (small chore PR).
+4. Hardening list in ROADMAP.md (timezone correctness, multi-monitor placement) has no
    tests yet; pick one and add a test first. Big-jsonl streaming is done (TranscriptCache).
