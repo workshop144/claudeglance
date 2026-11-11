@@ -26,7 +26,7 @@ Status detail lives in [STATE.md](STATE.md); decisions in [docs/DECISIONS.md](do
 | v1.8 | Signed-out menu bar | ✅ | shipped v1.8.0, `just verify-release` |
 | v1.8.4 | Signed and notarized [6] | ✅ | shipped v1.8.4 |
 | v1.9 | Sparkle auto-update [13] | ✅ | shipped v1.9.0 (D-010, D-011) |
-| Small | Copy usage to clipboard [31] | ⬜ | none |
+| v1.9.1 | Copy usage to clipboard [31] | 🔨 | PR open; also the first live Sparkle update |
 | Hardening | Timezones, multi-monitor, big-jsonl streaming | ⬜ | ongoing, test first |
 | Exploratory | Prepaid balance [23], multi-account [24], widgets [25] | ⏸ | validate demand first (widgets: D-012) |
 
@@ -220,7 +220,7 @@ this is the "pure coolness" ordering you asked for.
 | 28 | ✅ **Plan-recommendation nudge** ("often near your limits") — plan-agnostic — *shipped v1.6.4* | haasonsaas | ★ |
 | 29 | ✅ **Service-status uptime history bar** — 30-day menu bar — *shipped v1.6.2* | ClaudeWatch | ★ |
 | 30 | ✅ **Nix / home-manager** formula — *shipped v1.6.1* | hamed | ★ |
-| 31 | Copy-usage-to-clipboard | cctray, joachim | ½ |
+| 31 | ✅ **Copy-usage-to-clipboard** (one line, clock-time resets) | cctray, joachim | ½ |
 | 32 | Per-session status + approve/deny prompts + jump-to-terminal | wangsen, TwilightVoyager, theangeloumali | different product → decline |
 
 ---

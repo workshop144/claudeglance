@@ -302,6 +302,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                                 action: #selector(openDashboard)))
         menu.addItem(actionItem(title: "Share Wrapped card…", symbol: "sparkles",
                                 action: #selector(openWrapped)))
+        // Only once real numbers have loaded: never copy the zeroed placeholder.
+        if usageService.hasLoaded {
+            menu.addItem(actionItem(title: "Copy usage", symbol: "doc.on.doc",
+                                    action: #selector(copyUsage)))
+        }
         menu.addItem(actionItem(title: "Refresh", symbol: "arrow.clockwise",
                                 action: #selector(refreshUsage)))
         let settingsItem = actionItem(title: "Settings", symbol: "gear",
@@ -691,6 +696,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             limitUtilization: usageService.hasLoaded ? usageService.currentUsage.fiveHourUtilization : nil,
             contextUtilization: contextService.metrics.active?.utilization
         )
+    }
+
+    /// Copy usage to clipboard [31]: one pasteable line for a chat or issue.
+    @objc private func copyUsage() {
+        let s = usageService.currentUsage
+        let text = usageClipboardText(fiveHour: s.fiveHourUtilization, sevenDay: s.sevenDayUtilization,
+                                      sonnet: s.sevenDaySonnetUtilization,
+                                      fiveHourResetAt: s.fiveHourResetAt, sevenDayResetAt: s.sevenDayResetAt)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
     }
 
     @objc private func refreshUsage() {

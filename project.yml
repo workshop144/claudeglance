@@ -15,7 +15,7 @@ packages:
 
 settings:
   base:
-    MARKETING_VERSION: "1.9.0"
+    MARKETING_VERSION: "1.9.1"
     # CFBundleVersion. Sparkle compares it with the appcast's sparkle:version.
     CURRENT_PROJECT_VERSION: "$(MARKETING_VERSION)"
     SWIFT_VERSION: "5.9"

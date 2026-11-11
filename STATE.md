@@ -1,6 +1,6 @@
 # Current Build State
 
-Last updated: 2026-11-11 by Claude: v1.9.0 released and live-checked; widgets parked after a passing App Group spike (D-012).
+Last updated: 2026-11-11 by Claude: v1.9.1 copy usage [31] built on feat/copy-usage-1.9.1 (PR open); its release is the first live Sparkle update.
 
 ## Phases (release lines)
 
@@ -17,6 +17,8 @@ Last updated: 2026-11-11 by Claude: v1.9.0 released and live-checked; widgets pa
 - [x] v1.8.3 Review fixes (released 2026-11-07): session-generation guards, token error text, reset parsing, context window
 - [x] v1.8.4 Signed and notarized [6] (released 2026-11-10), plan in docs/plans/v1.8.4-notarize.md
 - [x] v1.9.0 Sparkle auto-update [13] (released 2026-11-11, PR #37), plan in docs/plans/v1.9-sparkle.md (D-010, D-011)
+- [ ] v1.9.1 Copy usage to clipboard [31]: built (menu item, `usageClipboardText` in
+  CopyUsage.swift, 3 tests). Not tagged.
 - [ ] Exploratory: real prepaid balance [23], multi-account [24], WidgetKit [25] (parked, D-012). Not started, demand unvalidated.
 
 ## What is true now
