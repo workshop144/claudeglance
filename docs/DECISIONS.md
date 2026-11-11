@@ -52,3 +52,17 @@ PR after each release; CI runs `nix build` on every push so the formula cannot r
 Since the move to workshop144/claudeglance, changes land by PR to `main` and releases
 are tagged from main. Dependabot runs weekly and n0's merger squash-merges green PRs
 (ADR-089 in workshop144/sublevel).
+
+## D-010: Sparkle and WidgetKit ship as separate releases (2026-11-10)
+Supersedes D-005. Sparkle ships first as 1.9.0 and widgets follow as 1.10.0. D-005 bundled
+them so signing was set up once; 1.8.4 already did that (D-009). Shipping Sparkle first
+means the widget release reaches DMG users by auto-update, and each release changes one
+risky thing (the update path, then the App Group and sandboxed extension).
+
+## D-011: Sparkle feed as a signed release asset; updates off for Nix and unsigned builds (2026-11-10, v1.9.0)
+Sparkle 2 with EdDSA. appcast.xml is generated and signed by release.yml and uploaded to
+each GitHub release; the app reads `releases/latest/download/appcast.xml`, so there is no
+Pages site and CI never commits. The app requires a signed feed. The private key lives in
+the n0 login Keychain, ~/.config/claudeglance-signing and LastPass; CI gets it as
+SPARKLE_ED_PRIVATE_KEY. The updater is off inside /nix/store (read-only) and for builds
+not signed by team Q4PR8D5TG8. The Homebrew cask declares `auto_updates true`.

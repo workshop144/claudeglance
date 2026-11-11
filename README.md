@@ -155,7 +155,10 @@ brew install --cask broots144/tap/claudeglance
 ```
 
 From 1.8.4 the app and DMG are signed with a Developer ID and notarized by
-Apple, so they open without a warning.
+Apple, so they open without a warning. From 1.9.0 the app updates itself: it
+checks once a day and offers each new version (Settings › **Automatically check
+for updates**). The cask declares `auto_updates`, so `brew upgrade` leaves it to
+the app.
 
 **Or download the DMG** from the [Releases page](https://github.com/workshop144/claudeglance/releases),
 open it, and drag **ClaudeGlance** onto the **Applications** folder in the same
@@ -200,9 +203,9 @@ For **nix-darwin** or **home-manager**, add the package to your config:
 
 The package installs `ClaudeGlance.app` into the store; nix-darwin / home-manager
 link `.app` bundles into `~/Applications` so Spotlight and Finder can launch it
-(e.g. via [`mac-app-util`](https://github.com/hraban/mac-app-util)). As with the
-DMG, the build is ad-hoc signed (not notarized) until an Apple Developer account
-lands.
+(e.g. via [`mac-app-util`](https://github.com/hraban/mac-app-util)). The store is
+read-only and Nix owns the version, so a Nix install never updates itself; move to
+a new release by updating the flake input.
 
 ## Build from source
 
@@ -230,6 +233,7 @@ show just a countdown, just percentages, or any mix.
 | Setting | Default | Description |
 |---------|---------|-------------|
 | Launch at login | Off | Start the app automatically when you log in |
+| Automatically check for updates | On | Check daily and offer new versions; "Check now" checks immediately (not shown for Nix or dev builds) |
 | Show menu-bar icon | On | Show the icon/gauge; off = a text-only menu bar |
 | Show remaining, not used | Off | Display headroom (`84% left`) instead of utilization (`16%`) |
 | Show ring gauge | Off | Dual-ring usage gauge (outer 5h, inner 7d) in the menu bar |

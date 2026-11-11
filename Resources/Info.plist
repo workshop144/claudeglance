@@ -34,6 +34,16 @@
 	<true/>
 	<key>NSHumanReadableCopyright</key>
 	<string>Copyright © 2026. All rights reserved.</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUFeedURL</key>
+	<string>https://github.com/workshop144/claudeglance/releases/latest/download/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>GYUVGOpOPMhboEaFgjIXDbE8SJY8mcvWBlpOhqzLIYg=</string>
+	<key>SURequireSignedFeed</key>
+	<true/>
+	<key>SUVerifyUpdateBeforeExtraction</key>
+	<true/>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 </dict>

@@ -22,6 +22,9 @@ grep -qE '^[[:space:]]+subject-path: ClaudeGlance\.dmg$' "$rel" \
 for perm in 'id-token: write' 'attestations: write'; do
   grep -qE "^[[:space:]]+$perm\$" "$rel" || { echo "error: $rel release job lacks '$perm'" >&2; fail=1; }
 done
+# Sparkle (D-011): the signed release must publish a signed appcast next to the DMG.
+grep -qE '^[[:space:]]+appcast\.xml$' "$rel" || { echo "error: $rel does not publish appcast.xml" >&2; fail=1; }
+grep -q 'sparkle-public-key.swift' "$rel" || { echo "error: $rel does not check the Sparkle key against SUPublicEDKey" >&2; fail=1; }
 # Workflow-level token stays read-only / empty by default.
 grep -qE '^permissions: \{\}$' "$rel" || { echo "error: $rel must default to 'permissions: {}'" >&2; fail=1; }
 grep -qE '^permissions:$' .github/workflows/ci.yml || { echo "error: ci.yml has no top-level permissions" >&2; fail=1; }

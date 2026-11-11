@@ -40,6 +40,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil { return }
 
         installMainMenu()
+        UpdateController.shared.start()
         setupStatusItem()
         setupNotifications()
         startUsagePolling()

@@ -187,6 +187,48 @@ jobs:
           spctl --assess --type execute --verbose=2 build/export/ClaudeGlance.app
           spctl --assess --type open --context context:primary-signature --verbose=2 ClaudeGlance.dmg
 
+      # Sparkle auto-update feed [13] (D-011). Signs the stapled DMG and a one-item
+      # appcast.xml with the EdDSA key, then checks that key matches the SUPublicEDKey
+      # the built app carries: a mismatch would ship a feed no installed copy accepts.
+      # The DMG is final here (stapled), so its signature and length stay valid.
+      - name: Sign and write the Sparkle appcast
+        if: env.HAS_SIGNING == 'true'
+        env:
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+          SPARKLE_VERSION: 2.10.1
+          SPARKLE_SHA256: 1a856d2a9edb8e628de88121d7be04cf0e2167f8641650b78fca00b14244cf27
+        run: |
+          set -euo pipefail
+          [ -n "$SPARKLE_ED_PRIVATE_KEY" ] \
+            || { echo "::error::SPARKLE_ED_PRIVATE_KEY is not set; a signed release must ship its appcast"; exit 1; }
+          T="$RUNNER_TEMP/sparkle"; mkdir -p "$T"
+          curl -fsSL -o "$T/s.tar.xz" \
+            "https://github.com/sparkle-project/Sparkle/releases/download/$SPARKLE_VERSION/Sparkle-$SPARKLE_VERSION.tar.xz"
+          echo "$SPARKLE_SHA256  $T/s.tar.xz" | shasum -a 256 -c -
+          tar -xf "$T/s.tar.xz" -C "$T" ./bin/sign_update
+          SU="$T/bin/sign_update"
+
+          PLIST=build/export/ClaudeGlance.app/Contents/Info.plist
+          WANT=$(/usr/libexec/PlistBuddy -c "Print SUPublicEDKey" "$PLIST")
+          HAVE=$(printf '%s' "$SPARKLE_ED_PRIVATE_KEY" | swift scripts/sparkle-public-key.swift)
+          [ "$WANT" = "$HAVE" ] \
+            || { echo "::error::SPARKLE_ED_PRIVATE_KEY does not match the app's SUPublicEDKey"; exit 1; }
+
+          VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$PLIST")
+          [ "v$VERSION" = "$GITHUB_REF_NAME" ] \
+            || { echo "::error::tag $GITHUB_REF_NAME does not match app version $VERSION"; exit 1; }
+          [ "$(/usr/libexec/PlistBuddy -c "Print CFBundleVersion" "$PLIST")" = "$VERSION" ] \
+            || { echo "::error::CFBundleVersion differs from the marketing version"; exit 1; }
+          MINOS=$(/usr/libexec/PlistBuddy -c "Print LSMinimumSystemVersion" "$PLIST")
+
+          SIG=$(printf '%s' "$SPARKLE_ED_PRIVATE_KEY" | "$SU" -p -f - ClaudeGlance.dmg)
+          printf '%s' "$SPARKLE_ED_PRIVATE_KEY" | "$SU" --verify -f - ClaudeGlance.dmg "$SIG"
+          scripts/make-appcast.sh "$VERSION" "$(stat -f %z ClaudeGlance.dmg)" "$SIG" "$MINOS" > appcast.xml
+          printf '%s' "$SPARKLE_ED_PRIVATE_KEY" | "$SU" -f - appcast.xml
+          printf '%s' "$SPARKLE_ED_PRIVATE_KEY" | "$SU" --verify -f - appcast.xml
+          xmllint --noout appcast.xml
+          echo "::notice::Sparkle appcast signed for $VERSION."
+
       # Hash last: stapling rewrites the DMG, and the cask must pin the final bytes.
       - name: Hash DMG
         id: dmg
@@ -223,11 +265,13 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:
-          # The .zip only exists on the signed (notarized) path; softprops skips
-          # unmatched files by default, so listing it here is safe in both modes.
+          # The .zip and appcast.xml only exist on the signed (notarized) path;
+          # softprops skips unmatched files by default, so listing them is safe in
+          # both modes. The app's feed URL is releases/latest/download/appcast.xml.
           files: |
             ClaudeGlance.dmg
             ClaudeGlance.zip
+            appcast.xml
           body: ${{ env.RELEASE_BODY }}
           generate_release_notes: true
 
@@ -262,9 +306,13 @@ jobs:
           # Unsigned builds are quarantined by Gatekeeper, so the cask carries a
           # caveat telling users how to clear it. Once the build is notarized this
           # block is empty and the caveat disappears automatically.
+          # Signed builds update themselves with Sparkle, so `brew upgrade` leaves
+          # them alone (D-011); ad-hoc builds have no feed.
           if [ "$HAS_SIGNING" = "true" ]; then
+            AUTO_UPDATES=true
             CAVEATS=""
           else
+            AUTO_UPDATES=false
             CAVEATS="
             caveats <<~EOS
               ClaudeGlance is ad-hoc signed (not notarized). On first launch macOS
@@ -285,6 +333,7 @@ jobs:
             homepage \"https://github.com/workshop144/claudeglance\"
 
             depends_on macos: :ventura
+            auto_updates $AUTO_UPDATES
 
             app \"ClaudeGlance.app\"
 

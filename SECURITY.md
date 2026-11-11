@@ -35,6 +35,12 @@ API keys. If Anthropic ever refuses that token for a missing scope, the app asks
 you to sign in once more with `user:profile user:inference`. Reports about how the app stores, refreshes, transmits, or exposes
 those tokens are especially welcome.
 
+Updates (1.9.0 on) come from `appcast.xml` on the latest GitHub release. The
+feed and every update are signed with an EdDSA key held by the maintainer; the
+app refuses an unsigned feed and an update whose signature does not match the
+public key built into it, and macOS also checks the update's Developer ID
+signature. Reports about the update path are welcome too.
+
 > Note: the browser flow reuses Claude's **public** OAuth client (the same public
 > client the Claude Code CLI uses; no client secret is involved). There is no
 > separate third-party client registration for usage apps, so this reuse is
