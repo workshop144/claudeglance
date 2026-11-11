@@ -1,6 +1,6 @@
 # Current Build State
 
-Last updated: 2026-11-10 by Claude: v1.9.0 Sparkle auto-update built on feat/sparkle-1.9.0 (PR open), waiting on the SPARKLE_ED_PRIVATE_KEY secret before tagging.
+Last updated: 2026-11-11 by Claude: v1.9.0 released (Sparkle auto-update); flake re-pinned to 1.9.0.
 
 ## Phases (release lines)
 
@@ -16,13 +16,18 @@ Last updated: 2026-11-10 by Claude: v1.9.0 Sparkle auto-update built on feat/spa
 - [x] v1.8.2 Security hardening (released 2026-11-07): least-privilege scope, DMG provenance
 - [x] v1.8.3 Review fixes (released 2026-11-07): session-generation guards, token error text, reset parsing, context window
 - [x] v1.8.4 Signed and notarized [6] (released 2026-11-10), plan in docs/plans/v1.8.4-notarize.md
-- [ ] v1.9.0 Sparkle auto-update [13]: built, plan in docs/plans/v1.9-sparkle.md (D-010, D-011). Not tagged.
+- [x] v1.9.0 Sparkle auto-update [13] (released 2026-11-11, PR #37), plan in docs/plans/v1.9-sparkle.md (D-010, D-011)
 - [ ] v1.10.0 WidgetKit [25]: after 1.9.0 ships (D-010). Not started.
 - [ ] Exploratory: real prepaid balance [23], multi-account [24]. Not started, demand unvalidated.
 
 ## What is true now
 
-- Sparkle (1.9.0, not yet released): Sparkle 2.10.1 by SPM, exact version. Feed
+- Shipped version: 1.9.0 (tag v1.9.0 on 0ee0a46, release run 42930175433, 3m18s including
+  notarization). Assets: DMG, zip, appcast.xml. Checked after release: the live
+  `releases/latest/download/appcast.xml` serves 1.9.0; the downloaded DMG matches the feed's
+  EdDSA signature and length (3057421); `spctl` says "Notarized Developer ID";
+  `gh attestation verify` exits 0; the tap cask is 1.9.0 with `auto_updates true` and no caveats.
+- Sparkle (1.9.0): Sparkle 2.10.1 by SPM, exact version. Feed
   `releases/latest/download/appcast.xml`, a one-item appcast that release.yml writes with
   `scripts/make-appcast.sh` and signs with sign_update (feed and DMG both EdDSA signed; the
   app sets SURequireSignedFeed and SUVerifyUpdateBeforeExtraction). The release fails if
@@ -213,9 +218,8 @@ check in CI, Keychain item re-created per build, PKCE plus loopback state bindin
   backup. Repo secrets: `APPLE_CERTIFICATE_1`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_TEAM_ID`,
   `APPLE_API_KEY`, `APPLE_API_KEY_ID`, `APPLE_API_ISSUER`. The certificate is shared by every
   app the team ships; each repo should get its own `<repo>-ci` API key.
-- BLOCKED on the operator (v1.9.0): run ~/.config/claudeglance-signing/set-sparkle-secret.sh
-  on n0 and copy sparkle_ed25519.key into the LastPass note "Workshop144 secrets". The
-  signed release fails without the secret. Losing the key strands every installed copy.
+- SPARKLE_ED_PRIVATE_KEY set 2026-11-11. Operator: copy sparkle_ed25519.key into the LastPass
+  note "Workshop144 secrets" if not done. Losing the key strands every installed copy.
 - Mac App Store (reviewed 2026-11-08, not started): not viable as built. Blockers are the
   App Sandbox (off; ~/.claude reads and settings.json writes need folder grants), the reused
   Claude Code OAuth client id, and the "Claude" name (guideline 5.2). Needs Anthropic's
@@ -228,12 +232,10 @@ check in CI, Keychain item re-created per build, PKCE plus loopback state bindin
 ## Next
 
 v1.9.0, in order:
-1. Operator: set SPARKLE_ED_PRIVATE_KEY (see Open / BLOCKED), merge the Sparkle PR.
-2. Tag v1.9.0. Watch the release: notarization of the new nested Sparkle code, then the
-   appcast step. Check `curl -sL .../releases/latest/download/appcast.xml` serves it.
-3. Install 1.9.0 (`brew upgrade --cask claudeglance`), then ship a 1.9.1 and confirm the app
+1. Done: secret set, PR #37 merged, v1.9.0 tagged and released, flake re-pinned.
+2. Install 1.9.0 (`brew upgrade --cask claudeglance`), then ship a 1.9.1 and confirm the app
    offers it, installs it, relaunches, and raises no Keychain prompt. Then update-flake PR.
-4. Start v1.10 widgets: brainstorm, then plan in docs/plans/. First spike: does a Developer ID
+3. Start v1.10 widgets: brainstorm, then plan in docs/plans/. First spike: does a Developer ID
    widget extension with a team-prefixed App Group (`Q4PR8D5TG8.*`) load with no
    provisioning profile?
 

@@ -25,7 +25,7 @@ Status detail lives in [STATE.md](STATE.md); decisions in [docs/DECISIONS.md](do
 | v1.7 | Standalone sign-in and hardening | ✅ | shipped v1.7.7 |
 | v1.8 | Signed-out menu bar | ✅ | shipped v1.8.0, `just verify-release` |
 | v1.8.4 | Signed and notarized [6] | ✅ | shipped v1.8.4 |
-| v1.9 | Sparkle auto-update [13] | 🔨 | PR open; operator sets SPARKLE_ED_PRIVATE_KEY, then tag (D-010, D-011) |
+| v1.9 | Sparkle auto-update [13] | ✅ | shipped v1.9.0 (D-010, D-011) |
 | v1.10 | WidgetKit widgets [25] | ⬜ | after v1.9.0 ships (D-010) |
 | Small | Copy usage to clipboard [31] | ⬜ | none |
 | Hardening | Timezones, multi-monitor, big-jsonl streaming | ⬜ | ongoing, test first |
